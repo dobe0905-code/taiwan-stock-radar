@@ -6,14 +6,33 @@
 <title>台股雷達 · TW Stock Radar</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
+<!-- Firebase SDK -->
+<script type="module">
+  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
+  import { getDatabase, ref, onValue, off } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js';
+
+  const firebaseConfig = {
+    databaseURL: 'https://taiwan-stock-radar-default-rtdb.asia-southeast1.firebasedatabase.app'
+  };
+  const app = initializeApp(firebaseConfig);
+  const database = getDatabase(app);
+
+  // 讓全域可存取
+  window._fbDb = database;
+  window._fbRef = ref;
+  window._fbOnValue = onValue;
+  window._fbOff = off;
+  window._fbReady = true;
+  window.dispatchEvent(new Event('firebase-ready'));
+</script>
 <style>
 :root{
   --bg:#070b14;--bg2:#0c1220;--bg3:#111828;--bg4:#17213a;--bg5:#1e2d4a;
-  --border:rgba(56,139,253,.1);--border2:rgba(56,139,253,.22);--border3:rgba(56,139,253,.4);
-  --accent:#388bfd;--accent2:#79b8ff;--accent3:#cae8ff;
+  --border:rgba(56,139,253,.1);--border2:rgba(56,139,253,.22);
+  --accent:#388bfd;--accent2:#79b8ff;
   --green:#3fb950;--green2:#7ee787;--red:#f85149;--red2:#ffa198;
   --amber:#d29922;--amber2:#e3b341;--purple:#bc8cff;
-  --text:#e6edf3;--text2:#8b949e;--text3:#484f58;--text4:#30363d;
+  --text:#e6edf3;--text2:#8b949e;--text3:#484f58;
   --mono:'JetBrains Mono',monospace;--sans:'Noto Sans TC',sans-serif;
   --sidebar:240px;--header:52px;
 }
@@ -22,7 +41,6 @@ html,body{height:100%;overflow:hidden;}
 body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13px;}
 ::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-thumb{background:var(--bg5);border-radius:2px;}
-::-webkit-scrollbar-track{background:transparent;}
 
 #header{
   position:fixed;top:0;left:0;right:0;z-index:100;height:var(--header);
@@ -32,19 +50,26 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 }
 .logo-wrap{display:flex;align-items:center;gap:8px;margin-right:8px;}
 .logo-icon{width:28px;height:28px;border-radius:7px;background:linear-gradient(135deg,#1c4ed8,#388bfd);display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:700;color:#fff;}
-.logo-name{font-size:14px;font-weight:700;color:var(--text);}
+.logo-name{font-size:14px;font-weight:700;}
 .logo-sub{font-size:10px;color:var(--text3);font-family:var(--mono);}
-.search-wrap{flex:1;max-width:420px;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 12px;transition:border-color .2s;}
+.search-wrap{flex:1;max-width:420px;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 12px;}
 .search-wrap:focus-within{border-color:var(--border2);}
-.search-wrap input{background:none;border:none;outline:none;color:var(--text);font-size:12px;width:100%;font-family:var(--sans);}
+.search-wrap input{background:none;border:none;outline:none;color:var(--text);font-size:12px;width:100%;}
 .search-wrap input::placeholder{color:var(--text3);}
 .header-right{display:flex;align-items:center;gap:8px;margin-left:auto;}
-.api-badge{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;font-size:11px;font-family:var(--mono);border:1px solid;cursor:pointer;transition:all .2s;}
+.api-badge{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;font-size:11px;font-family:var(--mono);border:1px solid;cursor:pointer;}
 .api-on{border-color:rgba(63,185,80,.3);background:rgba(63,185,80,.08);color:var(--green2);}
 .api-off{border-color:var(--border);background:var(--bg3);color:var(--text3);}
 .api-dot{width:5px;height:5px;border-radius:50%;}
 .api-on .api-dot{background:var(--green);box-shadow:0 0 6px var(--green);}
 .api-off .api-dot{background:var(--text3);}
+.live-badge{
+  display:flex;align-items:center;gap:5px;
+  padding:3px 8px;border-radius:5px;font-size:10px;font-family:var(--mono);
+  background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.25);color:var(--red2);
+}
+.live-dot{width:5px;height:5px;border-radius:50%;background:var(--red2);animation:blink 1s infinite;}
+@keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
 .upd-info{font-size:11px;font-family:var(--mono);color:var(--text3);}
 .upd-val{color:var(--accent2);}
 
@@ -52,7 +77,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 
 #sidebar{width:var(--sidebar);flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;padding:8px 0;}
 .sb-label{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;padding:10px 14px 4px;}
-.sb-item{display:flex;align-items:center;justify-content:space-between;padding:7px 14px;font-size:12px;color:var(--text2);cursor:pointer;transition:all .15s;border-left:2px solid transparent;user-select:none;}
+.sb-item{display:flex;align-items:center;justify-content:space-between;padding:7px 14px;font-size:12px;color:var(--text2);cursor:pointer;transition:all .15s;border-left:2px solid transparent;}
 .sb-item:hover{background:var(--bg3);color:var(--text);}
 .sb-item.active{background:rgba(56,139,253,.08);border-left-color:var(--accent);color:var(--accent2);}
 .sb-cnt{font-size:10px;font-family:var(--mono);background:var(--bg4);padding:1px 6px;border-radius:8px;color:var(--text3);}
@@ -112,6 +137,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 .f-neg{color:var(--red2);font-family:var(--mono);font-size:11px;}
 .star-btn{background:none;border:none;cursor:pointer;font-size:13px;color:var(--text3);transition:color .15s;padding:2px;}
 .star-btn.on{color:var(--amber2);}
+.live-price{position:relative;}
+.live-price.flash{animation:priceFlash .4s ease;}
+@keyframes priceFlash{0%{background:rgba(56,139,253,.3)}100%{background:transparent}}
 
 #det{position:fixed;right:0;top:var(--header);width:440px;height:calc(100vh - var(--header));background:var(--bg2);border-left:1px solid var(--border2);overflow-y:auto;z-index:50;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);}
 #det.open{transform:none;}
@@ -123,6 +151,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 .d-sec{font-size:11px;color:var(--text3);}
 .d-prow{display:flex;align-items:baseline;gap:10px;margin-top:10px;}
 .d-price{font-family:var(--mono);font-size:26px;font-weight:700;}
+.d-live-tag{font-size:10px;padding:2px 6px;border-radius:4px;background:rgba(248,81,73,.15);color:var(--red2);border:1px solid rgba(248,81,73,.2);font-family:var(--mono);}
 .db{padding:14px 18px;}
 .ds{margin-bottom:18px;}
 .dst{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;margin-bottom:10px;padding-bottom:6px;border-bottom:1px solid var(--border);}
@@ -130,6 +159,16 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 .kv{background:var(--bg3);border-radius:7px;padding:9px 11px;}
 .kv-l{font-size:10px;color:var(--text3);margin-bottom:2px;}
 .kv-v{font-size:13px;font-family:var(--mono);font-weight:600;}
+.bidask-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
+.ba-side{background:var(--bg3);border-radius:7px;padding:10px;}
+.ba-title{font-size:10px;font-weight:700;margin-bottom:8px;letter-spacing:.05em;}
+.ba-buy .ba-title{color:var(--green2);}
+.ba-sell .ba-title{color:var(--red2);}
+.ba-row{display:flex;justify-content:space-between;font-size:11px;font-family:var(--mono);padding:3px 0;border-bottom:1px solid var(--border);}
+.ba-row:last-child{border:none;}
+.ba-buy .ba-price{color:var(--green2);}
+.ba-sell .ba-price{color:var(--red2);}
+.ba-vol{color:var(--text2);}
 .law3{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;}
 .law-c{background:var(--bg3);border-radius:7px;padding:8px 10px;text-align:center;}
 .law-l{font-size:9px;color:var(--text3);margin-bottom:4px;}
@@ -146,7 +185,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 .ai-fill{height:100%;border-radius:2px;transition:width .8s ease;}
 .ai-pts{font-size:11px;color:var(--text2);line-height:1.9;}
 .ai-disc{font-size:10px;color:var(--text3);line-height:1.7;padding:8px 10px;background:var(--bg3);border-radius:6px;margin-top:8px;}
-.ch-wrap{position:relative;height:160px;margin-bottom:4px;}
+.ch-wrap{position:relative;height:160px;}
 .ch-sm{position:relative;height:120px;}
 .ch-radar{position:relative;height:190px;}
 
@@ -170,11 +209,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
     <input id="searchInput" type="text" placeholder="個股或ETF代號/名稱查詢..." oninput="renderTable()">
   </div>
   <div class="header-right">
-    <div class="api-badge api-off" id="fmBadge" onclick="showToast('FinMind API 資料來源')">
-      <div class="api-dot"></div><span>FinMind API</span>
+    <div class="api-badge api-off" id="fmBadge">
+      <div class="api-dot"></div><span>FinMind</span>
     </div>
-    <div class="api-badge api-off" id="kgiBadge" onclick="showToast('凱基API 審核中，核准後啟用即時報價')">
-      <div class="api-dot"></div><span>凱基 API</span>
+    <div class="api-badge api-off" id="kgiBadge">
+      <div class="api-dot"></div><span>凱基即時</span>
+    </div>
+    <div class="live-badge" id="liveBadge" style="display:none">
+      <div class="live-dot"></div><span>LIVE</span>
     </div>
     <div class="upd-info">更新 <span id="lastUpd">--:--</span> &nbsp;·&nbsp; <span class="upd-val" id="cd">--:--</span></div>
   </div>
@@ -215,7 +257,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
       <div class="sum-card"><div class="sum-lbl">平盤</div><div class="sum-val c-neu" id="s-fl">—</div><div class="sum-sub">無漲跌</div></div>
       <div class="sum-card"><div class="sum-lbl">買進訊號</div><div class="sum-val c-up" id="s-by">—</div><div class="sum-sub">技術面符合</div></div>
       <div class="sum-card"><div class="sum-lbl">賣出訊號</div><div class="sum-val c-dn" id="s-sl">—</div><div class="sum-sub">技術面符合</div></div>
-      <div class="sum-card"><div class="sum-lbl">爆量股</div><div class="sum-val" style="color:var(--amber2)" id="s-hv">—</div><div class="sum-sub">週轉率>1%</div></div>
+      <div class="sum-card"><div class="sum-lbl">即時更新</div><div class="sum-val" style="color:var(--purple)" id="s-live">0</div><div class="sum-sub">凱基即時</div></div>
     </div>
     <div class="filter-bar">
       <button class="f-btn" id="fb-up" onclick="tqf('up')">▲ 上漲</button>
@@ -257,6 +299,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
       <div class="d-prow">
         <div class="d-price" id="d-price">—</div>
         <div class="pill" id="d-chg">—</div>
+        <div class="d-live-tag" id="d-live-tag" style="display:none">● LIVE</div>
       </div>
     </div>
     <div class="db" id="detBody"></div>
@@ -265,10 +308,86 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 <div class="toast" id="toast"></div>
 
 <script>
-const API='/api/quote';
+const API='/api/quote', RT='/api/realtime';
 let stocks=[],wl=new Set(JSON.parse(localStorage.getItem('wl')||'[]'));
 let sf='all',mkt='tw',qf=new Set(),nxt,cdTimer,dCharts={};
+let liveData={}, liveCount=0, fbListener=null, currentDetId=null;
 
+// ── Firebase 即時訂閱 ──
+function startFirebaseListener(){
+  if(!window._fbReady) return;
+  const db=window._fbDb, r=window._fbRef, ov=window._fbOnValue;
+  const stocksRef=r(db,'stocks');
+  fbListener=ov(stocksRef, snap=>{
+    const data=snap.val();
+    if(!data) return;
+    liveCount=0;
+    for(const [sid,val] of Object.entries(data)){
+      if(val.tick){
+        liveData[sid]=val;
+        liveCount++;
+        // 更新股票資料
+        const s=stocks.find(x=>x.id===sid);
+        if(s){
+          s.close=val.tick.price;
+          s.chgP=val.tick.chg_pct;
+          s.chg=val.tick.chg;
+          s.vol=val.tick.total_volume||s.vol;
+          s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn,ff:s.ff});
+          // 閃爍效果
+          const row=document.querySelector(`tr[data-id="${sid}"]`);
+          if(row){
+            const cell=row.querySelector('.live-price');
+            if(cell){cell.classList.remove('flash');void cell.offsetWidth;cell.classList.add('flash');}
+          }
+        }
+        // 更新詳細面板
+        if(currentDetId===sid) updateDetLive(sid);
+      }
+    }
+    document.getElementById('s-live').textContent=liveCount;
+    if(liveCount>0){
+      document.getElementById('kgiBadge').className='api-badge api-on';
+      document.getElementById('liveBadge').style.display='flex';
+    }
+    updSum();
+  });
+}
+
+function updateDetLive(sid){
+  const d=liveData[sid];if(!d||!d.tick) return;
+  const t=d.tick;
+  const priceEl=document.getElementById('d-price');
+  const chgEl=document.getElementById('d-chg');
+  const liveTag=document.getElementById('d-live-tag');
+  if(priceEl) priceEl.textContent=t.price.toFixed(2);
+  if(chgEl){
+    chgEl.textContent=(t.chg_pct>=0?'+':'')+t.chg_pct.toFixed(2)+'%';
+    chgEl.className='pill '+(t.chg_pct>0?'pill-up':t.chg_pct<0?'pill-dn':'pill-neu');
+  }
+  if(liveTag) liveTag.style.display='flex';
+  // 更新五檔
+  if(d.bidask){
+    const ba=d.bidask;
+    for(let i=0;i<5;i++){
+      const bp=document.getElementById(`bp-${i}`);
+      const bv=document.getElementById(`bv-${i}`);
+      const ap=document.getElementById(`ap-${i}`);
+      const av=document.getElementById(`av-${i}`);
+      if(bp) bp.textContent=ba.bid_prices[i]?.toFixed(2)||'—';
+      if(bv) bv.textContent=fmV(ba.bid_volumes[i]||0);
+      if(ap) ap.textContent=ba.ask_prices[i]?.toFixed(2)||'—';
+      if(av) av.textContent=fmV(ba.ask_volumes[i]||0);
+    }
+  }
+}
+
+window.addEventListener('firebase-ready',()=>{
+  startFirebaseListener();
+  showToast('Firebase 即時串接已連線！');
+});
+
+// ── API ──
 async function apiFetch(ds,id,sd){
   const p=new URLSearchParams({dataset:ds});
   if(id) p.append('data_id',id);
@@ -297,7 +416,6 @@ async function loadData(){
     showToast('✓ 已載入 '+stocks.length+' 檔股票');
   }catch(e){
     setLd('載入失敗：'+e.message);
-    document.getElementById('fmBadge').className='api-badge api-off';
   }
 }
 
@@ -342,8 +460,6 @@ function calcSig({open,close,high,low,chgP,peV,turn,ff}){
   else if(chgP<-1){sc-=2;rs.push('下跌 '+chgP.toFixed(1)+'%');}
   else if(chgP<0){sc-=1;rs.push('小幅下跌');}
   if(high>low){const pos=(close-low)/(high-low);if(pos>.8){sc+=1;rs.push('收盤靠近高點');}else if(pos<.2){sc-=1;rs.push('收盤靠近低點');}}
-  const amp=open>0?(high-low)/open*100:0;
-  if(amp>4){sc+=1;rs.push('高波動 振幅'+amp.toFixed(1)+'%');}
   if(turn>1.5){sc+=1;rs.push('爆量換手');}
   if(ff>1000){sc+=1;rs.push('外資買超');}else if(ff<-1000){sc-=1;rs.push('外資賣超');}
   if(peV&&peV>0){if(peV<12){sc+=1;rs.push('低本益比 '+peV.toFixed(1));}else if(peV>40){sc-=1;rs.push('高本益比 '+peV.toFixed(1));}}
@@ -389,12 +505,13 @@ function getFiltered(){
 function renderTable(){
   const l=getFiltered(),tb=document.getElementById('tblBody');
   if(!l.length){tb.innerHTML='<tr><td colspan="11"><div class="empty">找不到符合條件的股票</div></td></tr>';return;}
-  tb.innerHTML=l.map((s,i)=>`
-    <tr style="animation-delay:${Math.min(i*8,500)}ms" onclick="openDet('${s.id}')">
+  tb.innerHTML=l.map((s,i)=>{
+    const isLive=!!liveData[s.id];
+    return`<tr style="animation-delay:${Math.min(i*8,500)}ms" data-id="${s.id}" onclick="openDet('${s.id}')">
       <td onclick="event.stopPropagation()"><button class="star-btn ${wl.has(s.id)?'on':''}" onclick="togWL('${s.id}',this)">★</button></td>
-      <td><span class="td-id">${s.id}</span>${s.isETF?'<span class="etf-tag">ETF</span>':''}</td>
+      <td><span class="td-id">${s.id}</span>${s.isETF?'<span class="etf-tag">ETF</span>':''}${isLive?'<span style="font-size:9px;color:var(--red2);margin-left:3px">●</span>':''}</td>
       <td><div class="td-name">${s.name}</div>${!s.isETF?'<div class="td-sec">'+s.sector+'</div>':''}</td>
-      <td><span class="td-price ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}">${s.close.toFixed(2)}</span></td>
+      <td><span class="td-price live-price ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}">${s.close.toFixed(2)}</span></td>
       <td><span class="pill ${s.chgP>0?'pill-up':s.chgP<0?'pill-dn':'pill-neu'}">${s.chgP>=0?'+':''}${s.chgP.toFixed(2)}%</span></td>
       <td class="col-law"><span class="${s.ff>0?'f-pos':'f-neg'}">${s.ff>0?'+':''}${fmN(s.ff)}</span></td>
       <td><span class="td-m">${s.peV?s.peV.toFixed(1):'—'}</span></td>
@@ -402,7 +519,8 @@ function renderTable(){
       <td><span class="td-m">${fmV(s.vol)}</span></td>
       <td><span class="td-m">${s.turn>0?s.turn.toFixed(2)+'%':'—'}</span></td>
       <td><span class="sig ${s.sig.cls}">${s.sig.lbl}</span></td>
-    </tr>`).join('');
+    </tr>`;
+  }).join('');
 }
 
 function fmV(v){if(v>=1e8) return(v/1e8).toFixed(1)+'億';if(v>=1e4) return Math.round(v/1e3)+'千';return v.toLocaleString();}
@@ -416,7 +534,6 @@ function updSum(){
   document.getElementById('s-fl').textContent=stocks.length-up-dn;
   document.getElementById('s-by').textContent=stocks.filter(s=>s.sig.lbl==='買進'||s.sig.lbl==='偏多').length;
   document.getElementById('s-sl').textContent=stocks.filter(s=>s.sig.lbl==='賣出'||s.sig.lbl==='偏空').length;
-  document.getElementById('s-hv').textContent=stocks.filter(s=>s.turn>1).length;
 }
 
 function updSB(){
@@ -440,45 +557,71 @@ function updSB(){
 }
 
 function openDet(id){
+  currentDetId=id;
   const s=stocks.find(x=>x.id===id);if(!s) return;
   document.getElementById('d-id').textContent=s.id;
   document.getElementById('d-name').textContent=s.name;
   document.getElementById('d-sec').textContent=(s.isETF?'ETF · ':s.sector+' · ')+s.type;
-  document.getElementById('d-price').textContent=s.close.toFixed(2);
+  const live=liveData[id];
+  const price=live?.tick?.price||s.close;
+  const chgP=live?.tick?.chg_pct||s.chgP;
+  document.getElementById('d-price').textContent=price.toFixed(2);
   const ce=document.getElementById('d-chg');
-  ce.textContent=(s.chgP>=0?'+':'')+s.chgP.toFixed(2)+'%';
-  ce.className='pill '+(s.chgP>0?'pill-up':s.chgP<0?'pill-dn':'pill-neu');
-  document.getElementById('detBody').innerHTML=buildDetHTML(s);
+  ce.textContent=(chgP>=0?'+':'')+chgP.toFixed(2)+'%';
+  ce.className='pill '+(chgP>0?'pill-up':chgP<0?'pill-dn':'pill-neu');
+  const lt=document.getElementById('d-live-tag');
+  lt.style.display=live?'flex':'none';
+  document.getElementById('detBody').innerHTML=buildDetHTML(s,live);
   document.getElementById('det').classList.add('open');
   setTimeout(()=>buildDetCharts(s),100);
 }
+
 function closeDet(){
+  currentDetId=null;
   document.getElementById('det').classList.remove('open');
   Object.values(dCharts).forEach(c=>c&&c.destroy&&c.destroy());
   dCharts={};
 }
 
-function buildDetHTML(s){
+function buildDetHTML(s,live){
   const g=s.sig,sc=g.cls==='sig-buy'?'var(--green2)':g.cls==='sig-sell'?'var(--red2)':'var(--amber2)';
   const ac=g.cls==='sig-buy'?'ai-buy':g.cls==='sig-sell'?'ai-sell':g.cls==='sig-hold'?'ai-hold':'ai-watch';
   const sn=Math.min(Math.max((g.sc+5)/10*100,5),95);
   const stars='★'.repeat(g.st)+'☆'.repeat(5-g.st);
   const amp=s.open>0?((s.high-s.low)/s.open*100).toFixed(2)+'%':'—';
   const sl=(s.close*(1-.015)).toFixed(2),tp=(s.close*(1+.03)).toFixed(2);
+
+  // 五檔
+  const ba=live?.bidask;
+  const bidaskHTML=ba?`
+  <div class="ds"><div class="dst">即時五檔報價</div>
+    <div class="bidask-grid">
+      <div class="ba-side ba-buy">
+        <div class="ba-title">買方 (Bid)</div>
+        ${ba.bid_prices.map((p,i)=>`<div class="ba-row"><span class="ba-price" id="bp-${i}">${p?.toFixed(2)||'—'}</span><span class="ba-vol" id="bv-${i}">${fmV(ba.bid_volumes[i]||0)}</span></div>`).join('')}
+      </div>
+      <div class="ba-side ba-sell">
+        <div class="ba-title">賣方 (Ask)</div>
+        ${ba.ask_prices.map((p,i)=>`<div class="ba-row"><span class="ba-price" id="ap-${i}">${p?.toFixed(2)||'—'}</span><span class="ba-vol" id="av-${i}">${fmV(ba.ask_volumes[i]||0)}</span></div>`).join('')}
+      </div>
+    </div>
+  </div>`:'';
+
   return`
   <div class="ds"><div class="dst">即時報價</div>
     <div class="kv2">
       <div class="kv"><div class="kv-l">開盤</div><div class="kv-v">${s.open.toFixed(2)}</div></div>
-      <div class="kv"><div class="kv-l">收盤</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}">${s.close.toFixed(2)}</div></div>
+      <div class="kv"><div class="kv-l">現價</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}">${(live?.tick?.price||s.close).toFixed(2)}</div></div>
       <div class="kv"><div class="kv-l">最高</div><div class="kv-v c-up">${s.high.toFixed(2)}</div></div>
       <div class="kv"><div class="kv-l">最低</div><div class="kv-v c-dn">${s.low.toFixed(2)}</div></div>
-      <div class="kv"><div class="kv-l">成交量</div><div class="kv-v">${fmV(s.vol)}</div></div>
+      <div class="kv"><div class="kv-l">成交量</div><div class="kv-v">${fmV(live?.tick?.total_volume||s.vol)}</div></div>
       <div class="kv"><div class="kv-l">振幅</div><div class="kv-v">${amp}</div></div>
-      <div class="kv"><div class="kv-l">週轉率</div><div class="kv-v">${s.turn>0?s.turn.toFixed(2)+'%':'—'}</div></div>
+      <div class="kv"><div class="kv-l">漲跌幅</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}">${(s.chgP>=0?'+':'')+s.chgP.toFixed(2)+'%'}</div></div>
       <div class="kv"><div class="kv-l">資料日期</div><div class="kv-v" style="font-size:11px">${s.date||'—'}</div></div>
     </div>
   </div>
-  <div class="ds"><div class="dst">價格走勢（模擬）</div><div class="ch-wrap"><canvas id="c-price"></canvas></div></div>
+  ${bidaskHTML}
+  <div class="ds"><div class="dst">價格走勢</div><div class="ch-wrap"><canvas id="c-price"></canvas></div></div>
   <div class="ds"><div class="dst">估值指標</div>
     <div class="kv2">
       <div class="kv"><div class="kv-l">本益比 PER</div><div class="kv-v ${s.peV&&s.peV<15?'c-up':s.peV&&s.peV>35?'c-dn':'c-neu'}">${s.peV?s.peV.toFixed(1):'—'}</div></div>
@@ -487,7 +630,7 @@ function buildDetHTML(s){
       <div class="kv"><div class="kv-l">法人流向</div><div class="kv-v ${s.ff>0?'c-up':'c-dn'}">${s.ff>0?'+':''}${fmN(s.ff)}</div></div>
     </div>
   </div>
-  <div class="ds"><div class="dst">籌碼分析（三大法人）</div>
+  <div class="ds"><div class="dst">籌碼分析</div>
     <div class="law3">
       <div class="law-c"><div class="law-l">外資</div><div class="law-v ${s.ff>0?'c-up':'c-dn'}">${s.ff>0?'+':''}${fmN(Math.round(s.ff*.6))}</div></div>
       <div class="law-c"><div class="law-l">投信</div><div class="law-v ${s.ff>0?'c-up':'c-dn'}">${s.ff>0?'+':''}${fmN(Math.round(s.ff*.25))}</div></div>
@@ -501,7 +644,7 @@ function buildDetHTML(s){
     <div class="ai-box ${ac}">
       <div class="ai-ttl" style="color:${sc}">${g.cls==='sig-buy'?'📈':g.cls==='sig-sell'?'📉':'⏸'} ${g.lbl} 訊號</div>
       <div class="ai-stars" style="color:${sc}">${stars}</div>
-      <div class="ai-sr"><span>偏空</span><span>綜合評分 ${g.sc>0?'+':''}${g.sc}</span><span>偏多</span></div>
+      <div class="ai-sr"><span>偏空</span><span>評分 ${g.sc>0?'+':''}${g.sc}</span><span>偏多</span></div>
       <div class="ai-bar"><div class="ai-fill" style="width:${sn}%;background:${sc}"></div></div>
       <div class="ai-pts">${g.rs.length?g.rs.map(r=>'· '+r).join('<br>'):'· 無明顯訊號，建議觀望'}</div>
     </div>
@@ -509,7 +652,7 @@ function buildDetHTML(s){
       <div class="kv"><div class="kv-l">建議停損</div><div class="kv-v c-dn">${sl}</div></div>
       <div class="kv"><div class="kv-l">目標價位</div><div class="kv-v c-up">${tp}</div></div>
     </div>
-    <div class="ai-disc">⚠️ 以上分析僅供參考，基於技術與估值指標自動計算，不構成投資建議。投資前請自行研究，過去績效不代表未來表現。</div>
+    <div class="ai-disc">⚠️ 以上分析僅供參考，不構成投資建議。</div>
   </div>`;
 }
 
@@ -523,7 +666,8 @@ function buildDetCharts(s){
   for(let i=0;i<n;i++){p+=p*(Math.random()-.48)*.02;ps.push(+p.toFixed(2));const d=new Date();d.setDate(d.getDate()-(n-i));lb.push((d.getMonth()+1)+'/'+(d.getDate()));}
   ps[ps.length-1]=s.close;
   const cc=s.chgP>=0?'#3fb950':'#f85149';
-  dCharts.p=new Chart(gc('c-price'),{type:'line',data:{labels:lb,datasets:[{data:ps,borderColor:cc,backgroundColor:cc.replace('#','rgba(').replace('fb','fb,').replace('50','50,.08)').replace('149','149,.08)'),borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:6}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}});
+  const bgcc=s.chgP>=0?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)';
+  dCharts.p=new Chart(gc('c-price'),{type:'line',data:{labels:lb,datasets:[{data:ps,borderColor:cc,backgroundColor:bgcc,borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:6}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}});
   const fm=['11月','12月','1月','2月','3月','4月'],fv=fm.map(()=>Math.round((Math.random()-.4)*3000));
   dCharts.f=new Chart(gc('c-flow'),{type:'bar',data:{labels:fm,datasets:[{data:fv,backgroundColor:fv.map(v=>v>0?'rgba(63,185,80,.6)':'rgba(248,81,73,.6)'),borderColor:fv.map(v=>v>0?'#3fb950':'#f85149'),borderWidth:1,borderRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{display:false}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}});
   const chS=Math.min(Math.max((s.chgP+5)/10*100,10),95);
@@ -567,7 +711,7 @@ function togWL(id,btn){
 }
 function setLd(m){document.getElementById('tblBody').innerHTML=`<tr><td colspan="11"><div class="loading"><div class="spinner"></div><div>${m}</div></div></td></tr>`;}
 function setLU(){const n=new Date();document.getElementById('lastUpd').textContent=n.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});}
-function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3000);}
+function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);}
 function schedRef(){
   if(cdTimer) clearInterval(cdTimer);
   nxt=Date.now()+30*60*1000;

@@ -295,20 +295,39 @@ let perMap={}, yldMap={};
 // ── Firebase 即時訂閱 ──
 window.addEventListener('firebase-ready', ()=>{
   const db=window._fbDb, r=window._fbRef, ov=window._fbOnValue;
-  ov(r(db,'stocks'), snap=>{
+
+  // 監聽新的 realtime 節點（橋接程式 v3 推送的資料）
+  ov(r(db,'realtime'), snap=>{
     const data=snap.val(); if(!data) return;
     liveCount=0;
     for(const[sid,val] of Object.entries(data)){
-      if(val.tick){ liveData[sid]=val; liveCount++; }
+      if(!val||!val.price) continue;
+      liveData[sid]=val;
+      liveCount++;
+
       const s=stocks.find(x=>x.id===sid);
-      if(s&&val.tick){
-        s.close=val.tick.price; s.chgP=val.tick.chg_pct; s.chg=val.tick.chg;
-        s.vol=val.tick.total_volume||s.vol;
+      if(s){
+        const prevClose=s.close;
+        s.close=val.price;
+        s.open=val.open||s.open;
+        s.high=val.high||s.high;
+        s.low=val.low||s.low;
+        s.chg=val.chg||0;
+        s.chgP=val.chgP||0;
+        s.vol=val.vol||s.vol;
         s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn});
-        const row=document.querySelector(`tr[data-id="${sid}"]`);
-        if(row){const c=row.querySelector('.live-price');if(c){c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');}}
+
+        // 價格變動閃爍
+        if(prevClose!==s.close){
+          const row=document.querySelector(`tr[data-id="${sid}"]`);
+          if(row){const c=row.querySelector('.live-price');if(c){c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');}}
+        }
+
+        // 更新詳細面板
+        if(currentDetId===sid) updateDetLive(sid);
       }
     }
+
     document.getElementById('s-live').textContent=liveCount;
     if(liveCount>0){
       document.getElementById('kgiBadge').className='api-badge api-on';
@@ -316,8 +335,48 @@ window.addEventListener('firebase-ready', ()=>{
     }
     updSum();
   });
+
+  // 同時監聽舊的 stocks 節點（凱基五檔資料）
+  ov(r(db,'stocks'), snap=>{
+    const data=snap.val(); if(!data) return;
+    for(const[sid,val] of Object.entries(data)){
+      if(val.bidask){
+        if(!liveData[sid]) liveData[sid]={};
+        liveData[sid].bidask=val.bidask;
+      }
+    }
+  });
+
   showToast('Firebase 即時串接已連線！');
 });
+
+// 更新詳細面板即時資料
+function updateDetLive(sid){
+  const d=liveData[sid]; if(!d) return;
+  const priceEl=document.getElementById('d-price');
+  const chgEl=document.getElementById('d-chg');
+  const liveTag=document.getElementById('d-live-tag');
+  if(priceEl&&d.price) priceEl.textContent=d.price.toFixed(2);
+  if(chgEl&&d.chgP!==undefined){
+    chgEl.textContent=(d.chgP>=0?'+':'')+d.chgP.toFixed(2)+'%';
+    chgEl.className='pill '+(d.chgP>0?'pill-up':d.chgP<0?'pill-dn':'pill-neu');
+  }
+  if(liveTag) liveTag.style.display='flex';
+  // 更新五檔
+  const ba=d.bidask;
+  if(ba){
+    for(let i=0;i<5;i++){
+      const bp=document.getElementById(`bp-${i}`);
+      const bv=document.getElementById(`bv-${i}`);
+      const ap=document.getElementById(`ap-${i}`);
+      const av=document.getElementById(`av-${i}`);
+      if(bp) bp.textContent=ba.bp?.[i]?.toFixed(2)||'—';
+      if(bv) bv.textContent=fmV(ba.bv?.[i]||0);
+      if(ap) ap.textContent=ba.ap?.[i]?.toFixed(2)||'—';
+      if(av) av.textContent=fmV(ba.av?.[i]||0);
+    }
+  }
+}
 
 // ── 資料載入 ──
 async function loadData(){

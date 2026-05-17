@@ -84,6 +84,86 @@ export default async function handler(req, res) {
       return res.status(200).json({ data, source: 'TWSE_INST', ts: new Date().toISOString() });
     }
 
+    // ── 7. K 線圖：上市個股歷史月資料 ──
+    if (type === 'kline') {
+      const { stock_id, period } = req.query;
+      if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+
+      // 取近12個月的資料
+      const months = [];
+      const now = new Date();
+      for (let i = 0; i < 12; i++) {
+        const d = new Date(now.getFullYear(), now.getMonth() - i, 1);
+        months.push(`${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}`);
+      }
+
+      const results = [];
+      // 只取最近3個月（避免 Vercel timeout）
+      for (const ym of months.slice(0, 3)) {
+        try {
+          const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=${ym}01&stockNo=${stock_id}&response=json`;
+          const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+          const data = await r.json();
+          if (data.data) {
+            for (const row of data.data) {
+              // row: [日期, 成交量, 成交金額, 開盤, 最高, 最低, 收盤, 漲跌, 筆數]
+              const dateStr = row[0].replace(/\//g, '-');
+              const [y, m, d] = dateStr.split('-');
+              const fullDate = `${parseInt(y)+1911}-${m}-${d}`;
+              results.push({
+                date:   fullDate,
+                open:   parseFloat(row[3].replace(/,/g,'')),
+                high:   parseFloat(row[4].replace(/,/g,'')),
+                low:    parseFloat(row[5].replace(/,/g,'')),
+                close:  parseFloat(row[6].replace(/,/g,'')),
+                volume: parseInt(row[1].replace(/,/g,'')),
+                change: row[7]
+              });
+            }
+          }
+        } catch(e) { /* 略過錯誤月份 */ }
+      }
+
+      results.sort((a, b) => a.date.localeCompare(b.date));
+      res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
+      return res.status(200).json({ data: results, stock_id, source: 'TWSE_KLINE' });
+    }
+
+    // ── 8. K 線圖：上市個股歷史週/日資料（近60天）──
+    if (type === 'kline_recent') {
+      const { stock_id } = req.query;
+      if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+
+      const now = new Date();
+      const ym = `${now.getFullYear()}${String(now.getMonth()+1).padStart(2,'0')}`;
+
+      try {
+        const url = `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=${ym}01&stockNo=${stock_id}&response=json`;
+        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        const data = await r.json();
+        const results = [];
+        if (data.data) {
+          for (const row of data.data) {
+            const dateStr = row[0].replace(/\//g, '-');
+            const [y, m, d] = dateStr.split('-');
+            const fullDate = `${parseInt(y)+1911}-${m}-${d}`;
+            results.push({
+              date:   fullDate,
+              open:   parseFloat(row[3].replace(/,/g,'')),
+              high:   parseFloat(row[4].replace(/,/g,'')),
+              low:    parseFloat(row[5].replace(/,/g,'')),
+              close:  parseFloat(row[6].replace(/,/g,'')),
+              volume: parseInt(row[1].replace(/,/g,'')),
+            });
+          }
+        }
+        res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
+        return res.status(200).json({ data: results, stock_id, source: 'TWSE_KLINE_RECENT' });
+      } catch(e) {
+        return res.status(500).json({ error: e.message });
+      }
+    }
+
     return res.status(400).json({ error: '不支援的 type 參數' });
 
   } catch (err) {

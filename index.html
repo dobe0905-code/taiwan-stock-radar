@@ -661,21 +661,178 @@ function buildDetHTML(s,live){
   </div>`;
 }
 
-function buildDetCharts(s){
+async function buildDetCharts(s){
   Chart.defaults.color='#8b949e';
   Chart.defaults.font.family="'JetBrains Mono',monospace";
   Chart.defaults.font.size=10;
   const gc=id=>document.getElementById(id);
+
+  // ── 真實 K 線圖（從證交所抓歷史資料）──
+  const priceCanvas=gc('c-price');
+  if(priceCanvas){
+    // 先顯示載入中
+    priceCanvas.parentElement.innerHTML=`
+      <div style="display:flex;align-items:center;justify-content:center;height:160px;gap:10px;">
+        <div class="spinner" style="width:18px;height:18px;border-width:2px"></div>
+        <span style="font-size:11px;color:var(--text3)">載入 K 線資料...</span>
+      </div>`;
+
+    try{
+      // 抓最近3個月日K
+      const r=await fetch(`/api/quote?type=kline&stock_id=${s.id}`);
+      const j=await r.json();
+      const kdata=j.data||[];
+
+      if(kdata.length>0){
+        // 重建 canvas
+        s._kdata=kdata;
+        const wrap=document.querySelector('.ch-wrap');
+        if(wrap){
+          wrap.innerHTML=`
+            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+              <button onclick="switchKLine('${s.id}','candle')" id="btn-candle" style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--accent);background:rgba(56,139,253,.15);color:var(--accent2);cursor:pointer;">蠟燭圖</button>
+              <button onclick="switchKLine('${s.id}','line')" id="btn-line" style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;">折線圖</button>
+              <span style="font-size:10px;color:var(--text3);margin-left:auto">近${kdata.length}個交易日</span>
+            </div>
+            <div style="position:relative;height:140px"><canvas id="c-price"></canvas></div>`;
+          drawCandleChart(s.id, kdata);
+        }
+      } else {
+        // 沒有資料時改用模擬
+        drawSimulatedChart(s, priceCanvas.parentElement);
+      }
+    }catch(e){
+      drawSimulatedChart(s, priceCanvas.parentElement);
+    }
+  }
+
+  // ── 六維雷達圖 ──
+  const chS=Math.min(Math.max((s.chgP+5)/10*100,10),95);
+  const peS=s.peV?Math.min(Math.max((20-s.peV)/20*100,10),90):50;
+  const vS=Math.min(s.vol/1e7*30,90);
+  const radarCanvas=gc('c-radar');
+  if(radarCanvas){
+    dCharts.r=new Chart(radarCanvas,{
+      type:'radar',
+      data:{
+        labels:['技術面','基本面','籌碼面','動能','估值','風險'],
+        datasets:[{
+          data:[Math.min(chS*.6+vS*.4,95),Math.min(peS,95),50,chS,peS,100-vS],
+          borderColor:'rgba(56,139,253,.8)',backgroundColor:'rgba(56,139,253,.12)',
+          borderWidth:1.5,pointBackgroundColor:'#388bfd',pointRadius:3
+        }]
+      },
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false}},
+        scales:{r:{grid:{color:'rgba(255,255,255,.08)'},ticks:{display:false},
+          pointLabels:{font:{size:11},color:'#8b949e'},min:0,max:100}}}
+    });
+  }
+}
+
+function drawCandleChart(stockId, kdata){
+  const canvas=document.getElementById('c-price');
+  if(!canvas||!kdata.length) return;
+  if(dCharts.p){dCharts.p.destroy();delete dCharts.p;}
+
+  const labels=kdata.map(d=>d.date.slice(5)); // MM-DD
+  const closes=kdata.map(d=>d.close);
+
+  // Chart.js 沒有內建蠟燭圖，用 bar 模擬漲跌顏色
+  const colors=kdata.map((d,i)=>{
+    if(i===0) return d.close>=d.open?'#3fb950':'#f85149';
+    return d.close>=kdata[i-1].close?'#3fb950':'#f85149';
+  });
+
+  dCharts.p=new Chart(canvas,{
+    type:'bar',
+    data:{
+      labels,
+      datasets:[
+        // 收盤價折線
+        {
+          type:'line',
+          data:closes,
+          borderColor:'rgba(56,139,253,.8)',
+          borderWidth:1.5,
+          fill:false,
+          tension:.2,
+          pointRadius:0,
+          pointHoverRadius:3,
+          yAxisID:'y',
+          order:1
+        },
+        // 成交量長條
+        {
+          type:'bar',
+          data:kdata.map(d=>d.volume),
+          backgroundColor:colors.map(c=>c+'33'),
+          borderColor:'transparent',
+          yAxisID:'y2',
+          order:2
+        }
+      ]
+    },
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:false},
+        tooltip:{
+          callbacks:{
+            label:ctx=>{
+              if(ctx.datasetIndex===0){
+                const d=kdata[ctx.dataIndex];
+                return[`開:${d.open} 高:${d.high}`,`低:${d.low} 收:${d.close}`,`量:${(d.volume/1000).toFixed(0)}千`];
+              }
+              return null;
+            }
+          }
+        }
+      },
+      scales:{
+        x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:8,font:{size:9}}},
+        y:{grid:{color:'rgba(255,255,255,.04)'},position:'right',ticks:{font:{size:9}}},
+        y2:{display:false,grid:{display:false}}
+      }
+    }
+  });
+}
+
+function switchKLine(stockId, mode){
+  const s=stocks.find(x=>x.id===stockId);
+  if(!s||!s._kdata) return;
+  document.getElementById('btn-candle').style.background=mode==='candle'?'rgba(56,139,253,.15)':'var(--bg3)';
+  document.getElementById('btn-candle').style.borderColor=mode==='candle'?'var(--accent)':'var(--border)';
+  document.getElementById('btn-candle').style.color=mode==='candle'?'var(--accent2)':'var(--text2)';
+  document.getElementById('btn-line').style.background=mode==='line'?'rgba(56,139,253,.15)':'var(--bg3)';
+  document.getElementById('btn-line').style.borderColor=mode==='line'?'var(--accent)':'var(--border)';
+  document.getElementById('btn-line').style.color=mode==='line'?'var(--accent2)':'var(--text2)';
+
+  if(dCharts.p){dCharts.p.destroy();delete dCharts.p;}
+  const canvas=document.getElementById('c-price');
+  if(!canvas) return;
+
+  if(mode==='candle'){
+    drawCandleChart(stockId, s._kdata);
+  } else {
+    const labels=s._kdata.map(d=>d.date.slice(5));
+    const closes=s._kdata.map(d=>d.close);
+    const cc=s.chgP>=0?'#3fb950':'#f85149';
+    dCharts.p=new Chart(canvas,{type:'line',data:{labels,datasets:[{data:closes,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:8,font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}});
+  }
+}
+
+function drawSimulatedChart(s, container){
+  container.innerHTML='<div style="position:relative;height:160px"><canvas id="c-price"></canvas></div>';
+  const canvas=document.getElementById('c-price');
+  if(!canvas) return;
   const n=20,ps=[],lb=[];
   let p=s.close*.95;
   for(let i=0;i<n;i++){p+=p*(Math.random()-.48)*.02;ps.push(+p.toFixed(2));const d=new Date();d.setDate(d.getDate()-(n-i));lb.push((d.getMonth()+1)+'/'+(d.getDate()));}
   ps[ps.length-1]=s.close;
   const cc=s.chgP>=0?'#3fb950':'#f85149';
-  dCharts.p=new Chart(gc('c-price'),{type:'line',data:{labels:lb,datasets:[{data:ps,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:6}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}});
-  const chS=Math.min(Math.max((s.chgP+5)/10*100,10),95);
-  const peS=s.peV?Math.min(Math.max((20-s.peV)/20*100,10),90):50;
-  const vS=Math.min(s.vol/1e7*30,90);
-  dCharts.r=new Chart(gc('c-radar'),{type:'radar',data:{labels:['技術面','基本面','籌碼面','動能','估值','風險'],datasets:[{data:[Math.min(chS*.6+vS*.4,95),Math.min(peS,95),50,chS,peS,100-vS],borderColor:'rgba(56,139,253,.8)',backgroundColor:'rgba(56,139,253,.12)',borderWidth:1.5,pointBackgroundColor:'#388bfd',pointRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{r:{grid:{color:'rgba(255,255,255,.08)'},ticks:{display:false},pointLabels:{font:{size:11},color:'#8b949e'},min:0,max:100}}}});
+  dCharts.p=new Chart(canvas,{type:'line',data:{labels:lb,datasets:[{data:ps,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:6}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}});
 }
 
 function setSF(f,el){sf=f;document.querySelectorAll('.sb-item,.sb-sub-item').forEach(e=>e.classList.remove('active'));if(el)el.classList.add('active');renderTable();}

@@ -1,0 +1,327 @@
+// api/fundamental.js
+// 基本面資料：集保持股分散、三大法人、融資融券、外資、董監
+
+export default async function handler(req, res) {
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  if (req.method === 'OPTIONS') return res.status(200).end();
+
+  const { type, stock_id } = req.query;
+
+  try {
+
+    // ══════════════════════════════════════════════════
+    // 1. 集保持股分散（大戶/散戶）
+    //    策略：TDCC OpenAPI → TDCC 政府開放平台 → TDCC 網頁POST（備援）
+    // ══════════════════════════════════════════════════
+    if (type === 'holders') {
+      if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+
+      // ── 策略 A：TDCC OpenAPI (openapi.tdcc.com.tw/v1/opendata/1-5) ──
+      try {
+        const url = `https://openapi.tdcc.com.tw/v1/opendata/1-5?StockNo=${stock_id}`;
+        const r = await fetch(url, {
+          headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+        });
+        if (r.ok) {
+          const data = await r.json();
+          if (Array.isArray(data) && data.length > 0) {
+            // 實際欄位：ScaDate, StockNo, StockName, HolderNum(分級代號),
+            //           People(人數), Shares(股數), Percent(%)
+            // HolderNum: 1=1-999股, 2=1,000-5,000, ... 17=超過 (每個等級對應股數範圍)
+            // TDCC 等級代號對應張數範圍（1張=1000股）
+            const levelMap = {
+              '1':  { label:'1-999股(未滿1張)',    lots:0 },
+              '2':  { label:'1-999張',             lots:1 },    // 1,000-999,000股 = 1-999張
+              '3':  { label:'1,000-5,000股',       lots:0 },    // 未滿1張
+              '4':  { label:'5,001-10,000股',      lots:5 },
+              '5':  { label:'10,001-15,000股',     lots:10 },
+              '6':  { label:'15,001-20,000股',     lots:15 },
+              '7':  { label:'20,001-30,000股',     lots:20 },
+              '8':  { label:'30,001-40,000股',     lots:30 },
+              '9':  { label:'40,001-50,000股',     lots:40 },
+              '10': { label:'50,001-100,000股',    lots:50 },
+              '11': { label:'100,001-200,000股',   lots:100 },
+              '12': { label:'200,001-400,000股',   lots:200 },
+              '13': { label:'400,001-600,000股',   lots:400 },
+              '14': { label:'600,001-800,000股',   lots:600 },
+              '15': { label:'800,001-1,000,000股', lots:800 },
+              '16': { label:'超過1,000,000股(1000張以上)', lots:1000 },
+              '17': { label:'合計',                lots:-1 }
+            };
+
+            const rows = data
+              .filter(d => d.HolderNum !== '17') // 排除合計列
+              .map(d => {
+                const info = levelMap[d.HolderNum] || { label: d.HolderNum, lots: 0 };
+                return {
+                  level: info.label,
+                  holderNum: d.HolderNum,
+                  lots: info.lots,
+                  people: parseInt((d.People||'0').replace(/,/g,'')) || 0,
+                  shares: parseInt((d.Shares||'0').replace(/,/g,'')) || 0,
+                  ratio: parseFloat(d.Percent || 0) || 0
+                };
+              });
+
+            // 大戶 = HolderNum 16（1000張以上）
+            let bigRatio=0, smallRatio=0, bigPeople=0, smallPeople=0;
+            for (const row of rows) {
+              if (row.lots >= 1000) {
+                bigRatio += row.ratio; bigPeople += row.people;
+              } else {
+                smallRatio += row.ratio; smallPeople += row.people;
+              }
+            }
+
+            const scaDate = data[0]?.ScaDate || '';
+            res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+            return res.status(200).json({
+              stock_id, rows, scaDate,
+              summary: {
+                bigHolder:   parseFloat(bigRatio.toFixed(2)),
+                smallHolder: parseFloat(smallRatio.toFixed(2)),
+                bigPeople, smallPeople,
+                totalPeople: bigPeople + smallPeople
+              },
+              source: 'TDCC_OPENAPI'
+            });
+          }
+        }
+      } catch(e) { console.log('TDCC OpenAPI failed:', e.message); }
+
+      // ── 策略 B：政府資料開放平台 data.gov.tw ──
+      try {
+        const url = `https://data.gov.tw/api/v2/rest/datastore/search?resource_id=a151db5e-0944-4afc-ba8a-69c3c3dc33a8&filters[StockNo]=${stock_id}&limit=20`;
+        const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+        if (r.ok) {
+          const j = await r.json();
+          const records = j?.result?.records || [];
+          if (records.length > 0) {
+            const rows = records.map(d => ({
+              level: d.HolderNum || d.Level || '',
+              people: parseInt((d.People||'0').replace(/,/g,'')) || 0,
+              shares: parseInt((d.Shares||'0').replace(/,/g,'')) || 0,
+              ratio: parseFloat(d.Percent || 0) || 0,
+              lots: 0
+            }));
+            // 簡化大戶計算（最後幾筆為大戶）
+            const total = rows.length;
+            const bigRows = rows.slice(-3);
+            const smallRows = rows.slice(0, -3);
+            const bigRatio = bigRows.reduce((s,r)=>s+r.ratio,0);
+            const smallRatio = smallRows.reduce((s,r)=>s+r.ratio,0);
+            res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+            return res.status(200).json({
+              stock_id, rows,
+              summary: {
+                bigHolder: parseFloat(bigRatio.toFixed(2)),
+                smallHolder: parseFloat(smallRatio.toFixed(2)),
+                bigPeople: bigRows.reduce((s,r)=>s+r.people,0),
+                smallPeople: smallRows.reduce((s,r)=>s+r.people,0),
+                totalPeople: rows.reduce((s,r)=>s+r.people,0)
+              },
+              source: 'DATA_GOV_TW'
+            });
+          }
+        }
+      } catch(e) { console.log('data.gov.tw failed:', e.message); }
+
+      // ── 策略 C：TDCC 網頁 POST（終極備援）──
+      return await holdersFromTDCCWeb(stock_id, res);
+    }
+
+    // ══════════════════════════════════════════════════
+    // 2. 三大法人買賣（上市）
+    // ══════════════════════════════════════════════════
+    if (type === 'institution') {
+      const r = await fetch(
+        'https://openapi.twse.com.tw/v1/fund/TWT38U',
+        { headers: { 'Accept': 'application/json' } }
+      );
+      const data = await r.json();
+      if (stock_id) {
+        const item = data.find(d => d.Code === stock_id);
+        return res.status(200).json({ data: item || null, source: 'TWSE_INST' });
+      }
+      res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+      return res.status(200).json({ data, source: 'TWSE_INST' });
+    }
+
+    // ══════════════════════════════════════════════════
+    // 3. 融資融券（上市）
+    // ══════════════════════════════════════════════════
+    if (type === 'margin') {
+      if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+      const today = new Date();
+      const ym = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+      const url = `https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date=${ym}&selectType=STOCK&response=json`;
+      const r = await fetch(url, { headers: { 'Accept': 'application/json' } });
+      const data = await r.json();
+      const rows = data.data || [];
+      const item = rows.find(row => row[0] === stock_id);
+      res.setHeader('Cache-Control', 's-maxage=1800, stale-while-revalidate');
+      return res.status(200).json({
+        stock_id,
+        data: item ? {
+          marginBuy:   parseInt(item[2]?.replace(/,/g,'')) || 0,
+          marginSell:  parseInt(item[3]?.replace(/,/g,'')) || 0,
+          marginTotal: parseInt(item[4]?.replace(/,/g,'')) || 0,
+          shortBuy:    parseInt(item[8]?.replace(/,/g,'')) || 0,
+          shortSell:   parseInt(item[9]?.replace(/,/g,'')) || 0,
+          shortTotal:  parseInt(item[10]?.replace(/,/g,'')) || 0,
+        } : null,
+        source: 'TWSE_MARGIN'
+      });
+    }
+
+    // ══════════════════════════════════════════════════
+    // 4. 外資持股比例（上市）
+    // ══════════════════════════════════════════════════
+    if (type === 'foreign') {
+      const r = await fetch(
+        'https://openapi.twse.com.tw/v1/fund/MI_QFIIS',
+        { headers: { 'Accept': 'application/json' } }
+      );
+      const data = await r.json();
+      if (stock_id) {
+        const item = data.find(d => d.Code === stock_id);
+        return res.status(200).json({ data: item || null, source: 'TWSE_FOREIGN' });
+      }
+      res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+      return res.status(200).json({ data, source: 'TWSE_FOREIGN' });
+    }
+
+    // ══════════════════════════════════════════════════
+    // 5. 董監持股（上市）
+    // ══════════════════════════════════════════════════
+    if (type === 'directors') {
+      const r = await fetch(
+        'https://openapi.twse.com.tw/v1/opendata/t187ap03_L',
+        { headers: { 'Accept': 'application/json' } }
+      );
+      const data = await r.json();
+      if (stock_id) {
+        const items = data.filter(d => d['公司代號'] === stock_id);
+        return res.status(200).json({ data: items, source: 'TWSE_DIRECTORS' });
+      }
+      res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate');
+      return res.status(200).json({ data, source: 'TWSE_DIRECTORS' });
+    }
+
+    return res.status(400).json({ error: '不支援的 type 參數' });
+
+  } catch (err) {
+    return res.status(500).json({ error: '資料取得失敗：' + err.message });
+  }
+}
+
+// ══════════════════════════════════════════════════
+// TDCC 網頁備援（策略C）
+// ══════════════════════════════════════════════════
+async function holdersFromTDCCWeb(stock_id, res) {
+  try {
+    // 第一步：取得 session + CSRF token
+    const initRes = await fetch('https://www.tdcc.com.tw/portal/zh/smWeb/qryStock', {
+      method: 'GET',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml',
+        'Accept-Language': 'zh-TW,zh;q=0.9',
+      }
+    });
+
+    const rawCookie = initRes.headers.get('set-cookie') || '';
+    // 取出 JSESSIONID 或第一個 cookie
+    const cookie = rawCookie.split(',').map(c=>c.split(';')[0].trim()).filter(Boolean).join('; ');
+    const initHtml = await initRes.text();
+
+    // 抓 CSRF token（Spring Security）
+    const csrfMatch = initHtml.match(/name="_csrf"\s+value="([^"]+)"/);
+    const csrf = csrfMatch ? csrfMatch[1] : '';
+
+    // 第二步：POST 查詢
+    const body = new URLSearchParams({
+      scaDate: '',
+      SqlMethod: 'StockNo',
+      StockNo: stock_id,
+      StockName: '',
+      radioStockNo: 'StockNo',
+      ...(csrf ? { _csrf: csrf } : {})
+    });
+
+    const r = await fetch('https://www.tdcc.com.tw/portal/zh/smWeb/qryStock', {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': 'https://www.tdcc.com.tw/portal/zh/smWeb/qryStock',
+        'Accept': 'text/html,application/xhtml+xml',
+        ...(cookie ? { 'Cookie': cookie } : {})
+      },
+      body: body.toString()
+    });
+
+    const html = await r.text();
+
+    // 解析 <table> 中的持股分散資料
+    const rows = [];
+    const trReg = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let trMatch;
+    while ((trMatch = trReg.exec(html)) !== null) {
+      const tds = [];
+      const tdReg = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      let tdMatch;
+      while ((tdMatch = tdReg.exec(trMatch[1])) !== null) {
+        tds.push(tdMatch[1].replace(/<[^>]+>/g,'').replace(/&nbsp;/g,' ').trim());
+      }
+      // 有效資料行：第一欄以數字開頭（持股分級）
+      if (tds.length >= 4 && /^\d/.test(tds[0])) {
+        rows.push({
+          level: tds[0],
+          people: parseInt((tds[1]||'0').replace(/,/g,'')) || 0,
+          shares: parseInt((tds[2]||'0').replace(/,/g,'')) || 0,
+          ratio: parseFloat(tds[4] || tds[3]) || 0,
+          lots: 0
+        });
+      }
+    }
+
+    // 計算大戶（1000張 = 1,000,000股）
+    let bigRatio=0, smallRatio=0, bigPeople=0, smallPeople=0;
+    for (const row of rows) {
+      // level 格式如 "1,000,001以上" 或 "超過1,000,000"
+      const numStr = row.level.replace(/,/g,'').match(/\d+/)?.[0] || '0';
+      const minShares = parseInt(numStr) || 0;
+      if (minShares >= 1000000 || row.level.includes('超過') || row.level.includes('1,000,001')) {
+        bigRatio += row.ratio; bigPeople += row.people;
+      } else {
+        smallRatio += row.ratio; smallPeople += row.people;
+      }
+    }
+
+    // 抓資料日期
+    const dateMatch = html.match(/資料日期[：:]\s*([\d\/]+)/);
+    const scaDate = dateMatch ? dateMatch[1] : '';
+
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+    return res.status(200).json({
+      stock_id, rows, scaDate,
+      summary: {
+        bigHolder: parseFloat(bigRatio.toFixed(2)),
+        smallHolder: parseFloat(smallRatio.toFixed(2)),
+        bigPeople, smallPeople,
+        totalPeople: bigPeople + smallPeople
+      },
+      source: 'TDCC_WEB'
+    });
+
+  } catch(e) {
+    return res.status(200).json({
+      stock_id, rows: [],
+      summary: { bigHolder:0, smallHolder:0, bigPeople:0, smallPeople:0, totalPeople:0 },
+      source: 'TDCC_FAIL', error: e.message
+    });
+  }
+}

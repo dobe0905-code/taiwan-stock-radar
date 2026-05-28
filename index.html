@@ -184,11 +184,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
     <div class="api-badge api-off" id="tpexBadge">
       <div class="api-dot"></div><span>櫃買中心</span>
     </div>
-    <div class="api-badge api-off" id="kgiBadge">
-      <div class="api-dot"></div><span>凱基即時</span>
-    </div>
-    <div class="live-badge" id="liveBadge" style="display:none">
-      <div class="live-dot"></div><span>LIVE</span>
+    <div class="api-badge api-off" id="misBadge">
+      <div class="api-dot"></div><span>盤中即時</span>
     </div>
     <div class="upd-info">更新 <span id="lastUpd">--:--</span> &nbsp;·&nbsp; <span class="upd-val" id="cd">--:--</span></div>
   </div>
@@ -232,7 +229,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
       <div class="sum-card"><div class="sum-lbl">下跌家數</div><div class="sum-val c-dn" id="s-dn">—</div><div class="sum-sub">跌幅>0</div></div>
       <div class="sum-card"><div class="sum-lbl">買進訊號</div><div class="sum-val c-up" id="s-by">—</div><div class="sum-sub">技術面</div></div>
       <div class="sum-card"><div class="sum-lbl">賣出訊號</div><div class="sum-val c-dn" id="s-sl">—</div><div class="sum-sub">技術面</div></div>
-      <div class="sum-card"><div class="sum-lbl">凱基即時</div><div class="sum-val" style="color:var(--purple)" id="s-live">0</div><div class="sum-sub">即時更新</div></div>
+      <div class="sum-card"><div class="sum-lbl">即時更新</div><div class="sum-val" style="color:var(--purple)" id="s-live">0</div><div class="sum-sub">盤中即時</div></div>
     </div>
     <div class="filter-bar">
       <button class="f-btn" id="fb-up" onclick="tqf('up')">▲ 上漲</button>
@@ -292,91 +289,110 @@ let sf='all', mkt='all', qf=new Set(), nxt, cdTimer, dCharts={};
 let liveData={}, liveCount=0, currentDetId=null;
 let perMap={}, yldMap={};
 
-// ── Firebase 即時訂閱 ──
-window.addEventListener('firebase-ready', ()=>{
-  const db=window._fbDb, r=window._fbRef, ov=window._fbOnValue;
+// ── MIS 盤中即時輪詢（取代 Firebase + 凱基）──
+let misTimer = null;
+let misCount = 0;
+let twseMisBatch = [];
+let tpexMisBatch = [];
+let misIdx = { twse: 0, tpex: 0 };
 
-  // 監聽新的 realtime 節點（橋接程式 v3 推送的資料）
-  ov(r(db,'realtime'), snap=>{
-    const data=snap.val(); if(!data) return;
-    liveCount=0;
-    for(const[sid,val] of Object.entries(data)){
-      if(!val||!val.price) continue;
-      liveData[sid]=val;
-      liveCount++;
+function isTradingNow(){
+  const now = new Date();
+  if(now.getDay()===0||now.getDay()===6) return false;
+  const t = now.getHours()*60+now.getMinutes();
+  return t>=9*60 && t<=13*60+30;
+}
 
-      const s=stocks.find(x=>x.id===sid);
-      if(s){
-        const prevClose=s.close;
-        s.close=val.price;
-        s.open=val.open||s.open;
-        s.high=val.high||s.high;
-        s.low=val.low||s.low;
-        s.chg=val.chg||0;
-        s.chgP=val.chgP||0;
-        s.vol=val.vol||s.vol;
-        s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn});
+function buildMisBatches(){
+  twseMisBatch = [];
+  tpexMisBatch = [];
+  const twse = stocks.filter(s=>s.market==='twse'&&!s.isETF).map(s=>s.id);
+  const tpex = stocks.filter(s=>s.market==='tpex'&&!s.isETF).map(s=>s.id);
+  for(let i=0;i<twse.length;i+=50) twseMisBatch.push(twse.slice(i,i+50));
+  for(let i=0;i<tpex.length;i+=50) tpexMisBatch.push(tpex.slice(i,i+50));
+}
 
-        // 價格變動閃爍
-        if(prevClose!==s.close){
-          const row=document.querySelector(`tr[data-id="${sid}"]`);
-          if(row){const c=row.querySelector('.live-price');if(c){c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');}}
+async function pollMisBatch(){
+  if(!isTradingNow()) return;
+  try{
+    // 輪詢上市一批
+    if(twseMisBatch.length>0){
+      const batch = twseMisBatch[misIdx.twse % twseMisBatch.length];
+      const r = await fetch(`/api/quote?type=twse_realtime&stocks=${batch.join(',')}`);
+      const j = await r.json();
+      const arr = j.data?.msgArray||[];
+      for(const item of arr){
+        const sid=item.c;
+        const price=parseFloat(item.z||item.y)||0;
+        if(!price) continue;
+        const s=stocks.find(x=>x.id===sid);
+        if(s){
+          const prev=s.close;
+          s.close=price;
+          s.open=parseFloat(item.o)||s.open;
+          s.high=parseFloat(item.h)||s.high;
+          s.low=parseFloat(item.l)||s.low;
+          s.vol=parseFloat(item.v)||s.vol;
+          s.chg=parseFloat(item.z&&item.y?(item.z-item.y).toFixed(2):0)||s.chg;
+          s.chgP=s.open>0?s.chg/s.open*100:s.chgP;
+          s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn});
+          misCount++;
+          if(prev!==s.close){
+            const row=document.querySelector(`tr[data-id="${sid}"]`);
+            if(row){const c=row.querySelector('.live-price');if(c){c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');}}
+          }
         }
-
-        // 更新詳細面板
-        if(currentDetId===sid) updateDetLive(sid);
       }
+      misIdx.twse++;
     }
-
-    document.getElementById('s-live').textContent=liveCount;
-    if(liveCount>0){
-      document.getElementById('kgiBadge').className='api-badge api-on';
-      document.getElementById('liveBadge').style.display='flex';
+    // 輪詢上櫃一批
+    if(tpexMisBatch.length>0){
+      const batch2 = tpexMisBatch[misIdx.tpex % tpexMisBatch.length];
+      const r2 = await fetch(`/api/quote?type=tpex_realtime&stocks=${batch2.join(',')}`);
+      const j2 = await r2.json();
+      const arr2 = j2.data?.msgArray||[];
+      for(const item of arr2){
+        const sid=item.c;
+        const price=parseFloat(item.z||item.y)||0;
+        if(!price) continue;
+        const s=stocks.find(x=>x.id===sid);
+        if(s){
+          s.close=price;
+          s.open=parseFloat(item.o)||s.open;
+          s.high=parseFloat(item.h)||s.high;
+          s.low=parseFloat(item.l)||s.low;
+          s.vol=parseFloat(item.v)||s.vol;
+          s.chg=parseFloat(item.z&&item.y?(item.z-item.y).toFixed(2):0)||s.chg;
+          s.chgP=s.open>0?s.chg/s.open*100:s.chgP;
+          s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn});
+          misCount++;
+        }
+      }
+      misIdx.tpex++;
     }
+    document.getElementById('s-live').textContent=misCount;
+    document.getElementById('misBadge').className='api-badge api-on';
     updSum();
-  });
-
-  // 同時監聽舊的 stocks 節點（凱基五檔資料）
-  ov(r(db,'stocks'), snap=>{
-    const data=snap.val(); if(!data) return;
-    for(const[sid,val] of Object.entries(data)){
-      if(val.bidask){
-        if(!liveData[sid]) liveData[sid]={};
-        liveData[sid].bidask=val.bidask;
-      }
-    }
-  });
-
-  showToast('Firebase 即時串接已連線！');
-});
-
-// 更新詳細面板即時資料
-function updateDetLive(sid){
-  const d=liveData[sid]; if(!d) return;
-  const priceEl=document.getElementById('d-price');
-  const chgEl=document.getElementById('d-chg');
-  const liveTag=document.getElementById('d-live-tag');
-  if(priceEl&&d.price) priceEl.textContent=d.price.toFixed(2);
-  if(chgEl&&d.chgP!==undefined){
-    chgEl.textContent=(d.chgP>=0?'+':'')+d.chgP.toFixed(2)+'%';
-    chgEl.className='pill '+(d.chgP>0?'pill-up':d.chgP<0?'pill-dn':'pill-neu');
-  }
-  if(liveTag) liveTag.style.display='flex';
-  // 更新五檔
-  const ba=d.bidask;
-  if(ba){
-    for(let i=0;i<5;i++){
-      const bp=document.getElementById(`bp-${i}`);
-      const bv=document.getElementById(`bv-${i}`);
-      const ap=document.getElementById(`ap-${i}`);
-      const av=document.getElementById(`av-${i}`);
-      if(bp) bp.textContent=ba.bp?.[i]?.toFixed(2)||'—';
-      if(bv) bv.textContent=fmV(ba.bv?.[i]||0);
-      if(ap) ap.textContent=ba.ap?.[i]?.toFixed(2)||'—';
-      if(av) av.textContent=fmV(ba.av?.[i]||0);
-    }
+    renderTable();
+  }catch(e){
+    console.error('MIS poll error:',e);
   }
 }
+
+function startMisPolling(){
+  if(misTimer) clearInterval(misTimer);
+  buildMisBatches();
+  if(isTradingNow()){
+    document.getElementById('misBadge').className='api-badge api-on';
+    misTimer=setInterval(pollMisBatch, 5000);
+    pollMisBatch();
+  }
+}
+
+// ── Firebase 移除，改用 MIS 輪詢 ──
+window.addEventListener('firebase-ready', ()=>{
+  // Firebase 保留備用（不主動使用）
+});
 
 // ── 資料載入 ──
 async function loadData(){
@@ -407,6 +423,7 @@ async function loadData(){
     updSum(); updSB(); renderTable();
     setLU(); schedRef();
     showToast(`✓ 已載入 ${stocks.length} 檔股票（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length}）`);
+    startMisPolling();
   }catch(e){
     setLd('載入失敗：'+e.message);
     console.error(e);
@@ -838,7 +855,18 @@ function drawSimulatedChart(s, container){
 function setSF(f,el){sf=f;document.querySelectorAll('.sb-item,.sb-sub-item').forEach(e=>e.classList.remove('active'));if(el)el.classList.add('active');renderTable();}
 function setMkt(m,el){mkt=m;document.querySelectorAll('.mkt-tab').forEach(e=>e.classList.remove('active'));if(el)el.classList.add('active');renderTable();}
 function toggleSub(el){const s=document.getElementById('sub-sectors'),a=document.getElementById('sub-arr');s.classList.toggle('open');a.textContent=s.classList.contains('open')?'▼':'▶';}
-function tqf(f){if(qf.has(f))qf.delete(f);else qf.add(f);const ids={up:'fb-up',dn:'fb-dn',vol:'fb-vol',pe:'fb-pe',yld:'fb-yld'};Object.entries(ids).forEach(([k,id])=>document.getElementById(id)?.classList.toggle('active',qf.has(k)));renderTable();}
+function tqf(f){
+  // 互斥：點同一個取消，點不同的切換
+  if(qf.has(f)){
+    qf.delete(f);
+  } else {
+    qf.clear(); // 清除其他選項
+    qf.add(f);
+  }
+  const ids={up:'fb-up',dn:'fb-dn',vol:'fb-vol',pe:'fb-pe',yld:'fb-yld'};
+  Object.entries(ids).forEach(([k,id])=>document.getElementById(id)?.classList.toggle('active',qf.has(k)));
+  renderTable();
+}
 function togWL(id,btn){if(wl.has(id)){wl.delete(id);btn.classList.remove('on');}else{wl.add(id);btn.classList.add('on');}localStorage.setItem('wl',JSON.stringify([...wl]));document.getElementById('c-wl').textContent=wl.size;}
 function setLd(m){document.getElementById('tblBody').innerHTML=`<tr><td colspan="10"><div class="loading"><div class="spinner"></div><div>${m}</div></div></td></tr>`;}
 function setLU(){const n=new Date();document.getElementById('lastUpd').textContent=n.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});}

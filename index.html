@@ -215,8 +215,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
       <div class="mkt-tab" onclick="setMkt('twse',this)">🏛 上市</div>
       <div class="mkt-tab" onclick="setMkt('tpex',this)">🏪 上櫃</div>
       <div class="mkt-tab" onclick="setMkt('etf',this)">📦 ETF</div>
-      <div class="mkt-tab" onclick="showToast('美股整合中，敬請期待')">🇺🇸 美股</div>
-      <div class="mkt-tab" onclick="showToast('全球指數整合中，敬請期待')">🌐 全球指數</div>
+      <div class="mkt-tab" onclick="setMkt('us',this)">🇺🇸 美股</div>
+      <div class="mkt-tab" onclick="setMkt('global',this)">🌐 全球指數</div>
     </div>
     <div class="summary-bar">
       <div class="sum-card"><div class="sum-lbl">已載入</div><div class="sum-val c-neu" id="s-tot">—</div><div class="sum-sub">檔股票</div></div>
@@ -1216,16 +1216,369 @@ async function loadInstitutionData(stockId){
 }
 
 function setSF(f,el){sf=f;document.querySelectorAll('.sb-item,.sb-sub-item').forEach(e=>e.classList.remove('active'));if(el)el.classList.add('active');renderTable();}
-function setMkt(m,el){mkt=m;document.querySelectorAll('.mkt-tab').forEach(e=>e.classList.remove('active'));if(el)el.classList.add('active');renderTable();}
+
+// ── setMkt：切換市場標籤 ──
+let usStocks=[], globalIndices=[], usLoaded=false, globalLoaded=false;
+
+function setMkt(m,el){
+  mkt=m;
+  document.querySelectorAll('.mkt-tab').forEach(e=>e.classList.remove('active'));
+  if(el) el.classList.add('active');
+  if(m==='us'){
+    showUSTbl();
+    if(!usLoaded) loadUSStocks();
+  } else if(m==='global'){
+    showGlobalTbl();
+    if(!globalLoaded) loadGlobalIndices();
+  } else {
+    showTWTbl();
+    renderTable();
+  }
+}
+
+// ── 台股回主畫面 ──
+function showTWTbl(){
+  document.getElementById('tblBody').parentElement.parentElement.style.display='';
+  document.getElementById('filter-bar-wrap')?.style && (document.getElementById('filter-bar-wrap').style.display='');
+  const usTbl=document.getElementById('us-panel');
+  const glTbl=document.getElementById('global-panel');
+  if(usTbl) usTbl.style.display='none';
+  if(glTbl) glTbl.style.display='none';
+  document.querySelector('.tbl-wrap').style.display='';
+  document.querySelector('.filter-bar').style.display='';
+}
+
+// ── 顯示美股面板 ──
+function showUSTbl(){
+  document.querySelector('.tbl-wrap').style.display='none';
+  document.querySelector('.filter-bar').style.display='none';
+  let panel=document.getElementById('us-panel');
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id='us-panel';
+    panel.style.cssText='flex:1;overflow:auto;';
+    document.getElementById('main').appendChild(panel);
+  }
+  panel.style.display='';
+  const glTbl=document.getElementById('global-panel');
+  if(glTbl) glTbl.style.display='none';
+  if(!usLoaded) panel.innerHTML=`<div class="loading"><div class="spinner"></div><div>載入美股資料...</div></div>`;
+  else renderUSTable();
+}
+
+// ── 顯示全球指數面板 ──
+function showGlobalTbl(){
+  document.querySelector('.tbl-wrap').style.display='none';
+  document.querySelector('.filter-bar').style.display='none';
+  let panel=document.getElementById('global-panel');
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id='global-panel';
+    panel.style.cssText='flex:1;overflow:auto;';
+    document.getElementById('main').appendChild(panel);
+  }
+  panel.style.display='';
+  const usTbl=document.getElementById('us-panel');
+  if(usTbl) usTbl.style.display='none';
+  if(!globalLoaded) panel.innerHTML=`<div class="loading"><div class="spinner"></div><div>載入全球指數...</div></div>`;
+  else renderGlobalTable();
+}
+
+// ── 美股資料載入 ──
+async function loadUSStocks(){
+  try{
+    const r=await fetch('/api/global?type=us_list');
+    const j=await r.json();
+    usStocks=j.data||[];
+    usLoaded=true;
+    if(mkt==='us') renderUSTable();
+    // 定時 60 秒更新
+    setTimeout(()=>{usLoaded=false;if(mkt==='us')loadUSStocks();}, 60000);
+  }catch(e){
+    const p=document.getElementById('us-panel');
+    if(p) p.innerHTML=`<div class="empty">美股載入失敗：${e.message}</div>`;
+  }
+}
+
+// ── 全球指數載入 ──
+async function loadGlobalIndices(){
+  try{
+    const r=await fetch('/api/global?type=global_index');
+    const j=await r.json();
+    globalIndices=j.data||[];
+    globalLoaded=true;
+    if(mkt==='global') renderGlobalTable();
+    setTimeout(()=>{globalLoaded=false;if(mkt==='global')loadGlobalIndices();}, 60000);
+  }catch(e){
+    const p=document.getElementById('global-panel');
+    if(p) p.innerHTML=`<div class="empty">全球指數載入失敗：${e.message}</div>`;
+  }
+}
+
+// ── 渲染美股表格 ──
+function renderUSTable(){
+  const p=document.getElementById('us-panel');
+  if(!p) return;
+  if(!usStocks.length){p.innerHTML='<div class="empty">暫無資料</div>';return;}
+
+  // 分類
+  const sectors = {
+    '科技大型股': ['AAPL','MSFT','GOOGL','AMZN','META','NVDA','TSLA','NFLX'],
+    '半導體': ['AVGO','QCOM','INTC','AMD','AMAT','LRCX','KLAC','MU','TXN','ON','MCHP'],
+    'AI/雲端': ['PLTR','SNOW','CRM','NOW','ADBE','ORCL','IBM','DELL','HPE'],
+    '金融': ['JPM','BAC','WFC','GS','MS','V','MA','AXP','BRK-B'],
+    '消費/零售': ['WMT','COST','TGT','HD','NKE','SBUX','MCD','DIS'],
+    '醫療/生技': ['JNJ','PFE','ABBV','MRK','LLY','UNH','CVS'],
+    '能源': ['XOM','CVX','COP','SLB'],
+    'ETF': ['SPY','QQQ','DIA','IWM','VTI','GLD','TLT'],
+  };
+  const sMap={};
+  for(const[sec,syms] of Object.entries(sectors)) for(const s of syms) sMap[s]=sec;
+
+  const stateTag = (s) => {
+    if(s==='PRE') return `<span style="font-size:9px;color:var(--amber2);background:rgba(210,153,34,.15);padding:1px 4px;border-radius:3px">盤前</span>`;
+    if(s==='POST') return `<span style="font-size:9px;color:var(--purple);background:rgba(188,140,255,.15);padding:1px 4px;border-radius:3px">盤後</span>`;
+    if(s==='REGULAR') return `<span style="font-size:9px;color:var(--green2);background:rgba(63,185,80,.15);padding:1px 4px;border-radius:3px">盤中</span>`;
+    return '';
+  };
+
+  const fmtCap = v => {
+    if(!v) return '—';
+    if(v>=1e12) return (v/1e12).toFixed(2)+'T';
+    if(v>=1e9) return (v/1e9).toFixed(1)+'B';
+    if(v>=1e6) return (v/1e6).toFixed(0)+'M';
+    return v.toLocaleString();
+  };
+
+  p.innerHTML=`
+  <div style="padding:12px 16px 6px;font-size:11px;color:var(--text3)">
+    資料來源：Yahoo Finance｜更新時間：${new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}
+    <span style="margin-left:8px;cursor:pointer;color:var(--accent2)" onclick="usLoaded=false;loadUSStocks()">⟳ 重新整理</span>
+  </div>
+  <table class="tbl">
+    <thead><tr>
+      <th>代號</th><th>名稱/分類</th><th>現價(USD)</th><th>漲跌幅</th>
+      <th>開盤</th><th>最高</th><th>最低</th>
+      <th>成交量</th><th>市值</th><th>本益比</th>
+    </tr></thead>
+    <tbody>
+    ${usStocks.map((s,i)=>`
+      <tr style="animation-delay:${Math.min(i*3,400)}ms;cursor:pointer" onclick="openUSDetail('${s.symbol}')">
+        <td>
+          <div style="font-family:var(--mono);font-size:12px;font-weight:700;color:var(--accent2)">${s.symbol}</div>
+          ${stateTag(s.state)}
+        </td>
+        <td>
+          <div style="font-size:12px;font-weight:500">${s.name}</div>
+          <div style="font-size:10px;color:var(--text3);background:var(--bg4);padding:1px 5px;border-radius:3px;display:inline-block;margin-top:2px">${sMap[s.symbol]||'其他'}</div>
+        </td>
+        <td><span style="font-family:var(--mono);font-size:13px;font-weight:600;color:${s.changeP>0?'var(--green2)':s.changeP<0?'var(--red2)':'var(--text)'}">${s.price?.toFixed(2)||'—'}</span></td>
+        <td><span class="pill ${s.changeP>0?'pill-up':s.changeP<0?'pill-dn':'pill-neu'}">${s.changeP>=0?'+':''}${s.changeP?.toFixed(2)||'0'}%</span></td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${s.open?.toFixed(2)||'—'}</td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--green2)">${s.high?.toFixed(2)||'—'}</td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--red2)">${s.low?.toFixed(2)||'—'}</td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${fmtCap(s.volume)}</td>
+        <td style="font-family:var(--mono);font-size:11px;color:var(--text2)">${fmtCap(s.mktCap)}</td>
+        <td style="font-family:var(--mono);font-size:11px;color:${s.pe&&s.pe<20?'var(--green2)':s.pe&&s.pe>40?'var(--red2)':'var(--text2)'}">${s.pe?s.pe.toFixed(1):'—'}</td>
+      </tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+// ── 渲染全球指數表格 ──
+function renderGlobalTable(){
+  const p=document.getElementById('global-panel');
+  if(!p||!globalIndices.length){if(p)p.innerHTML='<div class="empty">暫無資料</div>';return;}
+
+  // 依地區分組
+  const groups={};
+  for(const idx of globalIndices){
+    if(!groups[idx.region]) groups[idx.region]=[];
+    groups[idx.region].push(idx);
+  }
+
+  const fmtPrice = (v,curr) => {
+    if(!v) return '—';
+    if(curr==='%') return v.toFixed(2)+'%';
+    return v.toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+  };
+
+  let html=`
+  <div style="padding:12px 16px 6px;font-size:11px;color:var(--text3)">
+    資料來源：Yahoo Finance｜更新時間：${new Date().toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'})}
+    <span style="margin-left:8px;cursor:pointer;color:var(--accent2)" onclick="globalLoaded=false;loadGlobalIndices()">⟳ 重新整理</span>
+  </div>
+  <div style="padding:0 8px 16px">`;
+
+  for(const [region, items] of Object.entries(groups)){
+    html+=`
+    <div style="margin:12px 0 6px;font-size:11px;font-weight:700;color:var(--text3);padding:0 8px;letter-spacing:.06em">${region}</div>
+    <div style="display:grid;grid-template-columns:repeat(auto-fill,minmax(200px,1fr));gap:6px;padding:0 4px">
+    ${items.map(idx=>{
+      const col=idx.changeP>0?'var(--green2)':idx.changeP<0?'var(--red2)':'var(--text2)';
+      const bg=idx.changeP>0?'rgba(63,185,80,.06)':idx.changeP<0?'rgba(248,81,73,.06)':'';
+      return `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;${bg?'border-color:'+col+'33;background:'+bg:''}cursor:pointer" onclick="openGlobalDetail('${idx.symbol}','${idx.name.replace(/'/g,"\\'")}')">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:3px;font-family:var(--mono)">${idx.symbol}</div>
+        <div style="font-size:12px;font-weight:600;margin-bottom:5px">${idx.name}</div>
+        <div style="font-family:var(--mono);font-size:16px;font-weight:700;color:${col}">${fmtPrice(idx.price,idx.currency)}</div>
+        <div style="display:flex;gap:8px;margin-top:4px">
+          <span class="pill ${idx.changeP>0?'pill-up':idx.changeP<0?'pill-dn':'pill-neu'}" style="font-size:10px">${idx.changeP>=0?'+':''}${idx.changeP?.toFixed(2)||'0'}%</span>
+          <span style="font-size:10px;color:var(--text3);font-family:var(--mono)">${idx.change>=0?'+':''}${idx.change?.toFixed(2)||'0'}</span>
+        </div>
+      </div>`;
+    }).join('')}
+    </div>`;
+  }
+  html+='</div>';
+  p.innerHTML=html;
+}
+
+// ── 美股個股詳情面板 ──
+async function openUSDetail(symbol){
+  // 重用現有 det 面板
+  const det=document.getElementById('det');
+  document.getElementById('d-id').textContent=symbol;
+  document.getElementById('d-name').textContent='載入中...';
+  document.getElementById('d-sec').textContent='美股 · NYSE/NASDAQ';
+  document.getElementById('d-price').textContent='—';
+  document.getElementById('d-chg').textContent='—';
+  document.getElementById('d-chg').className='pill pill-neu';
+  document.getElementById('d-live-tag').style.display='none';
+  document.getElementById('detBody').innerHTML=`<div class="loading"><div class="spinner"></div><div>載入 ${symbol} 資料...</div></div>`;
+  det.classList.add('open');
+
+  try{
+    const r=await fetch(`/api/global?type=us_detail&symbol=${symbol}`);
+    const j=await r.json();
+    const q=j.quote||{};
+    const kdata=j.kdata||[];
+
+    document.getElementById('d-name').textContent=q.name||symbol;
+    document.getElementById('d-sec').textContent=(q.sector||'美股')+' · '+(q.exchange||'US');
+    document.getElementById('d-price').textContent=(q.price||0).toFixed(2);
+    const ce=document.getElementById('d-chg');
+    ce.textContent=(q.changeP>=0?'+':'')+q.changeP?.toFixed(2)+'%';
+    ce.className='pill '+(q.changeP>0?'pill-up':q.changeP<0?'pill-dn':'pill-neu');
+
+    const stateLabel=q.state==='REGULAR'?'● 盤中':q.state==='PRE'?'● 盤前':q.state==='POST'?'● 盤後':'休市';
+    const stateCol=q.state==='REGULAR'?'var(--green2)':q.state==='PRE'?'var(--amber2)':'var(--purple)';
+    const amp=q.open>0?((q.high-q.low)/q.open*100).toFixed(2)+'%':'—';
+
+    const fmtCap2=v=>{if(!v)return '—';if(v>=1e12)return(v/1e12).toFixed(2)+'T USD';if(v>=1e9)return(v/1e9).toFixed(1)+'B USD';return v.toLocaleString();};
+
+    document.getElementById('detBody').innerHTML=`
+    <div class="ds"><div class="dst">即時報價 <span style="font-size:10px;color:${stateCol};margin-left:6px">${stateLabel}</span></div>
+      <div class="kv2">
+        <div class="kv"><div class="kv-l">開盤</div><div class="kv-v">${q.open?.toFixed(2)||'—'}</div></div>
+        <div class="kv"><div class="kv-l">現價(USD)</div><div class="kv-v ${q.changeP>0?'c-up':q.changeP<0?'c-dn':'c-neu'}">${q.price?.toFixed(2)||'—'}</div></div>
+        <div class="kv"><div class="kv-l">最高</div><div class="kv-v c-up">${q.high?.toFixed(2)||'—'}</div></div>
+        <div class="kv"><div class="kv-l">最低</div><div class="kv-v c-dn">${q.low?.toFixed(2)||'—'}</div></div>
+        <div class="kv"><div class="kv-l">昨收</div><div class="kv-v">${q.prev?.toFixed(2)||'—'}</div></div>
+        <div class="kv"><div class="kv-l">振幅</div><div class="kv-v">${amp}</div></div>
+        <div class="kv"><div class="kv-l">漲跌(USD)</div><div class="kv-v ${q.change>0?'c-up':q.change<0?'c-dn':'c-neu'}">${q.change>=0?'+':''}${q.change?.toFixed(2)||'0'}</div></div>
+        <div class="kv"><div class="kv-l">漲跌幅</div><div class="kv-v ${q.changeP>0?'c-up':q.changeP<0?'c-dn':'c-neu'}">${q.changeP>=0?'+':''}${q.changeP?.toFixed(2)||'0'}%</div></div>
+      </div>
+    </div>
+    <div class="ds"><div class="dst">估值指標</div>
+      <div class="kv2">
+        <div class="kv"><div class="kv-l">本益比 P/E</div><div class="kv-v ${q.pe&&q.pe<20?'c-up':q.pe&&q.pe>40?'c-dn':'c-neu'}">${q.pe?.toFixed(1)||'—'}</div></div>
+        <div class="kv"><div class="kv-l">EPS (TTM)</div><div class="kv-v">${q.eps?.toFixed(2)||'—'}</div></div>
+        <div class="kv"><div class="kv-l">市值</div><div class="kv-v" style="font-size:11px">${fmtCap2(q.mktCap)}</div></div>
+        <div class="kv"><div class="kv-l">成交量</div><div class="kv-v">${q.volume?.toLocaleString()||'—'}</div></div>
+        <div class="kv"><div class="kv-l">52週高</div><div class="kv-v c-up">${q.wk52High?.toFixed(2)||'—'}</div></div>
+        <div class="kv"><div class="kv-l">52週低</div><div class="kv-v c-dn">${q.wk52Low?.toFixed(2)||'—'}</div></div>
+        <div class="kv"><div class="kv-l">產業</div><div class="kv-v" style="font-size:10px">${q.industry||q.sector||'—'}</div></div>
+        <div class="kv"><div class="kv-l">交易所</div><div class="kv-v" style="font-size:10px">${q.exchange||'—'}</div></div>
+      </div>
+    </div>
+    <div class="ds"><div class="dst">價格走勢（近4個月日K）</div>
+      <div class="ch-wrap"><canvas id="c-price"></canvas></div>
+    </div>`;
+
+    // 繪製K線
+    if(kdata.length>0){
+      setTimeout(()=>{
+        Chart.defaults.color='#8b949e';
+        Chart.defaults.font.family="'JetBrains Mono',monospace";
+        Chart.defaults.font.size=10;
+        const canvas=document.getElementById('c-price');
+        if(!canvas) return;
+        const labels=kdata.map(d=>d.date.slice(5));
+        const closes=kdata.map(d=>d.close);
+        const cc=q.changeP>=0?'#3fb950':'#f85149';
+        if(dCharts.p){dCharts.p.destroy();delete dCharts.p;}
+        dCharts.p=new Chart(canvas,{
+          type:'line',
+          data:{labels,datasets:[{data:closes,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:8,font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}
+        });
+      },100);
+    }
+  }catch(e){
+    document.getElementById('detBody').innerHTML=`<div class="empty">載入失敗：${e.message}</div>`;
+  }
+}
+
+// ── 全球指數詳情 ──
+async function openGlobalDetail(symbol, name){
+  const det=document.getElementById('det');
+  document.getElementById('d-id').textContent=symbol;
+  document.getElementById('d-name').textContent=name;
+  document.getElementById('d-sec').textContent='全球指數';
+  document.getElementById('d-price').textContent='—';
+  document.getElementById('d-chg').className='pill pill-neu';
+  document.getElementById('d-live-tag').style.display='none';
+  document.getElementById('detBody').innerHTML=`<div class="loading"><div class="spinner"></div><div>載入 ${name} 資料...</div></div>`;
+  det.classList.add('open');
+
+  try{
+    const r=await fetch(`/api/global?type=us_detail&symbol=${encodeURIComponent(symbol)}`);
+    const j=await r.json();
+    const q=j.quote||{};
+    const kdata=j.kdata||[];
+
+    document.getElementById('d-price').textContent=(q.price||0).toLocaleString('en-US',{minimumFractionDigits:2,maximumFractionDigits:2});
+    const ce=document.getElementById('d-chg');
+    ce.textContent=(q.changeP>=0?'+':'')+q.changeP?.toFixed(2)+'%';
+    ce.className='pill '+(q.changeP>0?'pill-up':q.changeP<0?'pill-dn':'pill-neu');
+
+    const amp=q.open>0?((q.high-q.low)/q.open*100).toFixed(2)+'%':'—';
+    document.getElementById('detBody').innerHTML=`
+    <div class="ds"><div class="dst">今日行情</div>
+      <div class="kv2">
+        <div class="kv"><div class="kv-l">開盤</div><div class="kv-v">${q.open?.toLocaleString('en-US',{minimumFractionDigits:2})||'—'}</div></div>
+        <div class="kv"><div class="kv-l">現值</div><div class="kv-v ${q.changeP>0?'c-up':q.changeP<0?'c-dn':'c-neu'}">${q.price?.toLocaleString('en-US',{minimumFractionDigits:2})||'—'}</div></div>
+        <div class="kv"><div class="kv-l">最高</div><div class="kv-v c-up">${q.high?.toLocaleString('en-US',{minimumFractionDigits:2})||'—'}</div></div>
+        <div class="kv"><div class="kv-l">最低</div><div class="kv-v c-dn">${q.low?.toLocaleString('en-US',{minimumFractionDigits:2})||'—'}</div></div>
+        <div class="kv"><div class="kv-l">昨收</div><div class="kv-v">${q.prev?.toLocaleString('en-US',{minimumFractionDigits:2})||'—'}</div></div>
+        <div class="kv"><div class="kv-l">振幅</div><div class="kv-v">${amp}</div></div>
+        <div class="kv"><div class="kv-l">漲跌</div><div class="kv-v ${q.change>0?'c-up':q.change<0?'c-dn':'c-neu'}">${q.change>=0?'+':''}${q.change?.toFixed(2)||'0'}</div></div>
+        <div class="kv"><div class="kv-l">漲跌幅</div><div class="kv-v ${q.changeP>0?'c-up':q.changeP<0?'c-dn':'c-neu'}">${q.changeP>=0?'+':''}${q.changeP?.toFixed(2)||'0'}%</div></div>
+      </div>
+    </div>
+    <div class="ds"><div class="dst">近4個月走勢</div><div class="ch-wrap"><canvas id="c-price"></canvas></div></div>`;
+
+    if(kdata.length>0){
+      setTimeout(()=>{
+        const canvas=document.getElementById('c-price');
+        if(!canvas) return;
+        const cc=q.changeP>=0?'#3fb950':'#f85149';
+        if(dCharts.p){dCharts.p.destroy();delete dCharts.p;}
+        dCharts.p=new Chart(canvas,{
+          type:'line',
+          data:{labels:kdata.map(d=>d.date.slice(5)),datasets:[{data:kdata.map(d=>d.close),borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:8,font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}
+        });
+      },100);
+    }
+  }catch(e){
+    document.getElementById('detBody').innerHTML=`<div class="empty">載入失敗：${e.message}</div>`;
+  }
+}
+
 function toggleSub(el){const s=document.getElementById('sub-sectors'),a=document.getElementById('sub-arr');s.classList.toggle('open');a.textContent=s.classList.contains('open')?'▼':'▶';}
 function tqf(f){
-  // 互斥：點同一個取消，點不同的切換
-  if(qf.has(f)){
-    qf.delete(f);
-  } else {
-    qf.clear(); // 清除其他選項
-    qf.add(f);
-  }
+  if(qf.has(f)){ qf.delete(f); } else { qf.clear(); qf.add(f); }
   const ids={up:'fb-up',dn:'fb-dn',vol:'fb-vol',pe:'fb-pe',yld:'fb-yld'};
   Object.entries(ids).forEach(([k,id])=>document.getElementById(id)?.classList.toggle('active',qf.has(k)));
   renderTable();

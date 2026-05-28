@@ -673,7 +673,7 @@ function startDetPoll(s){
       upd('dq-price', price.toFixed(2));
       upd('dq-high', h>0?h.toFixed(2):'—');
       upd('dq-low', l>0?l.toFixed(2):'—');
-      upd('dq-vol', fmV(v*1000));
+      upd('dq-vol', fmV(v));       // MIS v 欄位已是張數（千股）
       upd('dq-amp', amp);
       const chgEl=document.getElementById('dq-chg');
       if(chgEl){chgEl.textContent=(chg>=0?'+':'')+chg.toFixed(2);chgEl.className='kv-v '+(chg>0?'c-up':chg<0?'c-dn':'c-neu');}
@@ -683,7 +683,7 @@ function startDetPoll(s){
       if(priceEl){priceEl.className='kv-v '+(chgP>0?'c-up':chgP<0?'c-dn':'c-neu');}
       // 更新 stocks 陣列中的值
       const st=stocks.find(x=>x.id===s.id);
-      if(st){st.close=price;st.open=o||st.open;st.high=h||st.high;st.low=l||st.low;st.vol=v*1000||st.vol;st.chg=chg;st.chgP=chgP;}
+      if(st){st.close=price;st.open=o||st.open;st.high=h||st.high;st.low=l||st.low;st.vol=v||st.vol;st.chg=chg;st.chgP=chgP;}
     }catch(e){console.warn('detPoll err:',e);}
   }
   pollOnce();
@@ -997,19 +997,19 @@ async function loadHoldersData(stockId){
     const canvas=document.getElementById('c-holders');
     if(canvas&&j.rows&&j.rows.length>0){
       if(dCharts.holders) dCharts.holders.destroy();
-      // TDCC 單位為「股」(1張=1000股)
+      // 使用後端回傳的 lots（張數）欄位分組；備援用 shares/1000
       const groups=[
-        {label:'1-9張',ratio:0},
-        {label:'10-99張',ratio:0},
+        {label:'未滿10張', ratio:0},
+        {label:'10-99張',  ratio:0},
         {label:'100-999張',ratio:0},
         {label:'1000張以上',ratio:0}
       ];
       for(const row of j.rows){
-        const minS=row.shares;
-        if(minS<10000) groups[0].ratio+=row.ratio;
-        else if(minS<100000) groups[1].ratio+=row.ratio;
-        else if(minS<1000000) groups[2].ratio+=row.ratio;
-        else groups[3].ratio+=row.ratio;
+        const lots = row.lots !== undefined ? row.lots : Math.floor(row.shares/1000);
+        if(lots < 10)        groups[0].ratio+=row.ratio;
+        else if(lots < 100)  groups[1].ratio+=row.ratio;
+        else if(lots < 1000) groups[2].ratio+=row.ratio;
+        else                 groups[3].ratio+=row.ratio;
       }
       dCharts.holders=new Chart(canvas,{
         type:'doughnut',

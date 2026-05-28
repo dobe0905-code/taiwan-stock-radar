@@ -669,12 +669,13 @@ function startDetPoll(s){
       const price=z, chg=parseFloat((z-y).toFixed(2)), chgP=parseFloat(((z-y)/y*100).toFixed(2));
       const amp=o>0?((h-l)/o*100).toFixed(2)+'%':'—';
 
-      // 均價 = 成交金額 / 成交量（MIS 無直接均價，用 (o+h+l+z)/4 估算）
-      const avgPrice = o>0&&h>0&&l>0&&z>0 ? ((o+h+l+z)/4).toFixed(2) : '—';
+      // 均價：MIS pz = 加權均價，或用 (o+h+l+z)/4 估算
+      const pz=parseFloat(item.pz)||0;
+      const avgPrice = pz>0 ? pz.toFixed(2) : (o>0&&h>0&&l>0&&z>0?((o+h+l+z)/4).toFixed(2):'—');
 
-      // 內外盤：MIS oa=外盤量, ob=內盤量（買進成交=外盤，賣出=內盤）
-      const ob = item.ob ? parseInt(item.ob)||0 : 0;  // 內盤（賣方主動）
-      const oa = item.oa ? parseInt(item.oa)||0 : 0;  // 外盤（買方主動）
+      // 內外盤：MIS ob=內盤量, oa=外盤量（字串，需解析）
+      const ob = parseInt(item.ob||'0') || 0;
+      const oa = parseInt(item.oa||'0') || 0;
 
       // 更新頂部大標
       const pe=document.getElementById('d-price');
@@ -906,42 +907,53 @@ async function buildDetCharts(s){
   loadMarginData(s.id);
   loadInstitutionData(s.id);
 
-  // ── MA 均線乖離率計算（從 K 線資料）──
-  try{
-    const r2=await fetch(`/api/quote?type=kline&stock_id=${s.id}`);
-    const j2=await r2.json();
-    const kd=j2.data||[];
-    if(kd.length>=5){
-      const closes=kd.map(d=>d.close);
-      const ma=(n)=>{
-        if(closes.length<n) return null;
-        const slice=closes.slice(-n);
-        return parseFloat((slice.reduce((a,b)=>a+b,0)/n).toFixed(2));
-      };
-      const ma5=ma(5), ma10=ma(10), ma20=ma(20), ma60=ma(60);
-      const cur=s.close;
-      const fmt=(v,n)=>{
-        if(!v) return '—';
-        const bias=parseFloat(((cur-v)/v*100).toFixed(2));
-        const col=bias>0?'var(--green2)':bias<0?'var(--red2)':'var(--text2)';
-        return `<span style="font-family:var(--mono)">${v.toFixed(2)}</span> <span style="color:${col};font-size:10px">${bias>0?'+':''}${bias}%</span>`;
-      };
-      const el5=document.getElementById('ma5');
-      const el10=document.getElementById('ma10');
-      const el20=document.getElementById('ma20');
-      const el60=document.getElementById('ma60-bias');
-      if(el5) el5.innerHTML=fmt(ma5,5);
-      if(el10) el10.innerHTML=fmt(ma10,10);
-      if(el20) el20.innerHTML=fmt(ma20,20);
-      if(el60){
-        if(ma60){
-          const bias60=parseFloat(((cur-ma60)/ma60*100).toFixed(2));
-          const col=bias60>0?'var(--green2)':bias60<0?'var(--red2)':'var(--text2)';
-          el60.innerHTML=`<span style="font-family:var(--mono)">${ma60.toFixed(2)}</span> <span style="color:${col};font-size:10px">${bias60>0?'+':''}${bias60}%</span>`;
-        } else { el60.textContent='資料不足'; }
+  // ── MA 均線乖離率（季線公式：BIAS = (現價 - MA60) / MA60 × 100%）──
+  // 複用已抓到的 _kdata，避免重複 fetch
+  function calcAndShowMA(kdata){
+    if(!kdata||kdata.length<5) return;
+    const closes=kdata.map(d=>d.close).filter(v=>v>0);
+    const ma=(n)=>{
+      if(closes.length<n) return null;
+      return parseFloat((closes.slice(-n).reduce((a,b)=>a+b,0)/n).toFixed(2));
+    };
+    const cur=s.close;
+    const fmt=(v)=>{
+      if(!v) return '—';
+      // 乖離率公式：BIAS = (目前股價 - n日均) / n日均 × 100%
+      const bias=parseFloat(((cur-v)/v*100).toFixed(2));
+      const col=bias>0?'var(--green2)':bias<0?'var(--red2)':'var(--text2)';
+      return `<span style="font-family:var(--mono);font-size:12px">${v.toFixed(2)}</span><span style="color:${col};font-size:10px;margin-left:5px">${bias>0?'+':''}${bias}%</span>`;
+    };
+    const set=(id,v)=>{const el=document.getElementById(id);if(el)el.innerHTML=fmt(v);};
+    set('ma5', ma(5));
+    set('ma10', ma(10));
+    set('ma20', ma(20));
+    const ma60v=ma(60);
+    const el60=document.getElementById('ma60-bias');
+    if(el60){
+      if(ma60v){
+        const bias60=parseFloat(((cur-ma60v)/ma60v*100).toFixed(2));
+        const col=bias60>0?'var(--green2)':bias60<0?'var(--red2)':'var(--text2)';
+        el60.innerHTML=`<span style="font-family:var(--mono);font-size:12px">${ma60v.toFixed(2)}</span><span style="color:${col};font-size:10px;margin-left:5px">${bias60>0?'+':''}${bias60}%</span>`;
+      } else {
+        el60.innerHTML=`<span style="color:var(--text3);font-size:10px">資料不足(需${60-closes.length}筆)</span>`;
       }
     }
-  }catch(e){ console.warn('MA calc err:',e); }
+  }
+
+  // 若 K 線已載入則直接算，否則等 K 線載入後再算
+  if(s._kdata&&s._kdata.length>0){
+    calcAndShowMA(s._kdata);
+  } else {
+    // 非同步等待 K 線完成後計算
+    const maTimer=setInterval(()=>{
+      if(s._kdata&&s._kdata.length>0){
+        clearInterval(maTimer);
+        calcAndShowMA(s._kdata);
+      }
+    },300);
+    setTimeout(()=>clearInterval(maTimer),8000);
+  }
 }
 
 function drawCandleChart(stockId, kdata){
@@ -997,7 +1009,7 @@ function drawCandleChart(stockId, kdata){
             label:ctx=>{
               if(ctx.datasetIndex===0){
                 const d=kdata[ctx.dataIndex];
-                return[`開:${d.open} 高:${d.high}`,`低:${d.low} 收:${d.close}`,`量:${(d.volume/1000).toFixed(0)}千`];
+                return[`開:${d.open} 高:${d.high}`,`低:${d.low} 收:${d.close}`,`量:${d.volume?.toLocaleString()}張`];
               }
               return null;
             }
@@ -1016,12 +1028,17 @@ function drawCandleChart(stockId, kdata){
 function switchKLine(stockId, mode){
   const s=stocks.find(x=>x.id===stockId);
   if(!s||!s._kdata) return;
-  document.getElementById('btn-candle').style.background=mode==='candle'?'rgba(56,139,253,.15)':'var(--bg3)';
-  document.getElementById('btn-candle').style.borderColor=mode==='candle'?'var(--accent)':'var(--border)';
-  document.getElementById('btn-candle').style.color=mode==='candle'?'var(--accent2)':'var(--text2)';
-  document.getElementById('btn-line').style.background=mode==='line'?'rgba(56,139,253,.15)':'var(--bg3)';
-  document.getElementById('btn-line').style.borderColor=mode==='line'?'var(--accent)':'var(--border)';
-  document.getElementById('btn-line').style.color=mode==='line'?'var(--accent2)':'var(--text2)';
+  // 使用 det 面板內查找，避免找到全域 ID 失效
+  const det=document.getElementById('det');
+  const setBtn=(id,active)=>{
+    const el=det?det.querySelector('#'+id):document.getElementById(id);
+    if(!el) return;
+    el.style.background=active?'rgba(56,139,253,.15)':'var(--bg3)';
+    el.style.borderColor=active?'var(--accent)':'var(--border)';
+    el.style.color=active?'var(--accent2)':'var(--text2)';
+  };
+  setBtn('btn-candle', mode==='candle');
+  setBtn('btn-line',   mode==='line');
 
   if(dCharts.p){dCharts.p.destroy();delete dCharts.p;}
   const canvas=document.getElementById('c-price');
@@ -1033,7 +1050,11 @@ function switchKLine(stockId, mode){
     const labels=s._kdata.map(d=>d.date.slice(5));
     const closes=s._kdata.map(d=>d.close);
     const cc=s.chgP>=0?'#3fb950':'#f85149';
-    dCharts.p=new Chart(canvas,{type:'line',data:{labels,datasets:[{data:closes,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:8,font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}});
+    dCharts.p=new Chart(canvas,{
+      type:'line',
+      data:{labels,datasets:[{data:closes,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{label:ctx=>`收${ctx.raw}`}}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:8,font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}
+    });
   }
 }
 
@@ -1183,32 +1204,37 @@ async function loadMarginData(stockId){
 async function loadInstitutionData(stockId){
   const il=document.getElementById('inst-loading');
   const ic=document.getElementById('inst-content');
-  if(!stockId.match(/^\d{4,6}$/)){
-    if(il) il.style.display='none'; return;
-  }
+  if(!stockId.match(/^\d{4,6}$/)){if(il)il.style.display='none';return;}
   try{
     const r=await fetch(`/api/quote?type=institution_detail&stock_id=${stockId}`);
     const j=await r.json();
     if(!il) return;
     il.style.display='none';
-    if(j.data && ic){
+    if(j.data&&ic){
       ic.style.display='block';
       const d=j.data;
       const fmNet=(v)=>{
-        if(!v&&v!==0) return '—';
+        if(v===undefined||v===null) return '—';
         const col=v>0?'c-up':v<0?'c-dn':'c-neu';
-        return `<span class="${col}">${v>0?'+':''}${v.toLocaleString()}</span>`;
+        return `<span class="${col}" style="font-family:var(--mono)">${v>0?'+':''}${v.toLocaleString()}</span>`;
       };
-      document.getElementById('inst-foreign').innerHTML=fmNet(d.foreignNet);
-      document.getElementById('inst-trust').innerHTML=fmNet(d.trustNet);
-      document.getElementById('inst-dealer').innerHTML=fmNet(d.dealerNet);
-      const totalEl=document.getElementById('inst-total');
-      if(totalEl){
+      const fmBuySell=(buy,sell,net)=>{
+        if(!buy&&!sell&&!net) return '—';
+        return `<div style="font-size:10px;color:var(--text3)">買${(buy||0).toLocaleString()} / 賣${(sell||0).toLocaleString()}</div>${fmNet(net)}`;
+      };
+      const fEl=document.getElementById('inst-foreign');
+      const tEl=document.getElementById('inst-trust');
+      const dEl=document.getElementById('inst-dealer');
+      const totEl=document.getElementById('inst-total');
+      if(fEl) fEl.innerHTML=fmBuySell(d.foreignBuy,d.foreignSell,d.foreignNet);
+      if(tEl) tEl.innerHTML=fmBuySell(d.trustBuy,d.trustSell,d.trustNet);
+      if(dEl) dEl.innerHTML=fmNet(d.dealerNet);
+      if(totEl){
         const tc=d.totalNet>0?'c-up':d.totalNet<0?'c-dn':'c-neu';
-        totalEl.innerHTML=`<span class="${tc}">${d.totalNet>0?'+':''}${d.totalNet?.toLocaleString()||'—'}</span>`;
+        totEl.innerHTML=`<span class="${tc}" style="font-family:var(--mono);font-size:14px;font-weight:700">${d.totalNet>0?'+':''}${d.totalNet?.toLocaleString()||'—'}</span><div style="font-size:9px;color:var(--text3);margin-top:2px">單位：張</div>`;
       }
     } else {
-      if(il){ il.innerHTML='<span style="color:var(--text3);font-size:11px">今日無三大法人資料</span>'; il.style.display='flex'; }
+      if(il){il.innerHTML='<span style="color:var(--text3);font-size:11px">今日無三大法人資料（盤後更新）</span>';il.style.display='flex';}
     }
   }catch(e){
     if(il) il.innerHTML='<span style="color:var(--text3);font-size:11px">法人資料暫無法取得</span>';
@@ -1238,8 +1264,6 @@ function setMkt(m,el){
 
 // ── 台股回主畫面 ──
 function showTWTbl(){
-  document.getElementById('tblBody').parentElement.parentElement.style.display='';
-  document.getElementById('filter-bar-wrap')?.style && (document.getElementById('filter-bar-wrap').style.display='');
   const usTbl=document.getElementById('us-panel');
   const glTbl=document.getElementById('global-panel');
   if(usTbl) usTbl.style.display='none';
@@ -1252,36 +1276,42 @@ function showTWTbl(){
 function showUSTbl(){
   document.querySelector('.tbl-wrap').style.display='none';
   document.querySelector('.filter-bar').style.display='none';
+  const glTbl=document.getElementById('global-panel');
+  if(glTbl) glTbl.style.display='none';
   let panel=document.getElementById('us-panel');
   if(!panel){
     panel=document.createElement('div');
     panel.id='us-panel';
-    panel.style.cssText='flex:1;overflow:auto;';
+    panel.style.cssText='flex:1;overflow:auto;position:relative;';
     document.getElementById('main').appendChild(panel);
   }
-  panel.style.display='';
-  const glTbl=document.getElementById('global-panel');
-  if(glTbl) glTbl.style.display='none';
-  if(!usLoaded) panel.innerHTML=`<div class="loading"><div class="spinner"></div><div>載入美股資料...</div></div>`;
-  else renderUSTable();
+  panel.style.display='block';
+  if(!usLoaded){
+    panel.innerHTML=`<div class="loading"><div class="spinner"></div><div>載入美股資料中...</div></div>`;
+  } else {
+    renderUSTable();
+  }
 }
 
 // ── 顯示全球指數面板 ──
 function showGlobalTbl(){
   document.querySelector('.tbl-wrap').style.display='none';
   document.querySelector('.filter-bar').style.display='none';
+  const usTbl=document.getElementById('us-panel');
+  if(usTbl) usTbl.style.display='none';
   let panel=document.getElementById('global-panel');
   if(!panel){
     panel=document.createElement('div');
     panel.id='global-panel';
-    panel.style.cssText='flex:1;overflow:auto;';
+    panel.style.cssText='flex:1;overflow:auto;position:relative;';
     document.getElementById('main').appendChild(panel);
   }
-  panel.style.display='';
-  const usTbl=document.getElementById('us-panel');
-  if(usTbl) usTbl.style.display='none';
-  if(!globalLoaded) panel.innerHTML=`<div class="loading"><div class="spinner"></div><div>載入全球指數...</div></div>`;
-  else renderGlobalTable();
+  panel.style.display='block';
+  if(!globalLoaded){
+    panel.innerHTML=`<div class="loading"><div class="spinner"></div><div>載入全球指數中...</div></div>`;
+  } else {
+    renderGlobalTable();
+  }
 }
 
 // ── 美股資料載入 ──

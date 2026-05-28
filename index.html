@@ -444,13 +444,16 @@ async function loadData(){
 }
 
 function processTWSE(data){
-  return data.filter(d=>d.Code&&d.ClosingPrice&&d.ClosingPrice!=='--').map(d=>{
+  return data.filter(d=>d.Code&&d.ClosingPrice&&d.ClosingPrice!=='--'&&d.ClosingPrice!=='-').map(d=>{
     const close=parseFloat(d.ClosingPrice)||0;
     const open=parseFloat(d.OpeningPrice)||close;
     const high=parseFloat(d.HighestPrice)||close;
     const low=parseFloat(d.LowestPrice)||close;
     const chg=parseFloat(d.Change)||0;
-    const chgP=open>0?chg/open*100:0;
+    // MIS 資料用昨收算漲跌幅；openapi 用開盤
+    // 昨收 = close - chg（最準確）
+    const prev = close - chg;
+    const chgP = prev > 0 ? parseFloat((chg / prev * 100).toFixed(2)) : 0;
     const vol=parseInt((d.TradeVolume||'0').replace(/,/g,''))||0;
     const pe=perMap[d.Code];
     const peV=pe?.per||null, yld=pe?.yld||null, pbV=pe?.pbr||null;
@@ -458,25 +461,30 @@ function processTWSE(data){
     const sector=isETF?'ETF':getSec(d.IndustryCategory||'');
     const turn=0;
     return{id:d.Code, name:d.Name||d.Code, sector, isETF, market:'twse',
-      open, close, high, low, vol, chg, chgP, peV, yld, pbV,
+      open, close, high, low, vol, chg,
+      chgP: isNaN(chgP)?0:chgP,
+      peV, yld, pbV,
       sig:calcSig({open,close,high,low,chgP,peV,turn,ff:0}), turn};
   });
 }
 
 function processTPEx(data){
-  return data.filter(d=>d.SecuritiesCompanyCode&&d.Close&&d.Close!=='--'&&d.Close!=='0').map(d=>{
+  return data.filter(d=>d.SecuritiesCompanyCode&&d.Close&&d.Close!=='--'&&d.Close!=='0'&&d.Close!=='-').map(d=>{
     const close=parseFloat(d.Close)||0;
     const open=parseFloat(d.Open)||close;
     const high=parseFloat(d.High)||close;
     const low=parseFloat(d.Low)||close;
     const chg=parseFloat(d.Change)||0;
-    const chgP=open>0?chg/open*100:0;
+    const prev = close - chg;
+    const chgP = prev > 0 ? parseFloat((chg / prev * 100).toFixed(2)) : 0;
     const vol=parseInt((d.TradingShares||'0').replace(/,/g,''))||0;
     const isETF=detectETF(d.SecuritiesCompanyCode, d.CompanyName||'');
     const sector=isETF?'ETF':getSec(d.Industry||'');
     return{id:d.SecuritiesCompanyCode, name:d.CompanyName||d.SecuritiesCompanyCode,
       sector, isETF, market:'tpex',
-      open, close, high, low, vol, chg, chgP, peV:null, yld:null, pbV:null,
+      open, close, high, low, vol, chg,
+      chgP: isNaN(chgP)?0:chgP,
+      peV:null, yld:null, pbV:null,
       sig:calcSig({open,close,high,low,chgP,peV:null,turn:0,ff:0}), turn:0};
   });
 }

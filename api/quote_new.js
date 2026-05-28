@@ -200,19 +200,20 @@ export default async function handler(req, res) {
     }
 
     // ══════════════════════════════════════════════════
-    // 6. 個股日K線（最近3個月）
+    // 6. 個股日K線（最近4個月，確保季線60天資料足夠）
     // ══════════════════════════════════════════════════
     if (type === 'kline') {
       if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
       const today = new Date();
       const results = [];
-      for (let m = 0; m < 3; m++) {
+      // 抓4個月，確保足夠計算 MA60（季線）
+      for (let m = 0; m < 4; m++) {
         const d = new Date(today.getFullYear(), today.getMonth()-m, 1);
         const ym = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}01`;
         try {
           const r = await fetch(
             `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=${ym}&stockNo=${stock_id}&response=json`,
-            { headers:{'Accept':'application/json'} }
+            { headers:{'Accept':'application/json','Referer':'https://www.twse.com.tw/'} }
           );
           const j = await r.json();
           if (j.data?.length > 0) {
@@ -222,13 +223,91 @@ export default async function handler(req, res) {
               high:  parseFloat(row[4]?.replace(/,/g,''))||0,
               low:   parseFloat(row[5]?.replace(/,/g,''))||0,
               close: parseFloat(row[6]?.replace(/,/g,''))||0,
-              volume:parseInt(row[1]?.replace(/,/g,''))||0,
+              volume:Math.round((parseInt(row[1]?.replace(/,/g,''))||0)/1000), // 股→張
             })));
           }
         } catch(e) { /* skip */ }
       }
       res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate');
       return res.status(200).json({ data:results, stock_id, source:'TWSE_KLINE' });
+    }
+
+    // ══════════════════════════════════════════════════
+    // 7. 融資融券（個股，當日）
+    // ══════════════════════════════════════════════════
+    if (type === 'margin_detail') {
+      if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+      const today = new Date();
+      const yyyymmdd = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+      try {
+        const r = await fetch(
+          `https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date=${yyyymmdd}&selectType=STOCK&response=json`,
+          { headers:{'Accept':'application/json','Referer':'https://www.twse.com.tw/'} }
+        );
+        const j = await r.json();
+        const rows = j.data||[];
+        const item = rows.find(row => row[0]===stock_id);
+        res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate');
+        return res.status(200).json({
+          stock_id,
+          data: item ? {
+            // 融資
+            marginBuy:    parseInt(item[2]?.replace(/,/g,''))||0,   // 融資買進
+            marginSell:   parseInt(item[3]?.replace(/,/g,''))||0,   // 融資賣出
+            marginRedeem: parseInt(item[4]?.replace(/,/g,''))||0,   // 現金償還
+            marginBalance:parseInt(item[5]?.replace(/,/g,''))||0,   // 融資餘額
+            marginLimit:  parseInt(item[6]?.replace(/,/g,''))||0,   // 融資限額
+            // 融券
+            shortSell:    parseInt(item[8]?.replace(/,/g,''))||0,   // 融券賣出
+            shortBuy:     parseInt(item[9]?.replace(/,/g,''))||0,   // 融券買進
+            shortReturn:  parseInt(item[10]?.replace(/,/g,''))||0,  // 現券償還
+            shortBalance: parseInt(item[11]?.replace(/,/g,''))||0,  // 融券餘額
+            shortLimit:   parseInt(item[12]?.replace(/,/g,''))||0,  // 融券限額
+            // 資券互抵
+            offset:       parseInt(item[14]?.replace(/,/g,''))||0,
+          } : null,
+          source: 'TWSE_MARGIN',
+          date: yyyymmdd
+        });
+      } catch(e) {
+        return res.status(200).json({ stock_id, data: null, error: e.message });
+      }
+    }
+
+    // ══════════════════════════════════════════════════
+    // 8. 三大法人個股買賣（當日）
+    // ══════════════════════════════════════════════════
+    if (type === 'institution_detail') {
+      if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+      try {
+        const today = new Date();
+        const yyyymmdd = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+        const r = await fetch(
+          `https://www.twse.com.tw/rwd/zh/fund/T86?date=${yyyymmdd}&selectType=ALLBUT0999&response=json`,
+          { headers:{'Accept':'application/json','Referer':'https://www.twse.com.tw/'} }
+        );
+        const j = await r.json();
+        const rows = j.data||[];
+        const item = rows.find(row => row[0]===stock_id);
+        res.setHeader('Cache-Control','s-maxage=3600, stale-while-revalidate');
+        return res.status(200).json({
+          stock_id,
+          data: item ? {
+            foreignBuy:   parseInt(item[2]?.replace(/,/g,''))||0,  // 外資買進
+            foreignSell:  parseInt(item[3]?.replace(/,/g,''))||0,  // 外資賣出
+            foreignNet:   parseInt(item[4]?.replace(/,/g,''))||0,  // 外資買賣超
+            trustBuy:     parseInt(item[7]?.replace(/,/g,''))||0,  // 投信買進
+            trustSell:    parseInt(item[8]?.replace(/,/g,''))||0,  // 投信賣出
+            trustNet:     parseInt(item[9]?.replace(/,/g,''))||0,  // 投信買賣超
+            dealerNet:    parseInt(item[12]?.replace(/,/g,''))||0, // 自營商買賣超
+            totalNet:     parseInt(item[13]?.replace(/,/g,''))||0, // 三大法人合計
+          } : null,
+          source: 'TWSE_T86',
+          date: yyyymmdd
+        });
+      } catch(e) {
+        return res.status(200).json({ stock_id, data: null, error: e.message });
+      }
     }
 
     return res.status(400).json({ error: '不支援的 type 參數' });

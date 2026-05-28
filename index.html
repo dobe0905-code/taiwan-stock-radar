@@ -318,12 +318,16 @@ async function pollMisBatch(){
     // 輪詢上市一批
     if(twseMisBatch.length>0){
       const batch = twseMisBatch[misIdx.twse % twseMisBatch.length];
-      const r = await fetch(`/api/quote?type=twse_realtime&stocks=${batch.join(',')}`);
+      const r = await fetch(`/api/quote?type=realtime&market=twse&stocks=${batch.join(',')}`);
       const j = await r.json();
-      const arr = j.data?.msgArray||[];
+      const arr = j.data||[];
       for(const item of arr){
         const sid=item.c;
-        const price=parseFloat(item.z||item.y)||0;
+        if(!sid) continue;
+        // z=成交價 y=昨收 o=開盤 h=最高 l=最低 v=成交量
+        const z=parseFloat(item.z)||0;
+        const y=parseFloat(item.y)||0;
+        const price=z>0?z:y;
         if(!price) continue;
         const s=stocks.find(x=>x.id===sid);
         if(s){
@@ -333,13 +337,23 @@ async function pollMisBatch(){
           s.high=parseFloat(item.h)||s.high;
           s.low=parseFloat(item.l)||s.low;
           s.vol=parseFloat(item.v)||s.vol;
-          s.chg=parseFloat(item.z&&item.y?(item.z-item.y).toFixed(2):0)||s.chg;
-          s.chgP=s.open>0?s.chg/s.open*100:s.chgP;
+          s.chg=z>0&&y>0?parseFloat((z-y).toFixed(2)):s.chg;
+          s.chgP=y>0&&z>0?parseFloat(((z-y)/y*100).toFixed(2)):s.chgP;
           s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn});
           misCount++;
           if(prev!==s.close){
             const row=document.querySelector(`tr[data-id="${sid}"]`);
             if(row){const c=row.querySelector('.live-price');if(c){c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');}}
+          }
+          // 更新詳細面板
+          if(currentDetId===sid){
+            const pe=document.getElementById('d-price');
+            const ce=document.getElementById('d-chg');
+            if(pe) pe.textContent=s.close.toFixed(2);
+            if(ce){
+              ce.textContent=(s.chgP>=0?'+':'')+s.chgP.toFixed(2)+'%';
+              ce.className='pill '+(s.chgP>0?'pill-up':s.chgP<0?'pill-dn':'pill-neu');
+            }
           }
         }
       }
@@ -348,12 +362,15 @@ async function pollMisBatch(){
     // 輪詢上櫃一批
     if(tpexMisBatch.length>0){
       const batch2 = tpexMisBatch[misIdx.tpex % tpexMisBatch.length];
-      const r2 = await fetch(`/api/quote?type=tpex_realtime&stocks=${batch2.join(',')}`);
+      const r2 = await fetch(`/api/quote?type=realtime&market=tpex&stocks=${batch2.join(',')}`);
       const j2 = await r2.json();
-      const arr2 = j2.data?.msgArray||[];
+      const arr2 = j2.data||[];
       for(const item of arr2){
         const sid=item.c;
-        const price=parseFloat(item.z||item.y)||0;
+        if(!sid) continue;
+        const z=parseFloat(item.z)||0;
+        const y=parseFloat(item.y)||0;
+        const price=z>0?z:y;
         if(!price) continue;
         const s=stocks.find(x=>x.id===sid);
         if(s){
@@ -362,8 +379,8 @@ async function pollMisBatch(){
           s.high=parseFloat(item.h)||s.high;
           s.low=parseFloat(item.l)||s.low;
           s.vol=parseFloat(item.v)||s.vol;
-          s.chg=parseFloat(item.z&&item.y?(item.z-item.y).toFixed(2):0)||s.chg;
-          s.chgP=s.open>0?s.chg/s.open*100:s.chgP;
+          s.chg=z>0&&y>0?parseFloat((z-y).toFixed(2)):s.chg;
+          s.chgP=y>0&&z>0?parseFloat(((z-y)/y*100).toFixed(2)):s.chgP;
           s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn});
           misCount++;
         }

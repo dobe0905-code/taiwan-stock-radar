@@ -672,9 +672,9 @@ function startDetPoll(s){
       // 均價 = 成交金額 / 成交量（MIS 無直接均價，用 (o+h+l+z)/4 估算）
       const avgPrice = o>0&&h>0&&l>0&&z>0 ? ((o+h+l+z)/4).toFixed(2) : '—';
 
-      // 內外盤：MIS 有 oa(外盤量) ob(內盤量)，若無則顯示 —
-      const ob = item.ob ? parseInt(item.ob)||0 : 0;  // 內盤（買進成交）
-      const oa = item.oa ? parseInt(item.oa)||0 : 0;  // 外盤（賣出成交）
+      // 內外盤：MIS oa=外盤量, ob=內盤量（買進成交=外盤，賣出=內盤）
+      const ob = item.ob ? parseInt(item.ob)||0 : 0;  // 內盤（賣方主動）
+      const oa = item.oa ? parseInt(item.oa)||0 : 0;  // 外盤（買方主動）
 
       // 更新頂部大標
       const pe=document.getElementById('d-price');
@@ -792,18 +792,38 @@ function buildDetHTML(s,live){
     </div>
   </div>
   <div class="ds" id="margin-section">
-    <div class="dst">融資融券</div>
+    <div class="dst">融資融券（當日）</div>
     <div id="margin-loading" style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--text3);font-size:11px;">
       <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>載入融資融券...
     </div>
     <div id="margin-content" style="display:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:4px;margin-bottom:6px">
+        <div style="font-size:10px;font-weight:700;color:var(--green2);padding:4px 6px;background:rgba(63,185,80,.08);border-radius:5px;text-align:center">融資</div>
+        <div style="font-size:10px;font-weight:700;color:var(--red2);padding:4px 6px;background:rgba(248,81,73,.08);border-radius:5px;text-align:center">融券</div>
+      </div>
       <div class="kv2">
-        <div class="kv"><div class="kv-l">融資買入</div><div id="m-buy" class="kv-v c-up">—</div></div>
-        <div class="kv"><div class="kv-l">融資賣出</div><div id="m-sell" class="kv-v c-dn">—</div></div>
-        <div class="kv"><div class="kv-l">融資餘額</div><div id="m-total" class="kv-v">—</div></div>
+        <div class="kv"><div class="kv-l">融資買進</div><div id="m-buy" class="kv-v c-up">—</div></div>
         <div class="kv"><div class="kv-l">融券賣出</div><div id="s-sell" class="kv-v c-dn">—</div></div>
-        <div class="kv"><div class="kv-l">融券買入</div><div id="s-buy" class="kv-v c-up">—</div></div>
+        <div class="kv"><div class="kv-l">融資賣出</div><div id="m-sell" class="kv-v c-dn">—</div></div>
+        <div class="kv"><div class="kv-l">融券買進</div><div id="s-buy" class="kv-v c-up">—</div></div>
+        <div class="kv"><div class="kv-l">融資餘額</div><div id="m-total" class="kv-v">—</div></div>
         <div class="kv"><div class="kv-l">融券餘額</div><div id="s-total" class="kv-v">—</div></div>
+        <div class="kv"><div class="kv-l">融資限額</div><div id="m-limit" class="kv-v" style="font-size:10px">—</div></div>
+        <div class="kv"><div class="kv-l">券資比</div><div id="margin-ratio" class="kv-v">—</div></div>
+      </div>
+    </div>
+  </div>
+  <div class="ds" id="institution-section">
+    <div class="dst">三大法人（當日買賣超）</div>
+    <div id="inst-loading" style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--text3);font-size:11px;">
+      <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>載入法人資料...
+    </div>
+    <div id="inst-content" style="display:none">
+      <div class="kv2">
+        <div class="kv"><div class="kv-l">外資買賣超</div><div id="inst-foreign" class="kv-v">—</div></div>
+        <div class="kv"><div class="kv-l">投信買賣超</div><div id="inst-trust" class="kv-v">—</div></div>
+        <div class="kv"><div class="kv-l">自營商買賣超</div><div id="inst-dealer" class="kv-v">—</div></div>
+        <div class="kv"><div class="kv-l">三大合計</div><div id="inst-total" class="kv-v" style="font-weight:700">—</div></div>
       </div>
     </div>
   </div>
@@ -884,6 +904,7 @@ async function buildDetCharts(s){
   // ── 同時載入籌碼分析資料 ──
   loadHoldersData(s.id);
   loadMarginData(s.id);
+  loadInstitutionData(s.id);
 
   // ── MA 均線乖離率計算（從 K 線資料）──
   try{
@@ -1107,33 +1128,90 @@ async function loadHoldersData(stockId){
 }
 
 async function loadMarginData(stockId){
-  if(!stockId.match(/^\d{4}$/)){
-    const el=document.getElementById('margin-loading');
-    if(el) el.style.display='none';
-    return;
+  const ml=document.getElementById('margin-loading');
+  const mc=document.getElementById('margin-content');
+  if(!stockId.match(/^\d{4,6}$/)){
+    if(ml) ml.style.display='none'; return;
   }
   try{
-    const r=await fetch(`/api/fundamental?type=margin&stock_id=${stockId}`);
+    // 使用新的 margin_detail（TWSE 官網當日資料，含限額）
+    const r=await fetch(`/api/quote?type=margin_detail&stock_id=${stockId}`);
     const j=await r.json();
-    const ml=document.getElementById('margin-loading');
-    const mc=document.getElementById('margin-content');
     if(!ml) return;
     ml.style.display='none';
-    if(j.data&&mc){
+    if(j.data && mc){
       mc.style.display='block';
-      document.getElementById('m-buy').textContent=fmV(j.data.marginBuy);
-      document.getElementById('m-sell').textContent=fmV(j.data.marginSell);
-      document.getElementById('m-total').textContent=fmV(j.data.marginTotal);
-      document.getElementById('s-sell').textContent=fmV(j.data.shortSell);
-      document.getElementById('s-buy').textContent=fmV(j.data.shortBuy);
-      document.getElementById('s-total').textContent=fmV(j.data.shortTotal);
+      const d=j.data;
+      const upd=(id,v,cls)=>{const el=document.getElementById(id);if(el){el.textContent=fmV(v);if(cls)el.className='kv-v '+cls;}};
+      upd('m-buy',   d.marginBuy,    'c-up');
+      upd('m-sell',  d.marginSell,   'c-dn');
+      upd('m-total', d.marginBalance,'');
+      upd('s-sell',  d.shortSell,    'c-dn');
+      upd('s-buy',   d.shortBuy,     'c-up');
+      upd('s-total', d.shortBalance, '');
+      upd('m-limit', d.marginLimit,  '');
+      // 券資比 = 融券餘額/融資餘額 × 100%
+      const el=document.getElementById('margin-ratio');
+      if(el){
+        if(d.marginBalance>0){
+          const ratio=(d.shortBalance/d.marginBalance*100).toFixed(1);
+          el.textContent=ratio+'%';
+          el.className='kv-v '+(parseFloat(ratio)>20?'c-dn':parseFloat(ratio)<5?'c-up':'');
+        } else { el.textContent='—'; }
+      }
     } else {
-      ml.innerHTML='<span style="color:var(--text3);font-size:11px">今日無融資融券資料</span>';
-      ml.style.display='flex';
+      // fallback: 用 fundamental margin
+      const r2=await fetch(`/api/fundamental?type=margin&stock_id=${stockId}`);
+      const j2=await r2.json();
+      if(j2.data&&mc){
+        mc.style.display='block';
+        document.getElementById('m-buy').textContent=fmV(j2.data.marginBuy);
+        document.getElementById('m-sell').textContent=fmV(j2.data.marginSell);
+        document.getElementById('m-total').textContent=fmV(j2.data.marginTotal);
+        document.getElementById('s-sell').textContent=fmV(j2.data.shortSell);
+        document.getElementById('s-buy').textContent=fmV(j2.data.shortBuy);
+        document.getElementById('s-total').textContent=fmV(j2.data.shortTotal);
+      } else {
+        if(ml){ ml.innerHTML='<span style="color:var(--text3);font-size:11px">今日無融資融券資料</span>'; ml.style.display='flex'; }
+      }
     }
   }catch(e){
-    const el=document.getElementById('margin-loading');
-    if(el) el.innerHTML='<span style="color:var(--text3);font-size:11px">融資融券暫無法取得</span>';
+    if(ml) ml.innerHTML='<span style="color:var(--text3);font-size:11px">融資融券暫無法取得</span>';
+  }
+}
+
+async function loadInstitutionData(stockId){
+  const il=document.getElementById('inst-loading');
+  const ic=document.getElementById('inst-content');
+  if(!stockId.match(/^\d{4,6}$/)){
+    if(il) il.style.display='none'; return;
+  }
+  try{
+    const r=await fetch(`/api/quote?type=institution_detail&stock_id=${stockId}`);
+    const j=await r.json();
+    if(!il) return;
+    il.style.display='none';
+    if(j.data && ic){
+      ic.style.display='block';
+      const d=j.data;
+      const fmNet=(v)=>{
+        if(!v&&v!==0) return '—';
+        const col=v>0?'c-up':v<0?'c-dn':'c-neu';
+        return `<span class="${col}">${v>0?'+':''}${v.toLocaleString()}</span>`;
+      };
+      document.getElementById('inst-foreign').innerHTML=fmNet(d.foreignNet);
+      document.getElementById('inst-trust').innerHTML=fmNet(d.trustNet);
+      document.getElementById('inst-dealer').innerHTML=fmNet(d.dealerNet);
+      const totalEl=document.getElementById('inst-total');
+      if(totalEl){
+        const tc=d.totalNet>0?'c-up':d.totalNet<0?'c-dn':'c-neu';
+        totalEl.innerHTML=`<span class="${tc}">${d.totalNet>0?'+':''}${d.totalNet?.toLocaleString()||'—'}</span>`;
+      }
+    } else {
+      if(il){ il.innerHTML='<span style="color:var(--text3);font-size:11px">今日無三大法人資料</span>'; il.style.display='flex'; }
+    }
+  }catch(e){
+    if(il) il.innerHTML='<span style="color:var(--text3);font-size:11px">法人資料暫無法取得</span>';
   }
 }
 

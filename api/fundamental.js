@@ -10,53 +10,60 @@ export default async function handler(req, res) {
   const { type, stock_id } = req.query;
 
   try {
+
     // ── 1. 集保持股分散（大戶/散戶比例）──
+    // 改用 TDCC OpenData CSV API，避免網頁爬蟲被擋
     if (type === 'holders') {
       if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
 
-      // 集保結算所 API
-      const url = `https://www.tdcc.com.tw/portal/zh/smWeb/qryStock?scaDate=&SqlMethod=StockNo&StockNo=${stock_id}&StockName=&radioStockNo=StockNo`;
-      const r = await fetch(url, {
+      // TDCC 開放資料 API：取最新一期集保分散資料
+      // 先取得最新日期清單
+      let scaDate = '';
+      try {
+        const dateRes = await fetch(
+          'https://openapi.tdcc.com.tw/v1/opendata/1-5',
+          { headers: { 'Accept': 'application/json' } }
+        );
+        if (dateRes.ok) {
+          const dateData = await dateRes.json();
+          // 找最新一筆對應股票的資料
+          const found = dateData.find(d => d.StockNo === stock_id || d.stock_id === stock_id);
+          if (found) scaDate = found.ScaDate || found.sca_date || '';
+        }
+      } catch(e) { /* ignore, will try without date */ }
+
+      // 使用 TDCC 開放資料 API（JSON格式）
+      const apiUrl = `https://openapi.tdcc.com.tw/v1/opendata/1-5?StockNo=${stock_id}`;
+      const r = await fetch(apiUrl, {
         headers: {
-          'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36',
-          'Accept': 'text/html,application/xhtml+xml',
-          'Referer': 'https://www.tdcc.com.tw/portal/zh/smWeb/qryStock'
+          'Accept': 'application/json',
+          'User-Agent': 'Mozilla/5.0 (compatible; TW-Stock-Radar/1.0)'
         }
       });
-      const html = await r.text();
 
-      // 解析持股分散資料
-      const rows = [];
-      const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
-      const tdRegex = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-      let trMatch;
-      while ((trMatch = trRegex.exec(html)) !== null) {
-        const tds = [];
-        let tdMatch;
-        const tdReg = /<td[^>]*>([\s\S]*?)<\/td>/gi;
-        while ((tdMatch = tdReg.exec(trMatch[1])) !== null) {
-          tds.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
-        }
-        if (tds.length >= 5 && tds[0].match(/^\d+/)) {
-          rows.push({
-            level: tds[0],      // 持股分級
-            people: parseInt(tds[1].replace(/,/g, '')) || 0,  // 人數
-            shares: parseInt(tds[2].replace(/,/g, '')) || 0,  // 股數
-            ratio: parseFloat(tds[4]) || 0   // 持股比例
-          });
-        }
+      if (!r.ok) throw new Error(`TDCC API 回應 ${r.status}`);
+      const data = await r.json();
+
+      if (!data || !Array.isArray(data) || data.length === 0) {
+        // fallback: 嘗試舊版網頁解析
+        return await holdersFromTDCCWeb(stock_id, res);
       }
 
-      // 計算大戶（1000張以上 = 1,000,000股以上）vs 散戶
-      // TDCC 等級格式：「1-999」「1,000-5,000」... 單位為「股」
-      // 1張 = 1000股；1000張 = 1,000,000股
+      // TDCC OpenData 欄位：
+      // StockNo, StockName, ScaDate, HolderCount(持股分級代號),
+      // People(人數), Shares(股數), Percent(%)
+      const rows = data.map(d => ({
+        level: d.HolderCount || d.holder_count || d.Level || '',
+        people: parseInt((d.People || d.people || '0').replace(/,/g,'')) || 0,
+        shares: parseInt((d.Shares || d.shares || '0').replace(/,/g,'')) || 0,
+        ratio: parseFloat(d.Percent || d.percent || 0) || 0
+      })).filter(r => r.level && r.people > 0);
+
+      // 大戶門檻：持股 >= 1,000,000 股（即 1000 張 × 1000股/張）
       let bigRatio = 0, smallRatio = 0, bigPeople = 0, smallPeople = 0;
       for (const row of rows) {
-        const level = row.level;
-        // 取等級中最小值判斷（去除逗號後取第一個數字）
-        const minShares = parseInt(level.replace(/,/g,'').split('-')[0].trim()) || 0;
-        // 大戶門檻：持股超過 1,000,000 股（即 1000 張）
-        if (minShares >= 1000000 || level.includes('超過')) {
+        const minShares = parseInt(row.level.replace(/,/g,'').split('-')[0].trim()) || 0;
+        if (minShares >= 1000000 || row.level.includes('超過') || row.level.includes('以上')) {
           bigRatio += row.ratio;
           bigPeople += row.people;
         } else {
@@ -76,7 +83,8 @@ export default async function handler(req, res) {
           smallPeople,
           totalPeople: bigPeople + smallPeople
         },
-        source: 'TDCC',
+        source: 'TDCC_OPENAPI',
+        scaDate: data[0]?.ScaDate || data[0]?.sca_date || '',
         ts: new Date().toISOString()
       });
     }
@@ -88,7 +96,6 @@ export default async function handler(req, res) {
         { headers: { 'Accept': 'application/json' } }
       );
       const data = await r.json();
-
       if (stock_id) {
         const item = data.find(d => d.Code === stock_id);
         return res.status(200).json({ data: item || null, source: 'TWSE_INST' });
@@ -156,5 +163,82 @@ export default async function handler(req, res) {
 
   } catch (err) {
     return res.status(500).json({ error: '資料取得失敗：' + err.message });
+  }
+}
+
+// ── Fallback：從 TDCC 網頁解析（備援）──
+async function holdersFromTDCCWeb(stock_id, res) {
+  try {
+    // 先取 session cookie
+    const initRes = await fetch('https://www.tdcc.com.tw/portal/zh/smWeb/qryStock', {
+      headers: { 'User-Agent': 'Mozilla/5.0', 'Accept': 'text/html' }
+    });
+    const setCookie = initRes.headers.get('set-cookie') || '';
+    const cookie = setCookie.split(';')[0];
+
+    const url = `https://www.tdcc.com.tw/portal/zh/smWeb/qryStock`;
+    const body = new URLSearchParams({
+      scaDate: '', SqlMethod: 'StockNo',
+      StockNo: stock_id, StockName: '', radioStockNo: 'StockNo'
+    });
+    const r = await fetch(url, {
+      method: 'POST',
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)',
+        'Content-Type': 'application/x-www-form-urlencoded',
+        'Referer': 'https://www.tdcc.com.tw/portal/zh/smWeb/qryStock',
+        'Cookie': cookie
+      },
+      body: body.toString()
+    });
+    const html = await r.text();
+
+    const rows = [];
+    const trRegex = /<tr[^>]*>([\s\S]*?)<\/tr>/gi;
+    let trMatch;
+    while ((trMatch = trRegex.exec(html)) !== null) {
+      const tds = [];
+      const tdReg = /<td[^>]*>([\s\S]*?)<\/td>/gi;
+      let tdMatch;
+      while ((tdMatch = tdReg.exec(trMatch[1])) !== null) {
+        tds.push(tdMatch[1].replace(/<[^>]+>/g, '').trim());
+      }
+      if (tds.length >= 5 && tds[0].match(/^\d/)) {
+        rows.push({
+          level: tds[0],
+          people: parseInt(tds[1].replace(/,/g,'')) || 0,
+          shares: parseInt(tds[2].replace(/,/g,'')) || 0,
+          ratio: parseFloat(tds[4]) || 0
+        });
+      }
+    }
+
+    let bigRatio=0, smallRatio=0, bigPeople=0, smallPeople=0;
+    for (const row of rows) {
+      const minShares = parseInt(row.level.replace(/,/g,'').split('-')[0].trim()) || 0;
+      if (minShares >= 1000000 || row.level.includes('超過')) {
+        bigRatio += row.ratio; bigPeople += row.people;
+      } else {
+        smallRatio += row.ratio; smallPeople += row.people;
+      }
+    }
+
+    res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+    return res.status(200).json({
+      stock_id, rows,
+      summary: {
+        bigHolder: parseFloat(bigRatio.toFixed(2)),
+        smallHolder: parseFloat(smallRatio.toFixed(2)),
+        bigPeople, smallPeople, totalPeople: bigPeople + smallPeople
+      },
+      source: 'TDCC_WEB',
+      ts: new Date().toISOString()
+    });
+  } catch(e) {
+    return res.status(200).json({
+      stock_id, rows: [],
+      summary: { bigHolder:0, smallHolder:0, bigPeople:0, smallPeople:0, totalPeople:0 },
+      source: 'TDCC_FAIL', error: e.message
+    });
   }
 }

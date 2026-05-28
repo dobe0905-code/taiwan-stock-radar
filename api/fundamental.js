@@ -47,15 +47,16 @@ export default async function handler(req, res) {
         }
       }
 
-      // 計算大戶（1000張以上）vs 散戶（999張以下）
+      // 計算大戶（1000張以上 = 1,000,000股以上）vs 散戶
+      // TDCC 等級格式：「1-999」「1,000-5,000」... 單位為「股」
+      // 1張 = 1000股；1000張 = 1,000,000股
       let bigRatio = 0, smallRatio = 0, bigPeople = 0, smallPeople = 0;
       for (const row of rows) {
         const level = row.level;
-        // 1000張以上為大戶
-        if (level.includes('1,000,001') || level.includes('超過')) {
-          bigRatio += row.ratio;
-          bigPeople += row.people;
-        } else if (parseInt(level.replace(/,/g,'')) >= 1000000) {
+        // 取等級中最小值判斷（去除逗號後取第一個數字）
+        const minShares = parseInt(level.replace(/,/g,'').split('-')[0].trim()) || 0;
+        // 大戶門檻：持股超過 1,000,000 股（即 1000 張）
+        if (minShares >= 1000000 || level.includes('超過')) {
           bigRatio += row.ratio;
           bigPeople += row.people;
         } else {

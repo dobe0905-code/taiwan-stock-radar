@@ -6,15 +6,7 @@
 <title>台股雷達 · TW Stock Radar</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+TC:wght@300;400;500;700&family=JetBrains+Mono:wght@400;600&display=swap" rel="stylesheet">
 <script src="https://cdnjs.cloudflare.com/ajax/libs/Chart.js/4.4.1/chart.umd.min.js"></script>
-<script type="module">
-  import { initializeApp } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-app.js';
-  import { getDatabase, ref, onValue } from 'https://www.gstatic.com/firebasejs/10.7.0/firebase-database.js';
-  const app = initializeApp({ databaseURL: 'https://taiwan-stock-radar-default-rtdb.asia-southeast1.firebasedatabase.app' });
-  const db = getDatabase(app);
-  window._fbDb = db; window._fbRef = ref; window._fbOnValue = onValue;
-  window._fbReady = true;
-  window.dispatchEvent(new Event('firebase-ready'));
-</script>
+<!-- Firebase removed -->
 <style>
 :root{
   --bg:#070b14;--bg2:#0c1220;--bg3:#111828;--bg4:#17213a;--bg5:#1e2d4a;
@@ -342,51 +334,47 @@ const THEME_MAP = {
 
 // ── 大盤指數列更新 ──
 async function loadIndexBar(){
+  // 全部透過後端 /api/global 避免 CORS
   try{
-    // 加權指數、成交量：MIS OHLC 文字檔
-    const r = await fetch(`https://mis.twse.com.tw/stock/data/mis_ohlc_TSE.txt?_=${Date.now()}`);
-    const txt = await r.text();
-    const lines = txt.trim().split('\n');
-    if(lines.length>1){
-      const cols = lines[1].split('|');
-      // 格式: 日期|時間|開|高|低|收|成交量(億)|...
-      const close = parseFloat(cols[5])||0;
-      const prev  = parseFloat(cols[8])||close; // 昨收在 index 8
-      const chg   = parseFloat((close-prev).toFixed(2));
-      const chgP  = prev>0?parseFloat(((close-prev)/prev*100).toFixed(2)):0;
-      const col   = chg>0?'var(--green2)':chg<0?'var(--red2)':'var(--text2)';
+    const r = await fetch('/api/global?type=global_index');
+    const j = await r.json();
+    const data = j.data||[];
+
+    const twii    = data.find(d=>d.symbol==='^TWII');
+    const usdtwd  = data.find(d=>d.symbol==='USDTWD=X');
+
+    // 加權指數
+    if(twii){
+      const col=twii.changeP>0?'var(--green2)':twii.changeP<0?'var(--red2)':'var(--text2)';
       const el=document.getElementById('idx-taiex');
       const elc=document.getElementById('idx-taiex-chg');
-      if(el){ el.textContent=close.toLocaleString('en-US',{minimumFractionDigits:2}); el.style.color=col; el.classList.remove('idx-loading'); }
-      if(elc){ elc.textContent=(chg>=0?'+':'')+chg+'('+chgP+'%)'; elc.style.color=col; }
-      const vol=document.getElementById('idx-vol');
-      if(vol&&cols[6]) vol.textContent=parseFloat(cols[6]).toFixed(0);
-    }
-  }catch(e){}
-
-  try{
-    // 台指近月期貨：Yahoo Finance ^TWII 代替（MIS 期貨需登入）
-    const r2 = await fetch('/api/global?type=global_index');
-    const j2 = await r2.json();
-    const twii = (j2.data||[]).find(d=>d.symbol==='^TWII');
-    const usdtwd = (j2.data||[]).find(d=>d.symbol==='USDTWD=X');
-    if(twii){
-      // 用加權指數補足（期貨資料 MIS 無免費端點）
-      const el=document.getElementById('idx-tx');
-      const elc=document.getElementById('idx-tx-chg');
-      const col=twii.changeP>0?'var(--green2)':twii.changeP<0?'var(--red2)':'var(--text2)';
       if(el){el.textContent=(twii.price||0).toLocaleString('en-US',{minimumFractionDigits:2});el.style.color=col;el.classList.remove('idx-loading');}
-      if(elc){elc.textContent=(twii.changeP>=0?'+':'')+twii.changeP+'%';elc.style.color=col;}
+      if(elc){elc.textContent=(twii.changeP>=0?'+':'')+twii.changeP?.toFixed(2)+'%';elc.style.color=col;}
+      // 台指近月（以加權指數近似，真實期貨需 TAIFEX API）
+      const tx=document.getElementById('idx-tx');
+      const txc=document.getElementById('idx-tx-chg');
+      if(tx){tx.textContent='≈'+(twii.price||0).toLocaleString('en-US',{minimumFractionDigits:2});tx.style.color=col;tx.classList.remove('idx-loading');}
+      if(txc){txc.textContent=(twii.changeP>=0?'+':'')+twii.changeP?.toFixed(2)+'%';txc.style.color=col;}
+      // 台指期（同近月）
+      const txf=document.getElementById('idx-txf');
+      if(txf){txf.textContent='≈'+(twii.price||0).toLocaleString('en-US',{minimumFractionDigits:2});txf.style.color='var(--text3)';txf.classList.remove('idx-loading');}
     }
-    // 台指期（用 Yahoo ^TWII 模擬，真實期貨需額外 API）
-    const el2=document.getElementById('idx-txf');
-    if(el2&&twii){el2.textContent='≈'+(twii.price||0).toLocaleString('en-US',{minimumFractionDigits:2});el2.style.color='var(--text2)';el2.classList.remove('idx-loading');}
+
     // USD/TWD
     if(usdtwd){
-      const uEl=document.getElementById('idx-usdtwd');
-      if(uEl){uEl.textContent=(usdtwd.price||0).toFixed(3);}
+      const el=document.getElementById('idx-usdtwd');
+      if(el) el.textContent=(usdtwd.price||0).toFixed(3);
     }
-  }catch(e){}
+
+    // 上市成交量：從已載入的 stocks 估算，或留空
+    const volEl=document.getElementById('idx-vol');
+    if(volEl&&stocks.length>0){
+      const twseVol=stocks.filter(s=>s.market==='twse').reduce((a,s)=>a+s.vol,0);
+      if(twseVol>0) volEl.textContent=(twseVol/1e4).toFixed(0); // 張→億（粗估）
+    }
+  }catch(e){
+    console.warn('loadIndexBar error:',e.message);
+  }
 }
 
 // ── MIS 盤中即時輪詢（取代 Firebase + 凱基）──
@@ -691,28 +679,27 @@ function fmN(v){if(Math.abs(v)>=1e4)return(v/1e4).toFixed(1)+'萬';return v.toLo
 function updSum(){
   const twse=stocks.filter(s=>s.market==='twse').length;
   const tpex=stocks.filter(s=>s.market==='tpex').length;
-  document.getElementById('s-tot').textContent=stocks.length;
-  document.getElementById('s-twse').textContent=twse;
-  document.getElementById('s-tpex').textContent=tpex;
-  document.getElementById('s-up').textContent=stocks.filter(s=>s.chgP>0).length;
-  document.getElementById('s-dn').textContent=stocks.filter(s=>s.chgP<0).length;
-  document.getElementById('s-by').textContent=stocks.filter(s=>s.sig.lbl==='買進'||s.sig.lbl==='偏多').length;
-  document.getElementById('s-sl').textContent=stocks.filter(s=>s.sig.lbl==='賣出'||s.sig.lbl==='偏空').length;
+  const _si=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  _si('s-tot',stocks.length);
+  _si('s-twse',twse);
+  _si('s-tpex',tpex);
+  _si('s-up',stocks.filter(s=>s.chgP>0).length);
+  _si('s-dn',stocks.filter(s=>s.chgP<0).length);
+  _si('s-by',stocks.filter(s=>s.sig.lbl==='買進'||s.sig.lbl==='偏多').length);
+  _si('s-sl',stocks.filter(s=>s.sig.lbl==='賣出'||s.sig.lbl==='偏空').length);
 }
 
 function updSB(){
-  document.getElementById('c-all').textContent=stocks.length;
-  document.getElementById('c-wl').textContent=wl.size;
-  document.getElementById('c-twse').textContent=stocks.filter(s=>s.market==='twse').length;
-  document.getElementById('c-tpex').textContent=stocks.filter(s=>s.market==='tpex').length;
-  document.getElementById('c-etf').textContent=stocks.filter(s=>s.isETF).length;
-  document.getElementById('c-stk').textContent=stocks.filter(s=>!s.isETF).length;
-  document.getElementById('c-buy').textContent=stocks.filter(s=>s.sig.cls==='sig-buy').length;
-  document.getElementById('c-sell').textContent=stocks.filter(s=>s.sig.cls==='sig-sell').length;
-  document.getElementById('c-hold').textContent=stocks.filter(s=>s.sig.cls==='sig-hold').length;
-  document.getElementById('c-hv').textContent=stocks.filter(s=>s.vol>5000000).length;
-  document.getElementById('c-lpe').textContent=stocks.filter(s=>s.peV&&s.peV>0&&s.peV<15).length;
-  document.getElementById('c-hyld').textContent=stocks.filter(s=>s.yld&&s.yld>4).length;
+  const _sb=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  _sb('c-all',stocks.length);
+  _sb('c-wl',wl.size);
+  _sb('c-twse',stocks.filter(s=>s.market==='twse').length);
+  _sb('c-tpex',stocks.filter(s=>s.market==='tpex').length);
+  _sb('c-etf',stocks.filter(s=>s.isETF).length);
+  _sb('c-stk',stocks.filter(s=>!s.isETF).length);
+  _sb('c-buy',stocks.filter(s=>s.sig.cls==='sig-buy').length);
+  _sb('c-sell',stocks.filter(s=>s.sig.cls==='sig-sell').length);
+  _sb('c-hold',stocks.filter(s=>s.sig.cls==='sig-hold').length);
   // 族群計數
   for(const [key] of Object.entries(THEME_MAP)){
     const el=document.getElementById('c-g-'+key);
@@ -735,10 +722,11 @@ function openDet(id){
   const live=liveData[id];
   const price=live?.tick?.price||s.close;
   const chgP=live?.tick?.chg_pct||s.chgP;
-  document.getElementById('d-id').textContent=s.id;
-  document.getElementById('d-name').textContent=s.name;
-  document.getElementById('d-sec').textContent=(s.isETF?'ETF':s.sector)+' · '+(s.market==='twse'?'上市 TWSE':'上櫃 TPEx');
-  document.getElementById('d-price').textContent=price.toFixed(2);
+  const _d=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+  _d('d-id',s.id);
+  _d('d-name',s.name);
+  _d('d-sec',(s.isETF?'ETF':s.sector)+' · '+(s.market==='twse'?'上市 TWSE':'上櫃 TPEx'));
+  _d('d-price',price.toFixed(2));
   const ce=document.getElementById('d-chg');
   ce.textContent=(chgP>=0?'+':'')+chgP.toFixed(2)+'%';
   ce.className='pill '+(chgP>0?'pill-up':chgP<0?'pill-dn':'pill-neu');
@@ -1273,10 +1261,11 @@ async function loadHoldersData(stockId){
     const dst = document.querySelector('#holders-section .dst');
     if(dst) dst.textContent=`籌碼分析（集保持股分散）${dateLabel}`;
 
-    document.getElementById('big-ratio').textContent=(sum.bigHolder||0).toFixed(1)+'%';
-    document.getElementById('big-people').textContent=(sum.bigPeople||0).toLocaleString()+' 人';
-    document.getElementById('small-ratio').textContent=(sum.smallHolder||0).toFixed(1)+'%';
-    document.getElementById('small-people').textContent=(sum.smallPeople||0).toLocaleString()+' 人';
+    const _sh=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
+    _sh('big-ratio',(sum.bigHolder||0).toFixed(1)+'%');
+    _sh('big-people',(sum.bigPeople||0).toLocaleString()+' 人');
+    _sh('small-ratio',(sum.smallHolder||0).toFixed(1)+'%');
+    _sh('small-people',(sum.smallPeople||0).toLocaleString()+' 人');
 
     const canvas=document.getElementById('c-holders');
     if(canvas&&j.rows&&j.rows.length>0){
@@ -1778,7 +1767,7 @@ function tqf(f){
 }
 function togWL(id,btn){if(wl.has(id)){wl.delete(id);btn.classList.remove('on');}else{wl.add(id);btn.classList.add('on');}localStorage.setItem('wl',JSON.stringify([...wl]));document.getElementById('c-wl').textContent=wl.size;}
 function setLd(m){document.getElementById('tblBody').innerHTML=`<tr><td colspan="10"><div class="loading"><div class="spinner"></div><div>${m}</div></div></td></tr>`;}
-function setLU(){const n=new Date();document.getElementById('lastUpd').textContent=n.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});}
+function setLU(){const n=new Date();const e=document.getElementById('lastUpd');if(e)e.textContent=n.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});}
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);}
 function schedRef(){
   if(cdTimer)clearInterval(cdTimer);
@@ -1786,7 +1775,7 @@ function schedRef(){
   cdTimer=setInterval(()=>{
     const r=Math.max(0,nxt-Date.now());
     const m=Math.floor(r/60000),s=Math.floor((r%60000)/1000);
-    document.getElementById('cd').textContent=String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
+    const _cd=document.getElementById('cd');if(_cd)_cd.textContent=String(m).padStart(2,'0')+':'+String(s).padStart(2,'0');
     if(r===0)loadData();
   },1000);
 }

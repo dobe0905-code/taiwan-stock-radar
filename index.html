@@ -184,9 +184,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
     <div class="api-badge api-off" id="tpexBadge">
       <div class="api-dot"></div><span>櫃買中心</span>
     </div>
-    <div class="api-badge api-off" id="misBadge">
-      <div class="api-dot"></div><span>盤中即時</span>
-    </div>
     <div class="upd-info">更新 <span id="lastUpd">--:--</span> &nbsp;·&nbsp; <span class="upd-val" id="cd">--:--</span></div>
   </div>
 </div>
@@ -229,7 +226,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
       <div class="sum-card"><div class="sum-lbl">下跌家數</div><div class="sum-val c-dn" id="s-dn">—</div><div class="sum-sub">跌幅>0</div></div>
       <div class="sum-card"><div class="sum-lbl">買進訊號</div><div class="sum-val c-up" id="s-by">—</div><div class="sum-sub">技術面</div></div>
       <div class="sum-card"><div class="sum-lbl">賣出訊號</div><div class="sum-val c-dn" id="s-sl">—</div><div class="sum-sub">技術面</div></div>
-      <div class="sum-card"><div class="sum-lbl">即時更新</div><div class="sum-val" style="color:var(--purple)" id="s-live">0</div><div class="sum-sub">盤中即時</div></div>
     </div>
     <div class="filter-bar">
       <button class="f-btn" id="fb-up" onclick="tqf('up')">▲ 上漲</button>
@@ -387,8 +383,8 @@ async function pollMisBatch(){
       }
       misIdx.tpex++;
     }
-    document.getElementById('s-live').textContent=misCount;
-    document.getElementById('misBadge').className='api-badge api-on';
+    
+    
     updSum();
     renderTable();
   }catch(e){
@@ -400,7 +396,7 @@ function startMisPolling(){
   if(misTimer) clearInterval(misTimer);
   buildMisBatches();
   if(isTradingNow()){
-    document.getElementById('misBadge').className='api-badge api-on';
+    
     misTimer=setInterval(pollMisBatch, 5000);
     pollMisBatch();
   }
@@ -922,21 +918,23 @@ async function loadHoldersData(stockId){
     const canvas=document.getElementById('c-holders');
     if(canvas&&j.rows&&j.rows.length>0){
       if(dCharts.holders) dCharts.holders.destroy();
+      // TDCC 單位為「股」(1張=1000股)：1-9張<10,000股；10-99張<100,000股；100-999張<1,000,000股；1000張+=大戶
       const groups=[
-        {label:'1-9張',ratio:0},{label:'10-49張',ratio:0},
-        {label:'50-199張',ratio:0},{label:'200-999張',ratio:0},{label:'1000張以上',ratio:0}
+        {label:'1-9張',ratio:0},
+        {label:'10-99張',ratio:0},
+        {label:'100-999張',ratio:0},
+        {label:'1000張以上',ratio:0}
       ];
       for(const row of j.rows){
         const s=row.shares;
-        if(s<9000) groups[0].ratio+=row.ratio;
-        else if(s<49000) groups[1].ratio+=row.ratio;
-        else if(s<199000) groups[2].ratio+=row.ratio;
-        else if(s<999000) groups[3].ratio+=row.ratio;
-        else groups[4].ratio+=row.ratio;
+        if(s<10000) groups[0].ratio+=row.ratio;
+        else if(s<100000) groups[1].ratio+=row.ratio;
+        else if(s<1000000) groups[2].ratio+=row.ratio;
+        else groups[3].ratio+=row.ratio;
       }
       dCharts.holders=new Chart(canvas,{
         type:'doughnut',
-        data:{labels:groups.map(g=>g.label),datasets:[{data:groups.map(g=>parseFloat(g.ratio.toFixed(1))),backgroundColor:['#388bfd','#3fb950','#e3b341','#bc8cff','#f85149'],borderColor:'rgba(0,0,0,0)',borderWidth:2}]},
+        data:{labels:groups.map(g=>g.label),datasets:[{data:groups.map(g=>parseFloat(g.ratio.toFixed(1))),backgroundColor:['#388bfd','#3fb950','#e3b341','#f85149'],borderColor:'rgba(0,0,0,0)',borderWidth:2}]},
         options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:10},color:'#8b949e',padding:6}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw}%`}}}}
       });
     }

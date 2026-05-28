@@ -234,39 +234,46 @@ export default async function handler(req, res) {
 
     // ══════════════════════════════════════════════════
     // 7. 融資融券（個股，當日）
+    //    來源：TWSE 官網 MI_MARGN（與投資資訊中心 IIH2 同源）
+    //    欄位: [0]代號 [1]名稱
+    //    融資: [2]買進 [3]賣出 [4]現金償還 [5]餘額 [6]限額 [7]使用率%
+    //    融券: [8]賣出 [9]買進 [10]現券償還 [11]餘額 [12]限額 [13]使用率%
+    //    [14]資券互抵
     // ══════════════════════════════════════════════════
     if (type === 'margin_detail') {
       if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
       const today = new Date();
       const yyyymmdd = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+      const pi = (v) => parseInt((v||'0').replace(/,/g,'')) || 0;
+      const pf = (v) => parseFloat((v||'0').replace(/,/g,'')) || 0;
       try {
         const r = await fetch(
           `https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date=${yyyymmdd}&selectType=STOCK&response=json`,
-          { headers:{'Accept':'application/json','Referer':'https://www.twse.com.tw/'} }
+          { headers:{'Accept':'application/json','Referer':'https://www.twse.com.tw/zh/'} }
         );
         const j = await r.json();
         const rows = j.data||[];
+        const fields = j.fields||[];
         const item = rows.find(row => row[0]===stock_id);
         res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate');
         return res.status(200).json({
-          stock_id,
+          stock_id, fields,
           data: item ? {
-            // 融資
-            marginBuy:    parseInt(item[2]?.replace(/,/g,''))||0,   // 融資買進
-            marginSell:   parseInt(item[3]?.replace(/,/g,''))||0,   // 融資賣出
-            marginRedeem: parseInt(item[4]?.replace(/,/g,''))||0,   // 現金償還
-            marginBalance:parseInt(item[5]?.replace(/,/g,''))||0,   // 融資餘額
-            marginLimit:  parseInt(item[6]?.replace(/,/g,''))||0,   // 融資限額
-            // 融券
-            shortSell:    parseInt(item[8]?.replace(/,/g,''))||0,   // 融券賣出
-            shortBuy:     parseInt(item[9]?.replace(/,/g,''))||0,   // 融券買進
-            shortReturn:  parseInt(item[10]?.replace(/,/g,''))||0,  // 現券償還
-            shortBalance: parseInt(item[11]?.replace(/,/g,''))||0,  // 融券餘額
-            shortLimit:   parseInt(item[12]?.replace(/,/g,''))||0,  // 融券限額
-            // 資券互抵
-            offset:       parseInt(item[14]?.replace(/,/g,''))||0,
+            marginBuy:     pi(item[2]),   // 融資買進（張）
+            marginSell:    pi(item[3]),   // 融資賣出（張）
+            marginRedeem:  pi(item[4]),   // 現金償還（張）
+            marginBalance: pi(item[5]),   // 融資餘額（張）
+            marginLimit:   pi(item[6]),   // 融資限額（張）
+            marginUsage:   pf(item[7]),   // 融資使用率（%）
+            shortSell:     pi(item[8]),   // 融券賣出（張）
+            shortBuy:      pi(item[9]),   // 融券買進（張）
+            shortReturn:   pi(item[10]),  // 現券償還（張）
+            shortBalance:  pi(item[11]),  // 融券餘額（張）
+            shortLimit:    pi(item[12]),  // 融券限額（張）
+            shortUsage:    pf(item[13]),  // 融券使用率（%）
+            offset:        pi(item[14]),  // 資券互抵（張）
           } : null,
-          source: 'TWSE_MARGIN',
+          source: 'TWSE_MI_MARGN',
           date: yyyymmdd
         });
       } catch(e) {
@@ -275,47 +282,124 @@ export default async function handler(req, res) {
     }
 
     // ══════════════════════════════════════════════════
+    // 9. 個股當日分時走勢（MIS即時）
+    // ══════════════════════════════════════════════════
+    if (type === 'intraday') {
+      if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+      try {
+        const mkt = req.query.market || 'twse';
+        const prefix = mkt === 'tpex' ? 'otc' : 'tse';
+        const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${prefix}_${stock_id}.tw&json=1&delay=0&_=${Date.now()}`;
+        const r = await fetch(url, {
+          headers: {'Accept':'application/json','User-Agent':'Mozilla/5.0','Referer':'https://mis.twse.com.tw/stock/index.jsp'}
+        });
+        const j = await r.json();
+        const item = (j.msgArray||[])[0];
+        res.setHeader('Cache-Control','no-cache,no-store');
+        return res.status(200).json({
+          stock_id,
+          data: item ? {
+            price:  parseFloat(item.z)||parseFloat(item.y)||0,
+            open:   parseFloat(item.o)||0,
+            high:   parseFloat(item.h)||0,
+            low:    parseFloat(item.l)||0,
+            prev:   parseFloat(item.y)||0,
+            volume: parseFloat(item.v)||0,
+            time:   item.t||'',
+            // 分時成交序列（最多20筆）
+            trades: (item.tv||'').split('_').filter(Boolean).slice(-20).map(v=>parseFloat(v)||0),
+            prices: (item.z||'').split('_').filter(Boolean).slice(-20).map(v=>parseFloat(v)||0),
+          } : null,
+          source: 'TWSE_MIS_INTRADAY'
+        });
+      } catch(e) {
+        return res.status(200).json({ stock_id, data: null, error: e.message });
+      }
+    }
+
+    // ══════════════════════════════════════════════════
     // 8. 三大法人個股買賣（當日）
-    // T86 欄位: [0]代號 [1]名稱
-    //   外資: [2]買進 [3]賣出 [4]買賣超
-    //   外資+陸資: [5]買進 [6]賣出 [7]買賣超
-    //   投信: [8]買進 [9]賣出 [10]買賣超
-    //   自營商(自行): [11]買進 [12]賣出 [13]買賣超
-    //   自營商(避險): [14]買進 [15]賣出 [16]買賣超
-    //   三大法人合計: [17]買賣超
+    //
+    // T86 資料單位是「股」，需 ÷1000 換算成「張」
+    // T86 欄位 (fields): 
+    //  [0]代號 [1]名稱
+    //  外資及陸資(不含外資自營商): [2]買進股數 [3]賣出股數 [4]買賣超股數
+    //  外資自營商: [5] [6] [7]
+    //  外資及陸資: [8] [9] [10]  (含外資自營商合計)
+    //  投信: [11] [12] [13]
+    //  自營商(自行買賣): [14] [15] [16]
+    //  自營商(避險): [17] [18] [19]
+    //  自營商: [20] [21] [22]  (合計)
+    //  三大法人: [23]  (合計買賣超股數)
     // ══════════════════════════════════════════════════
     if (type === 'institution_detail') {
       if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
       try {
         const today = new Date();
         const yyyymmdd = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
+
         const r = await fetch(
           `https://www.twse.com.tw/rwd/zh/fund/T86?date=${yyyymmdd}&selectType=ALLBUT0999&response=json`,
           { headers:{'Accept':'application/json','Referer':'https://www.twse.com.tw/'} }
         );
         const j = await r.json();
         const rows = j.data||[];
+        const fields = j.fields||[];
         const item = rows.find(row => row[0]===stock_id);
-        const p = (v) => parseInt((v||'0').replace(/,/g,'').replace(/\+/g,'')) || 0;
+
+        // T86 單位為「股」，÷1000 = 張
+        const lots = (v) => {
+          const n = parseInt((v||'0').replace(/,/g,'').replace(/\+/g,'')) || 0;
+          return Math.round(n / 1000);
+        };
+
+        // 動態根據 fields 定位正確欄位
+        let fBuyIdx=2, fSellIdx=3, fNetIdx=4;
+        let tBuyIdx=11, tSellIdx=12, tNetIdx=13;
+        let dNetIdx=22, totalIdx=23;
+        if(fields.length > 0){
+          // 找外資買進欄位
+          for(let i=0;i<fields.length;i++){
+            if(fields[i]&&fields[i].includes('外資')&&fields[i].includes('買進')&&!fields[i].includes('自營')) { fBuyIdx=i; break; }
+          }
+          for(let i=0;i<fields.length;i++){
+            if(fields[i]&&fields[i].includes('外資')&&fields[i].includes('賣出')&&!fields[i].includes('自營')) { fSellIdx=i; break; }
+          }
+          for(let i=0;i<fields.length;i++){
+            if(fields[i]&&fields[i].includes('外資')&&fields[i].includes('買賣超')&&!fields[i].includes('自營')) { fNetIdx=i; break; }
+          }
+          for(let i=0;i<fields.length;i++){
+            if(fields[i]&&fields[i].includes('投信')&&fields[i].includes('買進')) { tBuyIdx=i; break; }
+          }
+          for(let i=0;i<fields.length;i++){
+            if(fields[i]&&fields[i].includes('投信')&&fields[i].includes('賣出')) { tSellIdx=i; break; }
+          }
+          for(let i=0;i<fields.length;i++){
+            if(fields[i]&&fields[i].includes('投信')&&fields[i].includes('買賣超')) { tNetIdx=i; break; }
+          }
+          // 自營商合計買賣超（找最後一個含"自營商"且含"買賣超"不含"自行"/"避險"）
+          for(let i=fields.length-1;i>=0;i--){
+            if(fields[i]&&fields[i].includes('自營商')&&fields[i].includes('買賣超')&&!fields[i].includes('自行')&&!fields[i].includes('避險')) { dNetIdx=i; break; }
+          }
+          // 三大法人合計買賣超
+          for(let i=fields.length-1;i>=0;i--){
+            if(fields[i]&&fields[i].includes('三大法人')) { totalIdx=i; break; }
+          }
+        }
+
         res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate');
         return res.status(200).json({
           stock_id,
-          fields: j.fields || [],  // 回傳欄位名稱，方便除錯
+          fields,
           data: item ? {
-            foreignBuy:    p(item[2]),   // 外資買進(張)
-            foreignSell:   p(item[3]),   // 外資賣出(張)
-            foreignNet:    p(item[4]),   // 外資買賣超(張)
-            trustBuy:      p(item[8]),   // 投信買進(張)
-            trustSell:     p(item[9]),   // 投信賣出(張)
-            trustNet:      p(item[10]),  // 投信買賣超(張)
-            dealerSelfBuy: p(item[11]),  // 自營商自行買進
-            dealerSelfSell:p(item[12]),  // 自營商自行賣出
-            dealerSelfNet: p(item[13]),  // 自營商自行買賣超
-            dealerHedgeBuy:p(item[14]),  // 自營商避險買進
-            dealerHedgeSell:p(item[15]), // 自營商避險賣出
-            dealerHedgeNet:p(item[16]),  // 自營商避險買賣超
-            dealerNet:     p(item[13]) + p(item[16]), // 自營商合計
-            totalNet:      p(item[17]),  // 三大法人合計買賣超
+            foreignBuy:  lots(item[fBuyIdx]),   // 外資買進（張）
+            foreignSell: lots(item[fSellIdx]),   // 外資賣出（張）
+            foreignNet:  lots(item[fNetIdx]),    // 外資買賣超（張）
+            trustBuy:    lots(item[tBuyIdx]),    // 投信買進（張）
+            trustSell:   lots(item[tSellIdx]),   // 投信賣出（張）
+            trustNet:    lots(item[tNetIdx]),    // 投信買賣超（張）
+            dealerNet:   lots(item[dNetIdx]),    // 自營商合計買賣超（張）
+            totalNet:    lots(item[totalIdx]),   // 三大法人合計（張）
           } : null,
           source: 'TWSE_T86',
           date: yyyymmdd

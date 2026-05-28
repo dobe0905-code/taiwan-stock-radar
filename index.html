@@ -450,21 +450,20 @@ function processTWSE(data){
     const high=parseFloat(d.HighestPrice)||close;
     const low=parseFloat(d.LowestPrice)||close;
     const chg=parseFloat(d.Change)||0;
-    // MIS 資料用昨收算漲跌幅；openapi 用開盤
-    // 昨收 = close - chg（最準確）
-    const prev = close - chg;
+    const prev = close - chg;  // 昨收
     const chgP = prev > 0 ? parseFloat((chg / prev * 100).toFixed(2)) : 0;
-    const vol=parseInt((d.TradeVolume||'0').replace(/,/g,''))||0;
+    // TradeVolume 單位：MI_INDEX=股數(÷1000=張)；MIS(_mis=true) 已是張數
+    const rawVol = parseInt((d.TradeVolume||'0').replace(/,/g,''))||0;
+    const vol = d._mis ? rawVol : Math.round(rawVol / 1000);
     const pe=perMap[d.Code];
     const peV=pe?.per||null, yld=pe?.yld||null, pbV=pe?.pbr||null;
     const isETF=detectETF(d.Code, d.Name||'');
     const sector=isETF?'ETF':getSec(d.IndustryCategory||'');
-    const turn=0;
     return{id:d.Code, name:d.Name||d.Code, sector, isETF, market:'twse',
-      open, close, high, low, vol, chg,
+      open, close, high, low, vol, chg, prev,
       chgP: isNaN(chgP)?0:chgP,
       peV, yld, pbV,
-      sig:calcSig({open,close,high,low,chgP,peV,turn,ff:0}), turn};
+      sig:calcSig({open,close,high,low,chgP,peV,turn:0,ff:0}), turn:0};
   });
 }
 
@@ -477,12 +476,14 @@ function processTPEx(data){
     const chg=parseFloat(d.Change)||0;
     const prev = close - chg;
     const chgP = prev > 0 ? parseFloat((chg / prev * 100).toFixed(2)) : 0;
-    const vol=parseInt((d.TradingShares||'0').replace(/,/g,''))||0;
+    // TradingShares 上櫃也是股數，除1000
+    const rawVol=parseInt((d.TradingShares||'0').replace(/,/g,''))||0;
+    const vol = d._mis ? rawVol : Math.round(rawVol / 1000);
     const isETF=detectETF(d.SecuritiesCompanyCode, d.CompanyName||'');
     const sector=isETF?'ETF':getSec(d.Industry||'');
     return{id:d.SecuritiesCompanyCode, name:d.CompanyName||d.SecuritiesCompanyCode,
       sector, isETF, market:'tpex',
-      open, close, high, low, vol, chg,
+      open, close, high, low, vol, chg, prev,
       chgP: isNaN(chgP)?0:chgP,
       peV:null, yld:null, pbV:null,
       sig:calcSig({open,close,high,low,chgP,peV:null,turn:0,ff:0}), turn:0};
@@ -658,15 +659,23 @@ function startDetPoll(s){
       const arr = j.data||[];
       const item = arr.find(x=>x.c===s.id)||arr[0];
       if(!item) return;
-      const z=parseFloat(item.z)||0;
-      const y=parseFloat(item.y)||0;  // 昨收
-      const o=parseFloat(item.o)||0;
-      const h=parseFloat(item.h)||0;
-      const l=parseFloat(item.l)||0;
-      const v=parseFloat(item.v)||0;
+      const z=parseFloat(item.z)||0;   // 成交價
+      const y=parseFloat(item.y)||0;   // 昨收
+      const o=parseFloat(item.o)||0;   // 開盤
+      const h=parseFloat(item.h)||0;   // 最高
+      const l=parseFloat(item.l)||0;   // 最低
+      const v=parseFloat(item.v)||0;   // 累積成交量（張）
       if(!z||!y) return;
       const price=z, chg=parseFloat((z-y).toFixed(2)), chgP=parseFloat(((z-y)/y*100).toFixed(2));
       const amp=o>0?((h-l)/o*100).toFixed(2)+'%':'—';
+
+      // 均價 = 成交金額 / 成交量（MIS 無直接均價，用 (o+h+l+z)/4 估算）
+      const avgPrice = o>0&&h>0&&l>0&&z>0 ? ((o+h+l+z)/4).toFixed(2) : '—';
+
+      // 內外盤：MIS 有 oa(外盤量) ob(內盤量)，若無則顯示 —
+      const ob = item.ob ? parseInt(item.ob)||0 : 0;  // 內盤（買進成交）
+      const oa = item.oa ? parseInt(item.oa)||0 : 0;  // 外盤（賣出成交）
+
       // 更新頂部大標
       const pe=document.getElementById('d-price');
       const ce=document.getElementById('d-chg');
@@ -677,21 +686,25 @@ function startDetPoll(s){
       }
       // 更新即時報價卡片
       const upd=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
-      upd('dq-open', o>0?o.toFixed(2):'—');
+      upd('dq-open',  o>0?o.toFixed(2):'—');
       upd('dq-price', price.toFixed(2));
-      upd('dq-high', h>0?h.toFixed(2):'—');
-      upd('dq-low', l>0?l.toFixed(2):'—');
-      upd('dq-vol', fmV(v));       // MIS v 欄位已是張數（千股）
-      upd('dq-amp', amp);
+      upd('dq-high',  h>0?h.toFixed(2):'—');
+      upd('dq-low',   l>0?l.toFixed(2):'—');
+      upd('dq-prev',  y>0?y.toFixed(2):'—');   // 昨收
+      upd('dq-avg',   avgPrice);                 // 均價
+      upd('dq-vol',   fmV(v));                  // 成交量（張）
+      upd('dq-amp',   amp);
+      upd('dq-ob',    ob>0?fmV(ob):'—');        // 內盤
+      upd('dq-oa',    oa>0?fmV(oa):'—');        // 外盤
       const chgEl=document.getElementById('dq-chg');
       if(chgEl){chgEl.textContent=(chg>=0?'+':'')+chg.toFixed(2);chgEl.className='kv-v '+(chg>0?'c-up':chg<0?'c-dn':'c-neu');}
       const chgpEl=document.getElementById('dq-chgp');
       if(chgpEl){chgpEl.textContent=(chgP>=0?'+':'')+chgP.toFixed(2)+'%';chgpEl.className='kv-v '+(chgP>0?'c-up':chgP<0?'c-dn':'c-neu');}
       const priceEl=document.getElementById('dq-price');
       if(priceEl){priceEl.className='kv-v '+(chgP>0?'c-up':chgP<0?'c-dn':'c-neu');}
-      // 更新 stocks 陣列中的值
+      // 更新 stocks 陣列
       const st=stocks.find(x=>x.id===s.id);
-      if(st){st.close=price;st.open=o||st.open;st.high=h||st.high;st.low=l||st.low;st.vol=v||st.vol;st.chg=chg;st.chgP=chgP;}
+      if(st){st.close=price;st.open=o||st.open;st.high=h||st.high;st.low=l||st.low;st.vol=v||st.vol;st.chg=chg;st.chgP=chgP;st.prev=y;}
     }catch(e){console.warn('detPoll err:',e);}
   }
   pollOnce();
@@ -707,18 +720,31 @@ function buildDetHTML(s,live){
   const amp=s.open>0?((s.high-s.low)/s.open*100).toFixed(2)+'%':'—';
   const sl=(s.close*(1-.015)).toFixed(2), tp=(s.close*(1+.03)).toFixed(2);
   const ba=live?.bidask;
+  const prev = s.prev || (s.close - s.chg);  // 昨收
 
   return`
   <div class="ds"><div class="dst">即時報價</div>
     <div class="kv2">
-      <div class="kv"><div class="kv-l">開盤</div><div class="kv-v" id="dq-open">${s.open.toFixed(2)}</div></div>
-      <div class="kv"><div class="kv-l">現價</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}" id="dq-price">${(live?.tick?.price||s.close).toFixed(2)}</div></div>
-      <div class="kv"><div class="kv-l">最高</div><div class="kv-v c-up" id="dq-high">${s.high.toFixed(2)}</div></div>
-      <div class="kv"><div class="kv-l">最低</div><div class="kv-v c-dn" id="dq-low">${s.low.toFixed(2)}</div></div>
-      <div class="kv"><div class="kv-l">成交量</div><div class="kv-v" id="dq-vol">${fmV(s.vol)}</div></div>
+      <div class="kv"><div class="kv-l">開盤</div><div class="kv-v" id="dq-open">${s.open>0?s.open.toFixed(2):'—'}</div></div>
+      <div class="kv"><div class="kv-l">現價</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}" id="dq-price">${s.close.toFixed(2)}</div></div>
+      <div class="kv"><div class="kv-l">最高</div><div class="kv-v c-up" id="dq-high">${s.high>0?s.high.toFixed(2):'—'}</div></div>
+      <div class="kv"><div class="kv-l">最低</div><div class="kv-v c-dn" id="dq-low">${s.low>0?s.low.toFixed(2):'—'}</div></div>
+      <div class="kv"><div class="kv-l">昨收</div><div class="kv-v c-neu" id="dq-prev">${prev>0?prev.toFixed(2):'—'}</div></div>
+      <div class="kv"><div class="kv-l">均價</div><div class="kv-v" id="dq-avg">—</div></div>
+      <div class="kv"><div class="kv-l">成交量(張)</div><div class="kv-v" id="dq-vol">${fmV(s.vol)}</div></div>
       <div class="kv"><div class="kv-l">振幅</div><div class="kv-v" id="dq-amp">${amp}</div></div>
       <div class="kv"><div class="kv-l">漲跌</div><div class="kv-v ${s.chg>0?'c-up':s.chg<0?'c-dn':'c-neu'}" id="dq-chg">${s.chg>0?'+':''}${s.chg.toFixed(2)}</div></div>
       <div class="kv"><div class="kv-l">漲跌幅</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}" id="dq-chgp">${s.chgP>=0?'+':''}${s.chgP.toFixed(2)}%</div></div>
+      <div class="kv"><div class="kv-l">內盤(張)</div><div class="kv-v c-dn" id="dq-ob">—</div></div>
+      <div class="kv"><div class="kv-l">外盤(張)</div><div class="kv-v c-up" id="dq-oa">—</div></div>
+    </div>
+  </div>
+  <div class="ds" id="ma-section"><div class="dst">均線乖離率</div>
+    <div class="kv2" id="ma-content">
+      <div class="kv"><div class="kv-l">5日均</div><div class="kv-v" id="ma5">載入中...</div></div>
+      <div class="kv"><div class="kv-l">10日均</div><div class="kv-v" id="ma10">—</div></div>
+      <div class="kv"><div class="kv-l">20日均</div><div class="kv-v" id="ma20">—</div></div>
+      <div class="kv"><div class="kv-l">季線(60日)乖離</div><div class="kv-v" id="ma60-bias">—</div></div>
     </div>
   </div>
   ${ba?`<div class="ds"><div class="dst">即時五檔</div>
@@ -858,6 +884,43 @@ async function buildDetCharts(s){
   // ── 同時載入籌碼分析資料 ──
   loadHoldersData(s.id);
   loadMarginData(s.id);
+
+  // ── MA 均線乖離率計算（從 K 線資料）──
+  try{
+    const r2=await fetch(`/api/quote?type=kline&stock_id=${s.id}`);
+    const j2=await r2.json();
+    const kd=j2.data||[];
+    if(kd.length>=5){
+      const closes=kd.map(d=>d.close);
+      const ma=(n)=>{
+        if(closes.length<n) return null;
+        const slice=closes.slice(-n);
+        return parseFloat((slice.reduce((a,b)=>a+b,0)/n).toFixed(2));
+      };
+      const ma5=ma(5), ma10=ma(10), ma20=ma(20), ma60=ma(60);
+      const cur=s.close;
+      const fmt=(v,n)=>{
+        if(!v) return '—';
+        const bias=parseFloat(((cur-v)/v*100).toFixed(2));
+        const col=bias>0?'var(--green2)':bias<0?'var(--red2)':'var(--text2)';
+        return `<span style="font-family:var(--mono)">${v.toFixed(2)}</span> <span style="color:${col};font-size:10px">${bias>0?'+':''}${bias}%</span>`;
+      };
+      const el5=document.getElementById('ma5');
+      const el10=document.getElementById('ma10');
+      const el20=document.getElementById('ma20');
+      const el60=document.getElementById('ma60-bias');
+      if(el5) el5.innerHTML=fmt(ma5,5);
+      if(el10) el10.innerHTML=fmt(ma10,10);
+      if(el20) el20.innerHTML=fmt(ma20,20);
+      if(el60){
+        if(ma60){
+          const bias60=parseFloat(((cur-ma60)/ma60*100).toFixed(2));
+          const col=bias60>0?'var(--green2)':bias60<0?'var(--red2)':'var(--text2)';
+          el60.innerHTML=`<span style="font-family:var(--mono)">${ma60.toFixed(2)}</span> <span style="color:${col};font-size:10px">${bias60>0?'+':''}${bias60}%</span>`;
+        } else { el60.textContent='資料不足'; }
+      }
+    }
+  }catch(e){ console.warn('MA calc err:',e); }
 }
 
 function drawCandleChart(stockId, kdata){
@@ -966,12 +1029,19 @@ function drawSimulatedChart(s, container){
 }
 
 
-// ── 籌碼分析資料載入 ──
+// ── 籌碼分析資料載入（集保每週五更新）──
 async function loadHoldersData(stockId){
   const hl=document.getElementById('holders-loading');
   const hc=document.getElementById('holders-content');
+
+  // 判斷是否為週五或週末（集保最新資料日）→ 加 cache-bust
+  const now=new Date();
+  const dow=now.getDay(); // 0=日,5=五,6=六
+  const isFriOrAfter = (dow===5||dow===6||dow===0);
+  const cacheBust = isFriOrAfter ? `&_=${Math.floor(Date.now()/3600000)}` : '';
+
   try{
-    const r=await fetch(`/api/fundamental?type=holders&stock_id=${stockId}`);
+    const r=await fetch(`/api/fundamental?type=holders&stock_id=${stockId}${cacheBust}`);
     const j=await r.json();
     if(!hl||!hc) return;
 
@@ -979,7 +1049,6 @@ async function loadHoldersData(stockId){
     const hasData = j.rows && j.rows.length > 0 && (sum.bigHolder > 0 || sum.smallHolder > 0);
 
     if(!hasData){
-      // 無資料：顯示說明
       hl.innerHTML=`<div style="font-size:11px;color:var(--text3);padding:8px 0">
         集保分散資料每週五更新，目前暫無資料（${j.error||'請稍後再試'}）
         <br><span style="color:var(--text3);font-size:10px">來源：${j.source||'TDCC'}</span>
@@ -991,7 +1060,7 @@ async function loadHoldersData(stockId){
     hl.style.display='none';
     hc.style.display='block';
 
-    // 顯示資料日期
+    // 顯示資料日期與來源
     const scaDate = j.scaDate||'';
     const dateLabel = scaDate ? `（資料日期：${scaDate}）` : '';
     const dst = document.querySelector('#holders-section .dst');

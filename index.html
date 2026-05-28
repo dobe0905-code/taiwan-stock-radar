@@ -52,6 +52,15 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
 .upd-info{font-size:11px;font-family:var(--mono);color:var(--text3);}
 .upd-val{color:var(--accent2);}
+/* ── 大盤指數列 ── */
+#index-bar{display:flex;align-items:center;gap:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16px;height:32px;overflow:hidden;flex-shrink:0;}
+.idx-item{display:flex;align-items:center;gap:8px;padding:0 14px;border-right:1px solid var(--border);height:100%;cursor:default;white-space:nowrap;}
+.idx-item:first-child{padding-left:0;}
+.idx-name{font-size:10px;color:var(--text3);}
+.idx-val{font-size:12px;font-weight:700;font-family:var(--mono);}
+.idx-chg{font-size:10px;font-family:var(--mono);}
+.idx-loading{font-size:10px;color:var(--text3);font-family:var(--mono);animation:pulse .8s ease infinite alternate;}
+@keyframes pulse{from{opacity:.4}to{opacity:1}}
 #app{display:flex;height:100vh;padding-top:var(--header);}
 #sidebar{width:var(--sidebar);flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;padding:8px 0;}
 .sb-label{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;padding:10px 14px 4px;}
@@ -188,6 +197,33 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
   </div>
 </div>
 
+<!-- 大盤指數列 -->
+<div id="index-bar">
+  <div class="idx-item">
+    <span class="idx-name">加權指數</span>
+    <span class="idx-val idx-loading" id="idx-taiex">—</span>
+    <span class="idx-chg" id="idx-taiex-chg"></span>
+  </div>
+  <div class="idx-item">
+    <span class="idx-name">台指近月</span>
+    <span class="idx-val idx-loading" id="idx-tx">—</span>
+    <span class="idx-chg" id="idx-tx-chg"></span>
+  </div>
+  <div class="idx-item">
+    <span class="idx-name">台指期(近)</span>
+    <span class="idx-val idx-loading" id="idx-txf">—</span>
+    <span class="idx-chg" id="idx-txf-chg"></span>
+  </div>
+  <div class="idx-item">
+    <span class="idx-name">上市成交(億)</span>
+    <span class="idx-val" id="idx-vol" style="color:var(--accent2)">—</span>
+  </div>
+  <div class="idx-item">
+    <span class="idx-name">USD/TWD</span>
+    <span class="idx-val" id="idx-usdtwd" style="color:var(--text2)">—</span>
+  </div>
+</div>
+
 <div id="app">
   <aside id="sidebar">
     <div class="sb-label">總覽</div>
@@ -203,6 +239,16 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
     <div class="sb-item" onclick="setSF('buy',this)"><span>📈 買進訊號</span><span class="sb-cnt" id="c-buy">—</span></div>
     <div class="sb-item" onclick="setSF('sell',this)"><span>📉 賣出訊號</span><span class="sb-cnt" id="c-sell">—</span></div>
     <div class="sb-item" onclick="setSF('hold',this)"><span>⏸ 觀察中</span><span class="sb-cnt" id="c-hold">—</span></div>
+    <div class="sb-label">熱門族群</div>
+    <div class="sb-item" onclick="setSF('g:ai',this)"><span>🤖 AI/伺服器</span><span class="sb-cnt" id="c-g-ai">—</span></div>
+    <div class="sb-item" onclick="setSF('g:chip',this)"><span>💻 半導體</span><span class="sb-cnt" id="c-g-chip">—</span></div>
+    <div class="sb-item" onclick="setSF('g:passive',this)"><span>🔌 被動元件</span><span class="sb-cnt" id="c-g-passive">—</span></div>
+    <div class="sb-item" onclick="setSF('g:pcb',this)"><span>🟩 PCB/載板</span><span class="sb-cnt" id="c-g-pcb">—</span></div>
+    <div class="sb-item" onclick="setSF('g:ic',this)"><span>📦 IC設計</span><span class="sb-cnt" id="c-g-ic">—</span></div>
+    <div class="sb-item" onclick="setSF('g:storage',this)"><span>💾 記憶體</span><span class="sb-cnt" id="c-g-storage">—</span></div>
+    <div class="sb-item" onclick="setSF('g:ev',this)"><span>⚡ 電動車/儲能</span><span class="sb-cnt" id="c-g-ev">—</span></div>
+    <div class="sb-item" onclick="setSF('g:fin',this)"><span>🏦 金融/銀行</span><span class="sb-cnt" id="c-g-fin">—</span></div>
+    <div class="sb-item" onclick="setSF('g:etf',this)"><span>📊 熱門ETF</span><span class="sb-cnt" id="c-g-etf">—</span></div>
     <div class="sb-label">快速篩選</div>
     <div class="sb-item" onclick="setSF('hv',this)"><span>🔥 爆量股</span><span class="sb-cnt" id="c-hv">—</span></div>
     <div class="sb-item" onclick="setSF('lpe',this)"><span>💎 低本益比</span><span class="sb-cnt" id="c-lpe">—</span></div>
@@ -284,6 +330,68 @@ let stocks=[], wl=new Set(JSON.parse(localStorage.getItem('wl')||'[]'));
 let sf='all', mkt='all', qf=new Set(), nxt, cdTimer, dCharts={};
 let liveData={}, liveCount=0, currentDetId=null;
 let perMap={}, yldMap={};
+
+// ── 熱門族群定義（代號 Set）──
+const THEME_MAP = {
+  'ai':      new Set(['2330','2317','2382','3034','3231','6669','3443','8299','3706','6472','2379','3711','6789','2308','2357','2345','6598','3022','5269','6770','6510']),
+  'chip':    new Set(['2330','2303','2454','3034','3711','2379','6770','2344','2408','3533','5347','8016','6244','3443','6415']),
+  'passive': new Set(['2327','2375','2428','2472','2478','2480','6269','2492','2312','6190']),
+  'pcb':     new Set(['2383','3037','2308','8046','6274','3481','3406','2367','8150','6111','3044']),
+  'ic':      new Set(['2454','3034','3231','6669','3443','8299','3706','6472','2379','3711','6789','5269','6510','2388','2303']),
+  'storage': new Set(['2408','3443','2337','4919','2458','6202','8271','2351']),
+  'ev':      new Set(['2207','6732','8215','3008','1519','2478','6770','3653','6213','1590','2364']),
+  'fin':     new Set(['2882','2881','2891','2886','2880','2884','2885','2892','2887','2883','5880','2801','2812','2836','2837']),
+  'etf':     new Set(['0050','0056','00878','00919','00940','00713','00757','00646','00631L','006208']),
+};
+
+// ── 大盤指數列更新 ──
+async function loadIndexBar(){
+  try{
+    // 加權指數、成交量：MIS OHLC 文字檔
+    const r = await fetch(`https://mis.twse.com.tw/stock/data/mis_ohlc_TSE.txt?_=${Date.now()}`);
+    const txt = await r.text();
+    const lines = txt.trim().split('\n');
+    if(lines.length>1){
+      const cols = lines[1].split('|');
+      // 格式: 日期|時間|開|高|低|收|成交量(億)|...
+      const close = parseFloat(cols[5])||0;
+      const prev  = parseFloat(cols[8])||close; // 昨收在 index 8
+      const chg   = parseFloat((close-prev).toFixed(2));
+      const chgP  = prev>0?parseFloat(((close-prev)/prev*100).toFixed(2)):0;
+      const col   = chg>0?'var(--green2)':chg<0?'var(--red2)':'var(--text2)';
+      const el=document.getElementById('idx-taiex');
+      const elc=document.getElementById('idx-taiex-chg');
+      if(el){ el.textContent=close.toLocaleString('en-US',{minimumFractionDigits:2}); el.style.color=col; el.classList.remove('idx-loading'); }
+      if(elc){ elc.textContent=(chg>=0?'+':'')+chg+'('+chgP+'%)'; elc.style.color=col; }
+      const vol=document.getElementById('idx-vol');
+      if(vol&&cols[6]) vol.textContent=parseFloat(cols[6]).toFixed(0);
+    }
+  }catch(e){}
+
+  try{
+    // 台指近月期貨：Yahoo Finance ^TWII 代替（MIS 期貨需登入）
+    const r2 = await fetch('/api/global?type=global_index');
+    const j2 = await r2.json();
+    const twii = (j2.data||[]).find(d=>d.symbol==='^TWII');
+    const usdtwd = (j2.data||[]).find(d=>d.symbol==='USDTWD=X');
+    if(twii){
+      // 用加權指數補足（期貨資料 MIS 無免費端點）
+      const el=document.getElementById('idx-tx');
+      const elc=document.getElementById('idx-tx-chg');
+      const col=twii.changeP>0?'var(--green2)':twii.changeP<0?'var(--red2)':'var(--text2)';
+      if(el){el.textContent=(twii.price||0).toLocaleString('en-US',{minimumFractionDigits:2});el.style.color=col;el.classList.remove('idx-loading');}
+      if(elc){elc.textContent=(twii.changeP>=0?'+':'')+twii.changeP+'%';elc.style.color=col;}
+    }
+    // 台指期（用 Yahoo ^TWII 模擬，真實期貨需額外 API）
+    const el2=document.getElementById('idx-txf');
+    if(el2&&twii){el2.textContent='≈'+(twii.price||0).toLocaleString('en-US',{minimumFractionDigits:2});el2.style.color='var(--text2)';el2.classList.remove('idx-loading');}
+    // USD/TWD
+    if(usdtwd){
+      const uEl=document.getElementById('idx-usdtwd');
+      if(uEl){uEl.textContent=(usdtwd.price||0).toFixed(3);}
+    }
+  }catch(e){}
+}
 
 // ── MIS 盤中即時輪詢（取代 Firebase + 凱基）──
 let misTimer = null;
@@ -437,6 +545,8 @@ async function loadData(){
     setLU(); schedRef();
     showToast(`✓ 已載入 ${stocks.length} 檔股票（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length}）`);
     startMisPolling();
+    loadIndexBar();
+    setInterval(loadIndexBar, 60000); // 每分鐘更新指數列
   }catch(e){
     setLd('載入失敗：'+e.message);
     console.error(e);
@@ -537,6 +647,7 @@ function getFiltered(){
   else if(sf==='lpe') l=l.filter(s=>s.peV&&s.peV>0&&s.peV<15);
   else if(sf==='hyld') l=l.filter(s=>s.yld&&s.yld>4);
   else if(sf.startsWith('s:')) l=l.filter(s=>s.sector===sf.slice(2));
+  else if(sf.startsWith('g:')) l=l.filter(s=>THEME_MAP[sf.slice(2)]?.has(s.id));
 
   if(qf.has('up')) l=l.filter(s=>s.chgP>0);
   if(qf.has('dn')) l=l.filter(s=>s.chgP<0);
@@ -606,6 +717,11 @@ function updSB(){
   document.getElementById('c-hv').textContent=stocks.filter(s=>s.vol>5000000).length;
   document.getElementById('c-lpe').textContent=stocks.filter(s=>s.peV&&s.peV>0&&s.peV<15).length;
   document.getElementById('c-hyld').textContent=stocks.filter(s=>s.yld&&s.yld>4).length;
+  // 族群計數
+  for(const [key] of Object.entries(THEME_MAP)){
+    const el=document.getElementById('c-g-'+key);
+    if(el) el.textContent=stocks.filter(s=>THEME_MAP[key].has(s.id)).length;
+  }
   const secs={};
   for(const s of stocks.filter(x=>!x.isETF)) secs[s.sector]=(secs[s.sector]||0)+1;
   document.getElementById('sub-sectors').innerHTML=
@@ -669,9 +785,12 @@ function startDetPoll(s){
       const price=z, chg=parseFloat((z-y).toFixed(2)), chgP=parseFloat(((z-y)/y*100).toFixed(2));
       const amp=o>0?((h-l)/o*100).toFixed(2)+'%':'—';
 
-      // 均價：MIS pz = 加權均價，或用 (o+h+l+z)/4 估算
+      // 均價：MIS pz = 加權均價，ov = 總成交金額(元)
       const pz=parseFloat(item.pz)||0;
-      const avgPrice = pz>0 ? pz.toFixed(2) : (o>0&&h>0&&l>0&&z>0?((o+h+l+z)/4).toFixed(2):'—');
+      const ov=parseFloat(item.ov)||0;  // 總成交金額（元）
+      let avgPrice = '—';
+      if(pz>0) avgPrice = pz.toFixed(2);
+      else if(ov>0 && v>0) avgPrice = (ov/(v*1000)).toFixed(2); // ov是元，v是張(=千股)
 
       // 內外盤：MIS ob=內盤量, oa=外盤量（字串，需解析）
       const ob = parseInt(item.ob||'0') || 0;

@@ -1,7 +1,16 @@
 {
   "rewrites": [
-    { "source": "/api/quote",       "destination": "/api/quote_new.js" },
-    { "source": "/api/fundamental", "destination": "/api/fundamental_new.js" },
-    { "source": "/api/global",      "destination": "/api/global.js" }
+    {
+      "source": "/api/quote",
+      "destination": "/api/quote_new"
+    },
+    {
+      "source": "/api/fundamental",
+      "destination": "/api/fundamental_new"
+    },
+    {
+      "source": "/api/global",
+      "destination": "/api/global"
+    }
   ]
 }

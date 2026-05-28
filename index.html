@@ -53,7 +53,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 .upd-info{font-size:11px;font-family:var(--mono);color:var(--text3);}
 .upd-val{color:var(--accent2);}
 /* ── 大盤指數列 ── */
-#index-bar{display:flex;align-items:center;gap:0;background:var(--bg2);border-bottom:1px solid var(--border);padding:0 16px;height:32px;overflow:hidden;flex-shrink:0;}
+#index-bar{position:fixed;top:var(--header);left:0;right:0;z-index:99;display:flex;align-items:center;gap:0;background:rgba(12,18,32,.97);backdrop-filter:blur(12px);border-bottom:1px solid var(--border);padding:0 16px;height:32px;overflow:hidden;flex-shrink:0;}
 .idx-item{display:flex;align-items:center;gap:8px;padding:0 14px;border-right:1px solid var(--border);height:100%;cursor:default;white-space:nowrap;}
 .idx-item:first-child{padding-left:0;}
 .idx-name{font-size:10px;color:var(--text3);}
@@ -61,7 +61,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 .idx-chg{font-size:10px;font-family:var(--mono);}
 .idx-loading{font-size:10px;color:var(--text3);font-family:var(--mono);animation:pulse .8s ease infinite alternate;}
 @keyframes pulse{from{opacity:.4}to{opacity:1}}
-#app{display:flex;height:100vh;padding-top:var(--header);}
+#app{display:flex;height:100vh;padding-top:calc(var(--header) + 32px);}
 #sidebar{width:var(--sidebar);flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;padding:8px 0;}
 .sb-label{font-size:10px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;padding:10px 14px 4px;}
 .sb-item{display:flex;align-items:center;justify-content:space-between;padding:7px 14px;font-size:12px;color:var(--text2);cursor:pointer;transition:all .15s;border-left:2px solid transparent;}
@@ -121,7 +121,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 .star-btn.on{color:var(--amber2);}
 .flash{animation:priceFlash .4s ease;}
 @keyframes priceFlash{0%{background:rgba(56,139,253,.3)}100%{background:transparent}}
-#det{position:fixed;right:0;top:var(--header);width:440px;height:calc(100vh - var(--header));background:var(--bg2);border-left:1px solid var(--border2);overflow-y:auto;z-index:50;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);}
+#det{position:fixed;right:0;top:calc(var(--header) + 32px);width:440px;height:calc(100vh - var(--header) - 32px);background:var(--bg2);border-left:1px solid var(--border2);overflow-y:auto;z-index:50;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);}
 #det.open{transform:none;}
 .dh{padding:16px 18px 14px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:1;}
 .d-close{position:absolute;right:14px;top:14px;width:26px;height:26px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:14px;display:flex;align-items:center;justify-content:center;}
@@ -249,10 +249,6 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
     <div class="sb-item" onclick="setSF('g:ev',this)"><span>⚡ 電動車/儲能</span><span class="sb-cnt" id="c-g-ev">—</span></div>
     <div class="sb-item" onclick="setSF('g:fin',this)"><span>🏦 金融/銀行</span><span class="sb-cnt" id="c-g-fin">—</span></div>
     <div class="sb-item" onclick="setSF('g:etf',this)"><span>📊 熱門ETF</span><span class="sb-cnt" id="c-g-etf">—</span></div>
-    <div class="sb-label">快速篩選</div>
-    <div class="sb-item" onclick="setSF('hv',this)"><span>🔥 爆量股</span><span class="sb-cnt" id="c-hv">—</span></div>
-    <div class="sb-item" onclick="setSF('lpe',this)"><span>💎 低本益比</span><span class="sb-cnt" id="c-lpe">—</span></div>
-    <div class="sb-item" onclick="setSF('hyld',this)"><span>💰 高殖利率</span><span class="sb-cnt" id="c-hyld">—</span></div>
   </aside>
 
   <main id="main">
@@ -877,13 +873,12 @@ function buildDetHTML(s,live){
       </div>
     </div>
   </div>`:''}
-  <div class="ds"><div class="dst">價格走勢</div>
-    <div style="display:flex;gap:6px;margin-bottom:8px">
-      <button onclick="switchKLine('${s.id}','candle')" id="btn-candle" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--accent);background:rgba(56,139,253,.15);color:var(--accent2);cursor:pointer">蠟燭圖</button>
-      <button onclick="switchKLine('${s.id}','line')" id="btn-line" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer">折線圖</button>
-      ${isTradingNow()?`<button onclick="switchKLine('${s.id}','today')" id="btn-today" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer">當日走勢</button>`:''}
+  <div class="ds" id="price-chart-section"><div class="dst">價格走勢</div>
+    <div id="chart-btn-row" style="display:flex;gap:6px;margin-bottom:8px">
+      <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>
+      <span style="font-size:10px;color:var(--text3)">載入 K 線資料...</span>
     </div>
-    <div class="ch-wrap"><canvas id="c-price"></canvas></div>
+    <div class="ch-wrap" id="ch-wrap-main"><canvas id="c-price"></canvas></div>
   </div>
   <div class="ds"><div class="dst">估值指標</div>
     <div class="kv2">
@@ -979,43 +974,43 @@ async function buildDetCharts(s){
   Chart.defaults.font.size=10;
   const gc=id=>document.getElementById(id);
 
-  // ── 真實 K 線圖（從證交所抓歷史資料）──
-  const priceCanvas=gc('c-price');
-  if(priceCanvas){
-    // 先顯示載入中
-    priceCanvas.parentElement.innerHTML=`
-      <div style="display:flex;align-items:center;justify-content:center;height:160px;gap:10px;">
-        <div class="spinner" style="width:18px;height:18px;border-width:2px"></div>
-        <span style="font-size:11px;color:var(--text3)">載入 K 線資料...</span>
-      </div>`;
+  // ── K 線圖（近兩個月 + 當日走勢）──
+  const btnRow = document.getElementById('chart-btn-row');
+  const chWrap = document.getElementById('ch-wrap-main');
 
-    try{
-      // 抓最近3個月日K
-      const r=await fetch(`/api/quote?type=kline&stock_id=${s.id}`);
-      const j=await r.json();
-      const kdata=j.data||[];
+  try{
+    const r=await fetch(`/api/quote?type=kline&stock_id=${s.id}`);
+    const j=await r.json();
+    const kdata=(j.data||[]);
 
-      if(kdata.length>0){
-        // 重建 canvas
-        s._kdata=kdata;
-        const wrap=document.querySelector('.ch-wrap');
-        if(wrap){
-          wrap.innerHTML=`
-            <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-              <button onclick="switchKLine('${s.id}','candle')" id="btn-candle" style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--accent);background:rgba(56,139,253,.15);color:var(--accent2);cursor:pointer;">蠟燭圖</button>
-              <button onclick="switchKLine('${s.id}','line')" id="btn-line" style="font-size:10px;padding:2px 8px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;">折線圖</button>
-              <span style="font-size:10px;color:var(--text3);margin-left:auto">近${kdata.length}個交易日</span>
-            </div>
-            <div style="position:relative;height:140px"><canvas id="c-price"></canvas></div>`;
-          drawCandleChart(s.id, kdata);
-        }
-      } else {
-        // 沒有資料時改用模擬
-        drawSimulatedChart(s, priceCanvas.parentElement);
-      }
-    }catch(e){
-      drawSimulatedChart(s, priceCanvas.parentElement);
+    if(kdata.length>0){
+      s._kdata=kdata;
+      // 近兩個月 = 最後約 42 個交易日
+      s._kdata2m = kdata.slice(-42);
+
+      // 建立按鈕列
+      const todayBtn = isTradingNow()
+        ? `<button onclick="switchKLine('${s.id}','today')" id="btn-today" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer">當日走勢</button>`
+        : '';
+      if(btnRow) btnRow.innerHTML=`
+        <button onclick="switchKLine('${s.id}','2m')" id="btn-2m" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--accent);background:rgba(56,139,253,.15);color:var(--accent2);cursor:pointer">近兩個月</button>
+        <button onclick="switchKLine('${s.id}','candle')" id="btn-candle" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer">蠟燭圖</button>
+        <button onclick="switchKLine('${s.id}','line')" id="btn-line" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer">折線圖</button>
+        ${todayBtn}
+        <span style="font-size:10px;color:var(--text3);margin-left:auto">共${kdata.length}交易日</span>`;
+
+      // 重建 canvas
+      if(chWrap) chWrap.innerHTML='<div style="position:relative;height:150px"><canvas id="c-price"></canvas></div>';
+
+      // 預設顯示近兩個月折線
+      drawLineChart(s.id, s._kdata2m, s.chgP);
+    } else {
+      if(btnRow) btnRow.innerHTML='<span style="font-size:10px;color:var(--text3)">暫無K線資料</span>';
+      drawSimulatedChart(s, chWrap||document.querySelector('.ch-wrap'));
     }
+  }catch(e){
+    if(btnRow) btnRow.innerHTML='<span style="font-size:10px;color:var(--text3)">K線載入失敗</span>';
+    drawSimulatedChart(s, chWrap||document.querySelector('.ch-wrap'));
   }
 
   // ── 六維雷達圖 ──
@@ -1164,60 +1159,68 @@ function switchKLine(stockId, mode){
     el.style.borderColor=active?'var(--accent)':'var(--border)';
     el.style.color=active?'var(--accent2)':'var(--text2)';
   };
-  setBtn('btn-candle', mode==='candle');
-  setBtn('btn-line',   mode==='line');
-  setBtn('btn-today',  mode==='today');
+  ['btn-2m','btn-candle','btn-line','btn-today'].forEach(id=>setBtn(id,false));
+  setBtn('btn-'+mode, true);
 
   if(dCharts.p){dCharts.p.destroy();delete dCharts.p;}
+
+  const chWrap=document.getElementById('ch-wrap-main');
+  if(chWrap&&!chWrap.querySelector('#c-price')){
+    chWrap.innerHTML='<div style="position:relative;height:150px"><canvas id="c-price"></canvas></div>';
+  }
   const canvas=document.getElementById('c-price');
   if(!canvas) return;
 
   if(mode==='today'){
-    // ── 當日走勢：從 MIS 抓即時並模擬分時走勢 ──
-    const wrap=canvas.closest('.ch-wrap')||canvas.parentElement;
-    wrap.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:160px;gap:8px"><div class="spinner" style="width:14px;height:14px;border-width:2px"></div><span style="font-size:11px;color:var(--text3)">載入當日走勢...</span></div>`;
-    fetch(`/api/quote?type=intraday&stock_id=${stockId}&market=${s.market}`)
+    const wrap=canvas.closest('div[style*="height"]')||canvas.parentElement;
+    wrap.innerHTML='<div style="display:flex;align-items:center;justify-content:center;height:150px;gap:8px"><div class="spinner" style="width:14px;height:14px;border-width:2px"></div><span style="font-size:11px;color:var(--text3)">載入當日走勢...</span></div>';
+    fetch('/api/quote?type=intraday&stock_id='+stockId+'&market='+s.market)
       .then(r=>r.json()).then(j=>{
         const d=j.data;
-        if(!d||!d.price){wrap.innerHTML='<div style="height:160px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:11px">當日走勢需盤中才可查詢</div>';return;}
-        wrap.innerHTML='<div style="position:relative;height:160px"><canvas id="c-price"></canvas></div>';
+        if(!d||!d.price){wrap.innerHTML='<div style="height:150px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:11px">當日走勢僅盤中可查詢</div>';return;}
+        wrap.innerHTML='<div style="position:relative;height:150px"><canvas id="c-price"></canvas></div>';
         const cnv=document.getElementById('c-price');
         if(!cnv) return;
-        // 以昨收為基準畫趨勢線：顯示開盤到目前的走勢
         const prev=d.prev||d.open;
-        const labels=['開盤',`高${d.high}`,`低${d.low}`,'現價'];
-        const vals=[d.open, d.high, d.low, d.price];
         const cc=d.price>=prev?'#3fb950':'#f85149';
-        // 加入昨收參考線
         dCharts.p=new Chart(cnv,{
           type:'line',
           data:{
-            labels,
+            labels:['開盤','最高','最低','現價'],
             datasets:[
-              {data:vals,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.1)':'rgba(248,81,73,.1)',borderWidth:2,fill:true,tension:.3,pointRadius:4,pointBackgroundColor:cc},
-              {data:[prev,prev,prev,prev],borderColor:'rgba(255,255,0,.4)',borderWidth:1,borderDash:[4,4],fill:false,pointRadius:0,label:'昨收'}
+              {data:[d.open,d.high,d.low,d.price],borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.1)':'rgba(248,81,73,.1)',borderWidth:2,fill:true,tension:.3,pointRadius:4,pointBackgroundColor:cc},
+              {data:[prev,prev,prev,prev],borderColor:'rgba(255,220,0,.5)',borderWidth:1,borderDash:[4,4],fill:false,pointRadius:0,label:'昨收'}
             ]
           },
-          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right',ticks:{font:{size:9}}}}}
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right',ticks:{font:{size:9}}}}}
         });
-      }).catch(()=>{wrap.innerHTML='<div style="height:160px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:11px">載入失敗</div>';});
+      }).catch(()=>{wrap.innerHTML='<div style="height:150px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:11px">載入失敗</div>';});
+    return;
+  }
+
+  if(mode==='2m'){
+    const data=s._kdata2m||s._kdata;
+    if(data) drawLineChart(stockId,data,s.chgP);
     return;
   }
 
   if(!s._kdata) return;
+  if(mode==='candle') drawCandleChart(stockId,s._kdata);
+  else drawLineChart(stockId,s._kdata,s.chgP);
+}
 
-  if(mode==='candle'){
-    drawCandleChart(stockId, s._kdata);
-  } else {
-    const labels=s._kdata.map(d=>d.date.slice(5));
-    const closes=s._kdata.map(d=>d.close);
-    const cc=s.chgP>=0?'#3fb950':'#f85149';
-    dCharts.p=new Chart(canvas,{
-      type:'line',
-      data:{labels,datasets:[{data:closes,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},
-      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{label:ctx=>`收${ctx.raw}`}}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:8,font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}
-    });
-  }
+function drawLineChart(stockId,kdata,chgP){
+  const canvas=document.getElementById('c-price');
+  if(!canvas||!kdata||!kdata.length) return;
+  if(dCharts.p){dCharts.p.destroy();delete dCharts.p;}
+  const labels=kdata.map(d=>d.date.slice(5));
+  const closes=kdata.map(d=>d.close);
+  const cc=chgP>=0?'#3fb950':'#f85149';
+  dCharts.p=new Chart(canvas,{
+    type:'line',
+    data:{labels,datasets:[{data:closes,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{label:ctx=>'收'+ctx.raw}}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:8,font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}
+  });
 }
 
 function drawSimulatedChart(s, container){

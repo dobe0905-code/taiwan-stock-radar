@@ -758,7 +758,14 @@ function buildDetHTML(s,live){
       </div>
     </div>
   </div>`:''}
-  <div class="ds"><div class="dst">價格走勢</div><div class="ch-wrap"><canvas id="c-price"></canvas></div></div>
+  <div class="ds"><div class="dst">價格走勢</div>
+    <div style="display:flex;gap:6px;margin-bottom:8px">
+      <button onclick="switchKLine('${s.id}','candle')" id="btn-candle" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--accent);background:rgba(56,139,253,.15);color:var(--accent2);cursor:pointer">蠟燭圖</button>
+      <button onclick="switchKLine('${s.id}','line')" id="btn-line" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer">折線圖</button>
+      ${isTradingNow()?`<button onclick="switchKLine('${s.id}','today')" id="btn-today" style="font-size:10px;padding:3px 10px;border-radius:4px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer">當日走勢</button>`:''}
+    </div>
+    <div class="ch-wrap"><canvas id="c-price"></canvas></div>
+  </div>
   <div class="ds"><div class="dst">估值指標</div>
     <div class="kv2">
       <div class="kv"><div class="kv-l">本益比 PER</div><div class="kv-v ${s.peV&&s.peV<15?'c-up':s.peV&&s.peV>35?'c-dn':'c-neu'}">${s.peV?s.peV.toFixed(1):'—'}</div></div>
@@ -809,6 +816,8 @@ function buildDetHTML(s,live){
         <div class="kv"><div class="kv-l">融券買進</div><div id="s-buy" class="kv-v c-up">—</div></div>
         <div class="kv"><div class="kv-l">融資餘額</div><div id="m-total" class="kv-v">—</div></div>
         <div class="kv"><div class="kv-l">融券餘額</div><div id="s-total" class="kv-v">—</div></div>
+        <div class="kv"><div class="kv-l">融資使用率</div><div id="m-usage" class="kv-v">—</div></div>
+        <div class="kv"><div class="kv-l">融券使用率</div><div id="s-usage" class="kv-v">—</div></div>
         <div class="kv"><div class="kv-l">融資限額</div><div id="m-limit" class="kv-v" style="font-size:10px">—</div></div>
         <div class="kv"><div class="kv-l">券資比</div><div id="margin-ratio" class="kv-v">—</div></div>
       </div>
@@ -1027,8 +1036,7 @@ function drawCandleChart(stockId, kdata){
 
 function switchKLine(stockId, mode){
   const s=stocks.find(x=>x.id===stockId);
-  if(!s||!s._kdata) return;
-  // 使用 det 面板內查找，避免找到全域 ID 失效
+  if(!s) return;
   const det=document.getElementById('det');
   const setBtn=(id,active)=>{
     const el=det?det.querySelector('#'+id):document.getElementById(id);
@@ -1039,10 +1047,45 @@ function switchKLine(stockId, mode){
   };
   setBtn('btn-candle', mode==='candle');
   setBtn('btn-line',   mode==='line');
+  setBtn('btn-today',  mode==='today');
 
   if(dCharts.p){dCharts.p.destroy();delete dCharts.p;}
   const canvas=document.getElementById('c-price');
   if(!canvas) return;
+
+  if(mode==='today'){
+    // ── 當日走勢：從 MIS 抓即時並模擬分時走勢 ──
+    const wrap=canvas.closest('.ch-wrap')||canvas.parentElement;
+    wrap.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:160px;gap:8px"><div class="spinner" style="width:14px;height:14px;border-width:2px"></div><span style="font-size:11px;color:var(--text3)">載入當日走勢...</span></div>`;
+    fetch(`/api/quote?type=intraday&stock_id=${stockId}&market=${s.market}`)
+      .then(r=>r.json()).then(j=>{
+        const d=j.data;
+        if(!d||!d.price){wrap.innerHTML='<div style="height:160px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:11px">當日走勢需盤中才可查詢</div>';return;}
+        wrap.innerHTML='<div style="position:relative;height:160px"><canvas id="c-price"></canvas></div>';
+        const cnv=document.getElementById('c-price');
+        if(!cnv) return;
+        // 以昨收為基準畫趨勢線：顯示開盤到目前的走勢
+        const prev=d.prev||d.open;
+        const labels=['開盤',`高${d.high}`,`低${d.low}`,'現價'];
+        const vals=[d.open, d.high, d.low, d.price];
+        const cc=d.price>=prev?'#3fb950':'#f85149';
+        // 加入昨收參考線
+        dCharts.p=new Chart(cnv,{
+          type:'line',
+          data:{
+            labels,
+            datasets:[
+              {data:vals,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.1)':'rgba(248,81,73,.1)',borderWidth:2,fill:true,tension:.3,pointRadius:4,pointBackgroundColor:cc},
+              {data:[prev,prev,prev,prev],borderColor:'rgba(255,255,0,.4)',borderWidth:1,borderDash:[4,4],fill:false,pointRadius:0,label:'昨收'}
+            ]
+          },
+          options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right',ticks:{font:{size:9}}}}}
+        });
+      }).catch(()=>{wrap.innerHTML='<div style="height:160px;display:flex;align-items:center;justify-content:center;color:var(--text3);font-size:11px">載入失敗</div>';});
+    return;
+  }
+
+  if(!s._kdata) return;
 
   if(mode==='candle'){
     drawCandleChart(stockId, s._kdata);
@@ -1151,11 +1194,8 @@ async function loadHoldersData(stockId){
 async function loadMarginData(stockId){
   const ml=document.getElementById('margin-loading');
   const mc=document.getElementById('margin-content');
-  if(!stockId.match(/^\d{4,6}$/)){
-    if(ml) ml.style.display='none'; return;
-  }
+  if(!stockId.match(/^\d{4,6}$/)){if(ml)ml.style.display='none';return;}
   try{
-    // 使用新的 margin_detail（TWSE 官網當日資料，含限額）
     const r=await fetch(`/api/quote?type=margin_detail&stock_id=${stockId}`);
     const j=await r.json();
     if(!ml) return;
@@ -1171,30 +1211,31 @@ async function loadMarginData(stockId){
       upd('s-buy',   d.shortBuy,     'c-up');
       upd('s-total', d.shortBalance, '');
       upd('m-limit', d.marginLimit,  '');
-      // 券資比 = 融券餘額/融資餘額 × 100%
-      const el=document.getElementById('margin-ratio');
-      if(el){
+      // 融資使用率
+      const muEl=document.getElementById('m-usage');
+      if(muEl){
+        const mu=d.marginUsage||0;
+        muEl.textContent=mu>0?mu.toFixed(1)+'%':(d.marginLimit>0?(d.marginBalance/d.marginLimit*100).toFixed(1)+'%':'—');
+        muEl.className='kv-v '+(mu>60?'c-dn':mu>40?'c-neu':'c-up');
+      }
+      // 融券使用率
+      const suEl=document.getElementById('s-usage');
+      if(suEl){
+        const su=d.shortUsage||0;
+        suEl.textContent=su>0?su.toFixed(1)+'%':'—';
+        suEl.className='kv-v '+(su>50?'c-dn':'');
+      }
+      // 券資比
+      const ratioEl=document.getElementById('margin-ratio');
+      if(ratioEl){
         if(d.marginBalance>0){
           const ratio=(d.shortBalance/d.marginBalance*100).toFixed(1);
-          el.textContent=ratio+'%';
-          el.className='kv-v '+(parseFloat(ratio)>20?'c-dn':parseFloat(ratio)<5?'c-up':'');
-        } else { el.textContent='—'; }
+          ratioEl.textContent=ratio+'%';
+          ratioEl.className='kv-v '+(parseFloat(ratio)>20?'c-dn':parseFloat(ratio)<5?'c-up':'');
+        } else { ratioEl.textContent='—'; }
       }
     } else {
-      // fallback: 用 fundamental margin
-      const r2=await fetch(`/api/fundamental?type=margin&stock_id=${stockId}`);
-      const j2=await r2.json();
-      if(j2.data&&mc){
-        mc.style.display='block';
-        document.getElementById('m-buy').textContent=fmV(j2.data.marginBuy);
-        document.getElementById('m-sell').textContent=fmV(j2.data.marginSell);
-        document.getElementById('m-total').textContent=fmV(j2.data.marginTotal);
-        document.getElementById('s-sell').textContent=fmV(j2.data.shortSell);
-        document.getElementById('s-buy').textContent=fmV(j2.data.shortBuy);
-        document.getElementById('s-total').textContent=fmV(j2.data.shortTotal);
-      } else {
-        if(ml){ ml.innerHTML='<span style="color:var(--text3);font-size:11px">今日無融資融券資料</span>'; ml.style.display='flex'; }
-      }
+      if(ml){ml.innerHTML='<span style="color:var(--text3);font-size:11px">今日無融資融券資料（盤後更新）</span>';ml.style.display='flex';}
     }
   }catch(e){
     if(ml) ml.innerHTML='<span style="color:var(--text3);font-size:11px">融資融券暫無法取得</span>';

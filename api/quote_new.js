@@ -276,6 +276,13 @@ export default async function handler(req, res) {
 
     // ══════════════════════════════════════════════════
     // 8. 三大法人個股買賣（當日）
+    // T86 欄位: [0]代號 [1]名稱
+    //   外資: [2]買進 [3]賣出 [4]買賣超
+    //   外資+陸資: [5]買進 [6]賣出 [7]買賣超
+    //   投信: [8]買進 [9]賣出 [10]買賣超
+    //   自營商(自行): [11]買進 [12]賣出 [13]買賣超
+    //   自營商(避險): [14]買進 [15]賣出 [16]買賣超
+    //   三大法人合計: [17]買賣超
     // ══════════════════════════════════════════════════
     if (type === 'institution_detail') {
       if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
@@ -289,18 +296,26 @@ export default async function handler(req, res) {
         const j = await r.json();
         const rows = j.data||[];
         const item = rows.find(row => row[0]===stock_id);
-        res.setHeader('Cache-Control','s-maxage=3600, stale-while-revalidate');
+        const p = (v) => parseInt((v||'0').replace(/,/g,'').replace(/\+/g,'')) || 0;
+        res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate');
         return res.status(200).json({
           stock_id,
+          fields: j.fields || [],  // 回傳欄位名稱，方便除錯
           data: item ? {
-            foreignBuy:   parseInt(item[2]?.replace(/,/g,''))||0,  // 外資買進
-            foreignSell:  parseInt(item[3]?.replace(/,/g,''))||0,  // 外資賣出
-            foreignNet:   parseInt(item[4]?.replace(/,/g,''))||0,  // 外資買賣超
-            trustBuy:     parseInt(item[7]?.replace(/,/g,''))||0,  // 投信買進
-            trustSell:    parseInt(item[8]?.replace(/,/g,''))||0,  // 投信賣出
-            trustNet:     parseInt(item[9]?.replace(/,/g,''))||0,  // 投信買賣超
-            dealerNet:    parseInt(item[12]?.replace(/,/g,''))||0, // 自營商買賣超
-            totalNet:     parseInt(item[13]?.replace(/,/g,''))||0, // 三大法人合計
+            foreignBuy:    p(item[2]),   // 外資買進(張)
+            foreignSell:   p(item[3]),   // 外資賣出(張)
+            foreignNet:    p(item[4]),   // 外資買賣超(張)
+            trustBuy:      p(item[8]),   // 投信買進(張)
+            trustSell:     p(item[9]),   // 投信賣出(張)
+            trustNet:      p(item[10]),  // 投信買賣超(張)
+            dealerSelfBuy: p(item[11]),  // 自營商自行買進
+            dealerSelfSell:p(item[12]),  // 自營商自行賣出
+            dealerSelfNet: p(item[13]),  // 自營商自行買賣超
+            dealerHedgeBuy:p(item[14]),  // 自營商避險買進
+            dealerHedgeSell:p(item[15]), // 自營商避險賣出
+            dealerHedgeNet:p(item[16]),  // 自營商避險買賣超
+            dealerNet:     p(item[13]) + p(item[16]), // 自營商合計
+            totalNet:      p(item[17]),  // 三大法人合計買賣超
           } : null,
           source: 'TWSE_T86',
           date: yyyymmdd

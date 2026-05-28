@@ -606,6 +606,8 @@ function updSB(){
 }
 
 // ── 詳細面板 ──
+let detPollTimer = null;
+
 function openDet(id){
   currentDetId=id;
   const s=stocks.find(x=>x.id===id); if(!s) return;
@@ -623,13 +625,69 @@ function openDet(id){
   document.getElementById('detBody').innerHTML=buildDetHTML(s,live);
   document.getElementById('det').classList.add('open');
   setTimeout(()=>buildDetCharts(s),100);
+  // 開始單股即時輪詢
+  startDetPoll(s);
 }
 
 function closeDet(){
   currentDetId=null;
+  if(detPollTimer){clearInterval(detPollTimer);detPollTimer=null;}
   document.getElementById('det').classList.remove('open');
   Object.values(dCharts).forEach(c=>c&&c.destroy&&c.destroy());
   dCharts={};
+}
+
+// ── 單股即時行情輪詢（個股面板專用）──
+function startDetPoll(s){
+  if(detPollTimer){clearInterval(detPollTimer);detPollTimer=null;}
+  if(!isTradingNow()) return;
+  async function pollOnce(){
+    if(!currentDetId) return;
+    try{
+      const market = s.market==='twse'?'twse':'tpex';
+      const r = await fetch(`/api/quote?type=realtime&market=${market}&stocks=${s.id}`);
+      const j = await r.json();
+      const arr = j.data||[];
+      const item = arr.find(x=>x.c===s.id)||arr[0];
+      if(!item) return;
+      const z=parseFloat(item.z)||0;
+      const y=parseFloat(item.y)||0;  // 昨收
+      const o=parseFloat(item.o)||0;
+      const h=parseFloat(item.h)||0;
+      const l=parseFloat(item.l)||0;
+      const v=parseFloat(item.v)||0;
+      if(!z||!y) return;
+      const price=z, chg=parseFloat((z-y).toFixed(2)), chgP=parseFloat(((z-y)/y*100).toFixed(2));
+      const amp=o>0?((h-l)/o*100).toFixed(2)+'%':'—';
+      // 更新頂部大標
+      const pe=document.getElementById('d-price');
+      const ce=document.getElementById('d-chg');
+      if(pe) pe.textContent=price.toFixed(2);
+      if(ce){
+        ce.textContent=(chgP>=0?'+':'')+chgP.toFixed(2)+'%';
+        ce.className='pill '+(chgP>0?'pill-up':chgP<0?'pill-dn':'pill-neu');
+      }
+      // 更新即時報價卡片
+      const upd=(id,val)=>{const el=document.getElementById(id);if(el)el.textContent=val;};
+      upd('dq-open', o>0?o.toFixed(2):'—');
+      upd('dq-price', price.toFixed(2));
+      upd('dq-high', h>0?h.toFixed(2):'—');
+      upd('dq-low', l>0?l.toFixed(2):'—');
+      upd('dq-vol', fmV(v*1000));
+      upd('dq-amp', amp);
+      const chgEl=document.getElementById('dq-chg');
+      if(chgEl){chgEl.textContent=(chg>=0?'+':'')+chg.toFixed(2);chgEl.className='kv-v '+(chg>0?'c-up':chg<0?'c-dn':'c-neu');}
+      const chgpEl=document.getElementById('dq-chgp');
+      if(chgpEl){chgpEl.textContent=(chgP>=0?'+':'')+chgP.toFixed(2)+'%';chgpEl.className='kv-v '+(chgP>0?'c-up':chgP<0?'c-dn':'c-neu');}
+      const priceEl=document.getElementById('dq-price');
+      if(priceEl){priceEl.className='kv-v '+(chgP>0?'c-up':chgP<0?'c-dn':'c-neu');}
+      // 更新 stocks 陣列中的值
+      const st=stocks.find(x=>x.id===s.id);
+      if(st){st.close=price;st.open=o||st.open;st.high=h||st.high;st.low=l||st.low;st.vol=v*1000||st.vol;st.chg=chg;st.chgP=chgP;}
+    }catch(e){console.warn('detPoll err:',e);}
+  }
+  pollOnce();
+  detPollTimer=setInterval(pollOnce,3000);
 }
 
 function buildDetHTML(s,live){
@@ -645,14 +703,14 @@ function buildDetHTML(s,live){
   return`
   <div class="ds"><div class="dst">即時報價</div>
     <div class="kv2">
-      <div class="kv"><div class="kv-l">開盤</div><div class="kv-v">${s.open.toFixed(2)}</div></div>
-      <div class="kv"><div class="kv-l">現價</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}">${(live?.tick?.price||s.close).toFixed(2)}</div></div>
-      <div class="kv"><div class="kv-l">最高</div><div class="kv-v c-up">${s.high.toFixed(2)}</div></div>
-      <div class="kv"><div class="kv-l">最低</div><div class="kv-v c-dn">${s.low.toFixed(2)}</div></div>
-      <div class="kv"><div class="kv-l">成交量</div><div class="kv-v">${fmV(s.vol)}</div></div>
-      <div class="kv"><div class="kv-l">振幅</div><div class="kv-v">${amp}</div></div>
-      <div class="kv"><div class="kv-l">漲跌</div><div class="kv-v ${s.chg>0?'c-up':s.chg<0?'c-dn':'c-neu'}">${s.chg>0?'+':''}${s.chg.toFixed(2)}</div></div>
-      <div class="kv"><div class="kv-l">漲跌幅</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}">${s.chgP>=0?'+':''}${s.chgP.toFixed(2)}%</div></div>
+      <div class="kv"><div class="kv-l">開盤</div><div class="kv-v" id="dq-open">${s.open.toFixed(2)}</div></div>
+      <div class="kv"><div class="kv-l">現價</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}" id="dq-price">${(live?.tick?.price||s.close).toFixed(2)}</div></div>
+      <div class="kv"><div class="kv-l">最高</div><div class="kv-v c-up" id="dq-high">${s.high.toFixed(2)}</div></div>
+      <div class="kv"><div class="kv-l">最低</div><div class="kv-v c-dn" id="dq-low">${s.low.toFixed(2)}</div></div>
+      <div class="kv"><div class="kv-l">成交量</div><div class="kv-v" id="dq-vol">${fmV(s.vol)}</div></div>
+      <div class="kv"><div class="kv-l">振幅</div><div class="kv-v" id="dq-amp">${amp}</div></div>
+      <div class="kv"><div class="kv-l">漲跌</div><div class="kv-v ${s.chg>0?'c-up':s.chg<0?'c-dn':'c-neu'}" id="dq-chg">${s.chg>0?'+':''}${s.chg.toFixed(2)}</div></div>
+      <div class="kv"><div class="kv-l">漲跌幅</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}" id="dq-chgp">${s.chgP>=0?'+':''}${s.chgP.toFixed(2)}%</div></div>
     </div>
   </div>
   ${ba?`<div class="ds"><div class="dst">即時五檔</div>
@@ -902,23 +960,44 @@ function drawSimulatedChart(s, container){
 
 // ── 籌碼分析資料載入 ──
 async function loadHoldersData(stockId){
+  const hl=document.getElementById('holders-loading');
+  const hc=document.getElementById('holders-content');
   try{
     const r=await fetch(`/api/fundamental?type=holders&stock_id=${stockId}`);
     const j=await r.json();
-    const hl=document.getElementById('holders-loading');
-    const hc=document.getElementById('holders-content');
     if(!hl||!hc) return;
+
+    const sum=j.summary||{};
+    const hasData = j.rows && j.rows.length > 0 && (sum.bigHolder > 0 || sum.smallHolder > 0);
+
+    if(!hasData){
+      // 無資料：顯示說明
+      hl.innerHTML=`<div style="font-size:11px;color:var(--text3);padding:8px 0">
+        集保分散資料每週五更新，目前暫無資料（${j.error||'請稍後再試'}）
+        <br><span style="color:var(--text3);font-size:10px">來源：${j.source||'TDCC'}</span>
+      </div>`;
+      hl.style.display='flex';
+      return;
+    }
+
     hl.style.display='none';
     hc.style.display='block';
-    const sum=j.summary||{};
+
+    // 顯示資料日期
+    const scaDate = j.scaDate||'';
+    const dateLabel = scaDate ? `（資料日期：${scaDate}）` : '';
+    const dst = document.querySelector('#holders-section .dst');
+    if(dst) dst.textContent=`籌碼分析（集保持股分散）${dateLabel}`;
+
     document.getElementById('big-ratio').textContent=(sum.bigHolder||0).toFixed(1)+'%';
     document.getElementById('big-people').textContent=(sum.bigPeople||0).toLocaleString()+' 人';
     document.getElementById('small-ratio').textContent=(sum.smallHolder||0).toFixed(1)+'%';
     document.getElementById('small-people').textContent=(sum.smallPeople||0).toLocaleString()+' 人';
+
     const canvas=document.getElementById('c-holders');
     if(canvas&&j.rows&&j.rows.length>0){
       if(dCharts.holders) dCharts.holders.destroy();
-      // TDCC 單位為「股」(1張=1000股)：1-9張<10,000股；10-99張<100,000股；100-999張<1,000,000股；1000張+=大戶
+      // TDCC 單位為「股」(1張=1000股)
       const groups=[
         {label:'1-9張',ratio:0},
         {label:'10-99張',ratio:0},
@@ -926,10 +1005,10 @@ async function loadHoldersData(stockId){
         {label:'1000張以上',ratio:0}
       ];
       for(const row of j.rows){
-        const s=row.shares;
-        if(s<10000) groups[0].ratio+=row.ratio;
-        else if(s<100000) groups[1].ratio+=row.ratio;
-        else if(s<1000000) groups[2].ratio+=row.ratio;
+        const minS=row.shares;
+        if(minS<10000) groups[0].ratio+=row.ratio;
+        else if(minS<100000) groups[1].ratio+=row.ratio;
+        else if(minS<1000000) groups[2].ratio+=row.ratio;
         else groups[3].ratio+=row.ratio;
       }
       dCharts.holders=new Chart(canvas,{
@@ -946,8 +1025,7 @@ async function loadHoldersData(stockId){
       </div>`;
     }
   }catch(e){
-    const el=document.getElementById('holders-loading');
-    if(el) el.innerHTML='<span style="color:var(--text3);font-size:11px">籌碼資料暫無法取得</span>';
+    if(hl) hl.innerHTML=`<span style="color:var(--text3);font-size:11px">籌碼資料載入失敗：${e.message}</span>`;
   }
 }
 

@@ -678,6 +678,47 @@ function buildDetHTML(s,live){
       <div class="kv"><div class="kv-l">市場</div><div class="kv-v" style="font-size:11px">${s.market==='twse'?'上市 TWSE':'上櫃 TPEx'}</div></div>
     </div>
   </div>
+  <div class="ds" id="holders-section">
+    <div class="dst">籌碼分析（集保持股分散）</div>
+    <div id="holders-loading" style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--text3);font-size:11px;">
+      <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>載入籌碼資料...
+    </div>
+    <div id="holders-content" style="display:none">
+      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
+        <div style="background:var(--bg3);border-radius:7px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px">千張大戶持股</div>
+          <div id="big-ratio" style="font-size:20px;font-weight:700;font-family:var(--mono);color:var(--red2)">—%</div>
+          <div id="big-people" style="font-size:10px;color:var(--text3);margin-top:2px">— 人</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:7px;padding:10px;text-align:center">
+          <div style="font-size:10px;color:var(--text3);margin-bottom:4px">散戶持股</div>
+          <div id="small-ratio" style="font-size:20px;font-weight:700;font-family:var(--mono);color:var(--green2)">—%</div>
+          <div id="small-people" style="font-size:10px;color:var(--text3);margin-top:2px">— 人</div>
+        </div>
+      </div>
+      <div style="position:relative;height:160px"><canvas id="c-holders"></canvas></div>
+      <div style="margin-top:8px">
+        <div style="font-size:10px;color:var(--text3);margin-bottom:4px">持股分散明細（集保）</div>
+        <div id="holders-table" style="font-size:10px;font-family:var(--mono)"></div>
+      </div>
+    </div>
+  </div>
+  <div class="ds" id="margin-section">
+    <div class="dst">融資融券</div>
+    <div id="margin-loading" style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--text3);font-size:11px;">
+      <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>載入融資融券...
+    </div>
+    <div id="margin-content" style="display:none">
+      <div class="kv2">
+        <div class="kv"><div class="kv-l">融資買入</div><div id="m-buy" class="kv-v c-up">—</div></div>
+        <div class="kv"><div class="kv-l">融資賣出</div><div id="m-sell" class="kv-v c-dn">—</div></div>
+        <div class="kv"><div class="kv-l">融資餘額</div><div id="m-total" class="kv-v">—</div></div>
+        <div class="kv"><div class="kv-l">融券賣出</div><div id="s-sell" class="kv-v c-dn">—</div></div>
+        <div class="kv"><div class="kv-l">融券買入</div><div id="s-buy" class="kv-v c-up">—</div></div>
+        <div class="kv"><div class="kv-l">融券餘額</div><div id="s-total" class="kv-v">—</div></div>
+      </div>
+    </div>
+  </div>
   <div class="ds"><div class="dst">六維雷達分析</div><div class="ch-radar"><canvas id="c-radar"></canvas></div></div>
   <div class="ds"><div class="dst">AI 診斷</div>
     <div class="ai-box ${ac}">
@@ -748,20 +789,13 @@ async function buildDetCharts(s){
   if(radarCanvas){
     dCharts.r=new Chart(radarCanvas,{
       type:'radar',
-      data:{
-        labels:['技術面','基本面','籌碼面','動能','估值','風險'],
-        datasets:[{
-          data:[Math.min(chS*.6+vS*.4,95),Math.min(peS,95),50,chS,peS,100-vS],
-          borderColor:'rgba(56,139,253,.8)',backgroundColor:'rgba(56,139,253,.12)',
-          borderWidth:1.5,pointBackgroundColor:'#388bfd',pointRadius:3
-        }]
-      },
-      options:{responsive:true,maintainAspectRatio:false,
-        plugins:{legend:{display:false}},
-        scales:{r:{grid:{color:'rgba(255,255,255,.08)'},ticks:{display:false},
-          pointLabels:{font:{size:11},color:'#8b949e'},min:0,max:100}}}
+      data:{labels:['技術面','基本面','籌碼面','動能','估值','風險'],datasets:[{data:[Math.min(chS*.6+vS*.4,95),Math.min(peS,95),50,chS,peS,100-vS],borderColor:'rgba(56,139,253,.8)',backgroundColor:'rgba(56,139,253,.12)',borderWidth:1.5,pointBackgroundColor:'#388bfd',pointRadius:3}]},
+      options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{r:{grid:{color:'rgba(255,255,255,.08)'},ticks:{display:false},pointLabels:{font:{size:11},color:'#8b949e'},min:0,max:100}}}
     });
   }
+  // ── 同時載入籌碼分析資料 ──
+  loadHoldersData(s.id);
+  loadMarginData(s.id);
 }
 
 function drawCandleChart(stockId, kdata){
@@ -867,6 +901,87 @@ function drawSimulatedChart(s, container){
   ps[ps.length-1]=s.close;
   const cc=s.chgP>=0?'#3fb950':'#f85149';
   dCharts.p=new Chart(canvas,{type:'line',data:{labels:lb,datasets:[{data:ps,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:6}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}});
+}
+
+
+// ── 籌碼分析資料載入 ──
+async function loadHoldersData(stockId){
+  try{
+    const r=await fetch(`/api/fundamental?type=holders&stock_id=${stockId}`);
+    const j=await r.json();
+    const hl=document.getElementById('holders-loading');
+    const hc=document.getElementById('holders-content');
+    if(!hl||!hc) return;
+    hl.style.display='none';
+    hc.style.display='block';
+    const sum=j.summary||{};
+    document.getElementById('big-ratio').textContent=(sum.bigHolder||0).toFixed(1)+'%';
+    document.getElementById('big-people').textContent=(sum.bigPeople||0).toLocaleString()+' 人';
+    document.getElementById('small-ratio').textContent=(sum.smallHolder||0).toFixed(1)+'%';
+    document.getElementById('small-people').textContent=(sum.smallPeople||0).toLocaleString()+' 人';
+    const canvas=document.getElementById('c-holders');
+    if(canvas&&j.rows&&j.rows.length>0){
+      if(dCharts.holders) dCharts.holders.destroy();
+      const groups=[
+        {label:'1-9張',ratio:0},{label:'10-49張',ratio:0},
+        {label:'50-199張',ratio:0},{label:'200-999張',ratio:0},{label:'1000張以上',ratio:0}
+      ];
+      for(const row of j.rows){
+        const s=row.shares;
+        if(s<9000) groups[0].ratio+=row.ratio;
+        else if(s<49000) groups[1].ratio+=row.ratio;
+        else if(s<199000) groups[2].ratio+=row.ratio;
+        else if(s<999000) groups[3].ratio+=row.ratio;
+        else groups[4].ratio+=row.ratio;
+      }
+      dCharts.holders=new Chart(canvas,{
+        type:'doughnut',
+        data:{labels:groups.map(g=>g.label),datasets:[{data:groups.map(g=>parseFloat(g.ratio.toFixed(1))),backgroundColor:['#388bfd','#3fb950','#e3b341','#bc8cff','#f85149'],borderColor:'rgba(0,0,0,0)',borderWidth:2}]},
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:10},color:'#8b949e',padding:6}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw}%`}}}}
+      });
+    }
+    const tbl=document.getElementById('holders-table');
+    if(tbl&&j.rows){
+      tbl.innerHTML=`<div style="display:grid;grid-template-columns:2fr 1fr 1fr;gap:2px">
+        <div style="padding:3px 4px;color:var(--text3)">持股分級</div><div style="padding:3px 4px;text-align:right;color:var(--text3)">人數</div><div style="padding:3px 4px;text-align:right;color:var(--text3)">比例</div>
+        ${j.rows.slice(-8).map(row=>`<div style="padding:3px 4px;color:var(--text2);font-size:10px">${row.level}</div><div style="padding:3px 4px;text-align:right;color:var(--text2);font-size:10px">${row.people.toLocaleString()}</div><div style="padding:3px 4px;text-align:right;font-size:10px;color:${row.ratio>10?'var(--red2)':'var(--text2)'}">${row.ratio}%</div>`).join('')}
+      </div>`;
+    }
+  }catch(e){
+    const el=document.getElementById('holders-loading');
+    if(el) el.innerHTML='<span style="color:var(--text3);font-size:11px">籌碼資料暫無法取得</span>';
+  }
+}
+
+async function loadMarginData(stockId){
+  if(!stockId.match(/^\d{4}$/)){
+    const el=document.getElementById('margin-loading');
+    if(el) el.style.display='none';
+    return;
+  }
+  try{
+    const r=await fetch(`/api/fundamental?type=margin&stock_id=${stockId}`);
+    const j=await r.json();
+    const ml=document.getElementById('margin-loading');
+    const mc=document.getElementById('margin-content');
+    if(!ml) return;
+    ml.style.display='none';
+    if(j.data&&mc){
+      mc.style.display='block';
+      document.getElementById('m-buy').textContent=fmV(j.data.marginBuy);
+      document.getElementById('m-sell').textContent=fmV(j.data.marginSell);
+      document.getElementById('m-total').textContent=fmV(j.data.marginTotal);
+      document.getElementById('s-sell').textContent=fmV(j.data.shortSell);
+      document.getElementById('s-buy').textContent=fmV(j.data.shortBuy);
+      document.getElementById('s-total').textContent=fmV(j.data.shortTotal);
+    } else {
+      ml.innerHTML='<span style="color:var(--text3);font-size:11px">今日無融資融券資料</span>';
+      ml.style.display='flex';
+    }
+  }catch(e){
+    const el=document.getElementById('margin-loading');
+    if(el) el.innerHTML='<span style="color:var(--text3);font-size:11px">融資融券暫無法取得</span>';
+  }
 }
 
 function setSF(f,el){sf=f;document.querySelectorAll('.sb-item,.sb-sub-item').forEach(e=>e.classList.remove('active'));if(el)el.classList.add('active');renderTable();}

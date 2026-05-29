@@ -1367,28 +1367,29 @@ function showStockTV(stockId, market, interval, btnEl){
     return;
   }
 
-  // 日/週/月 → 全部改用我們自家 K 線資料 + Chart.js（避免 TradingView 免費 widget 跳窗）
-  wrap.innerHTML='<div class="loading" style="height:100%"><div class="spinner"></div><div>載入 K 線資料中…</div></div>';
-  const s=stocks.find(x=>x.id===stockId);
-  const useCached=s?._kdata&&s._kdata.length;
-  const drawIt=(kdata)=>{
-    if(!kdata||!kdata.length){
-      wrap.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:14px">K 線資料暫無</div>`;
-      return;
-    }
-    let view=kdata;
-    if(interval==='W') view=aggregateKLine(kdata,5);
-    else if(interval==='M') view=aggregateKLine(kdata,20);
-    drawStockKLine(wrap, view, interval);
-  };
-  if(useCached) drawIt(s._kdata);
-  else{
-    fetch(`/api/quote?type=kline&stock_id=${stockId}`).then(r=>r.json()).then(j=>{
-      const d=j.data||[];
-      if(s) s._kdata=d;
-      drawIt(d);
-    }).catch(()=>{ wrap.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--red2);font-size:14px">K 線載入失敗</div>`; });
-  }
+  // 日/週/月 → 還原為 TradingView advanced-chart widget（依使用者要求）
+  wrap.innerHTML='';
+  const sym=market==='twse'?`TWSE:${stockId}`:`TPEX:${stockId}`;
+  const outer=document.createElement('div');
+  outer.className='tradingview-widget-container';
+  outer.style.cssText='height:100%;width:100%;';
+  const inner=document.createElement('div');
+  inner.className='tradingview-widget-container__widget';
+  inner.style.cssText='height:100%;width:100%;';
+  outer.appendChild(inner);
+  wrap.appendChild(outer);
+  const scr=document.createElement('script');
+  scr.type='text/javascript';
+  scr.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+  scr.async=true;
+  scr.innerHTML=JSON.stringify({
+    autosize:true,symbol:sym,interval:interval,
+    timezone:'Asia/Taipei',theme:'dark',style:'1',locale:'zh_TW',
+    enable_publishing:false,hide_top_toolbar:false,hide_legend:false,
+    save_image:false,withdateranges:true,allow_symbol_change:false,
+    studies:['MACD@tv-basicstudies','RSIIndicator@tv-basicstudies','MASimple@tv-basicstudies|{"length":20}','MASimple@tv-basicstudies|{"length":60}']
+  });
+  outer.appendChild(scr);
 }
 
 // 將日 K 線聚合成週/月 K（每 period 個交易日為一根）

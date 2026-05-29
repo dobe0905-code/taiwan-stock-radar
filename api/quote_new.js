@@ -536,6 +536,70 @@ export default async function handler(req, res) {
       }
     }
 
+    // ══════════════════════════════════════════════════
+    // 13. 櫃買指數 即時走勢（TPEx 官網 mktRT，1 分鐘間隔）
+    //     回傳 [{c:指數, s:成交金額(億), t:HHMMSS}]
+    // ══════════════════════════════════════════════════
+    if (type === 'tpex_index_intraday') {
+      try {
+        const r = await fetch('https://info.tpex.org.tw/api/mktRT', {
+          headers: {
+            'Accept': 'application/json',
+            'Referer': 'https://www.tpex.org.tw/',
+            'User-Agent': 'Mozilla/5.0'
+          }
+        });
+        const j = await r.json();
+        const arr = (j.ohlcArray||[])
+          .map(x => ({
+            t: x.t,
+            time: x.t ? `${x.t.slice(0,2)}:${x.t.slice(2,4)}` : '',
+            price: parseFloat(x.c) || 0,
+            value: parseFloat(x.s) || 0
+          }))
+          .filter(x => x.price > 0 && x.t !== '000000');
+        res.setHeader('Cache-Control','s-maxage=10, stale-while-revalidate');
+        return res.status(200).json({ data: arr, source: 'TPEx_mktRT' });
+      } catch (e) {
+        return res.status(200).json({ data: [], error: e.message });
+      }
+    }
+
+    // ══════════════════════════════════════════════════
+    // 14. 櫃買指數 歷史走勢（TPEx 官網 historical.json）
+    //     回傳 {W:[...], M:[...], Q:[...], Y:[...]}
+    //     每筆: {date:YYYYMMDD, index:收盤指數, val:成交金額(億)}
+    // ══════════════════════════════════════════════════
+    if (type === 'tpex_index_historical') {
+      try {
+        const r = await fetch('https://www.tpex.org.tw/data/home/historical.json', {
+          headers: {
+            'Accept': 'application/json',
+            'Referer': 'https://www.tpex.org.tw/',
+            'User-Agent': 'Mozilla/5.0'
+          }
+        });
+        const j = await r.json();
+        const ti = j.tpex_index || {};
+        const norm = (arr) => (arr?.data||[]).map(d => ({
+          date:  d.date,
+          dateF: d.date && d.date.length === 8 ? `${d.date.slice(0,4)}/${d.date.slice(4,6)}/${d.date.slice(6,8)}` : d.date,
+          price: parseFloat(d.index) || 0,
+          value: parseFloat(d.val) || 0
+        })).filter(x => x.price > 0);
+        const out = {
+          W: norm(ti.W),
+          M: norm(ti.M),
+          Q: norm(ti.Q),
+          Y: norm(ti.Y),
+        };
+        res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate');
+        return res.status(200).json({ data: out, source: 'TPEx_historical' });
+      } catch (e) {
+        return res.status(200).json({ data: {W:[],M:[],Q:[],Y:[]}, error: e.message });
+      }
+    }
+
     return res.status(400).json({ error: '不支援的 type 參數' });
 
   } catch (err) {

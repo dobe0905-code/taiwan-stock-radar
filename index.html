@@ -2200,134 +2200,240 @@ const GLOBAL_CHARTS=[
   {sym:'TAIFEX:TX1!',  label:'📅 台指近月'},
 ];
 
-// ── 櫃買指數 K 線（TPEx 歷史 + MIS 即時，Chart.js 自繪蠟燭）──
+// ── 櫃買指數 折線圖（仿 TPEx 官網：橘色折線 + 面積成交金額 + 即時/週/月/季/年）──
+window._tpexChartState = { period:'RT', historical:null, intraday:null, live:null, label:'' };
+
 async function showTPExCandleChart(containerId, label){
   const c=document.getElementById(containerId);
   if(!c) return;
-  c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:13px">載入 ${label} 資料中…</div>`;
+  window._tpexChartState.label = label;
+
+  // 外殼：頁籤 + 即時報價列 + 圖表 + 底部資訊
+  c.innerHTML = `
+    <div style="display:flex;flex-direction:column;height:100%;background:var(--bg)">
+      <div id="tpex-live-bar" style="padding:10px 14px 6px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--border);min-height:34px">
+        <span style="color:var(--text3);font-size:12px">載入中…</span>
+      </div>
+      <div id="tpex-period-tabs" style="display:flex;gap:0;padding:8px 14px 0;border-bottom:1px solid var(--border);background:var(--bg2)">
+        ${[['RT','即時'],['W','週'],['M','月'],['Q','季'],['Y','年']].map(([k,t])=>`
+          <button data-p="${k}" onclick="setTPExPeriod('${k}')"
+            style="padding:8px 18px;background:transparent;border:none;border-bottom:2px solid transparent;color:var(--text2);font-size:13px;cursor:pointer;transition:all .15s">
+            ${t}
+          </button>`).join('')}
+      </div>
+      <div style="flex:1;position:relative;min-height:0;padding:6px 8px 0">
+        <canvas id="tpex-line-cv" style="width:100%;height:100%;display:block"></canvas>
+      </div>
+      <div id="tpex-foot" style="padding:8px 14px 10px;border-top:1px solid var(--border);font-family:var(--mono);font-size:12px;color:var(--text2);display:flex;gap:18px;flex-wrap:wrap"></div>
+    </div>`;
+
+  // 拉資料：歷史一次到位，即時可重抓
   try{
-    const [hr,lr]=await Promise.all([
-      fetch('/api/quote?type=tpex_index&months=4').then(r=>r.json()).catch(()=>({data:[]})),
-      fetch('/api/quote?type=otc_index_live').then(r=>r.json()).catch(()=>({data:null}))
+    const [hr,lr,ir]=await Promise.all([
+      fetch('/api/quote?type=tpex_index_historical').then(r=>r.json()).catch(()=>({data:{}})),
+      fetch('/api/quote?type=otc_index_live').then(r=>r.json()).catch(()=>({data:null})),
+      fetch('/api/quote?type=tpex_index_intraday').then(r=>r.json()).catch(()=>({data:[]})),
     ]);
-    let kdata=(hr.data||[]).slice();
-    const live=lr.data;
+    window._tpexChartState.historical = hr.data || {};
+    window._tpexChartState.live = lr.data;
+    window._tpexChartState.intraday = ir.data || [];
+    renderTPExLiveBar();
+    renderTPExFoot();
+    renderTPExChart();
+  }catch(e){
+    document.getElementById('tpex-live-bar').innerHTML =
+      `<span style="color:var(--red2);font-size:12px">載入失敗：${e.message}</span>`;
+  }
+}
 
-    // 補入當日資料（盤中時 TPEx 還沒有今天）
-    if(live && live.date && live.open!=null && live.high!=null && live.low!=null && live.price!=null){
-      const liveDate=live.date.length===8
-        ? `${live.date.slice(0,4)}/${live.date.slice(4,6)}/${live.date.slice(6,8)}`
-        : live.date;
-      if(!kdata.find(d=>d.date===liveDate)){
-        kdata.push({date:liveDate,open:live.open,high:live.high,low:live.low,close:live.price});
-      }
-    }
+function setTPExPeriod(p){
+  window._tpexChartState.period = p;
+  renderTPExChart();
+}
 
-    if(!kdata.length){
-      c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3)">暫無資料</div>`;
-      return;
-    }
+function renderTPExLiveBar(){
+  const live = window._tpexChartState.live;
+  const label = window._tpexChartState.label;
+  const bar = document.getElementById('tpex-live-bar');
+  if(!bar) return;
+  if(!live){ bar.innerHTML=`<span style="color:var(--text3);font-size:12px">${label}（即時資料無法取得）</span>`; return; }
+  const isUp = (live.change||0) >= 0;
+  const col = isUp ? 'var(--green2)' : 'var(--red2)';
+  bar.innerHTML = `
+    <span style="font-weight:700;color:var(--text);font-size:14px">${label}</span>
+    <span style="font-family:var(--mono);font-size:22px;font-weight:700;color:${col}">${live.price?.toFixed(2)||'—'}</span>
+    <span style="font-family:var(--mono);font-size:13px;color:${col}">${isUp?'+':''}${live.change?.toFixed(2)||'0.00'} (${isUp?'+':''}${live.changeP?.toFixed(2)||'0.00'}%)</span>
+    <span style="font-size:10px;color:var(--text3);margin-left:auto">即時：證交所 MIS｜K 線：櫃買中心</span>`;
+}
 
-    const liveBar=live?`
-      <div style="padding:10px 14px 6px;display:flex;align-items:center;gap:14px;flex-wrap:wrap;border-bottom:1px solid var(--border)">
-        <span style="font-weight:700;color:var(--text);font-size:14px">${label}</span>
-        <span style="font-family:var(--mono);font-size:22px;font-weight:700;color:${(live.change||0)>=0?'var(--green2)':'var(--red2)'}">${live.price?.toFixed(2)||'—'}</span>
-        <span style="font-family:var(--mono);font-size:13px;color:${(live.change||0)>=0?'var(--green2)':'var(--red2)'}">${(live.change||0)>=0?'+':''}${live.change?.toFixed(2)||'0.00'} (${(live.changeP||0)>=0?'+':''}${live.changeP?.toFixed(2)||'0.00'}%)</span>
-        <span style="font-family:var(--mono);font-size:11px;color:var(--text3)">開 ${live.open?.toFixed(2)||'—'} 高 <span style="color:var(--green2)">${live.high?.toFixed(2)||'—'}</span> 低 <span style="color:var(--red2)">${live.low?.toFixed(2)||'—'}</span> 昨收 ${live.prev?.toFixed(2)||'—'}</span>
-        <span style="font-size:10px;color:var(--text3);margin-left:auto">即時：證交所 MIS｜K 線：櫃買中心</span>
-      </div>`:'';
-    const liveBarH=live?52:0;
+function renderTPExFoot(){
+  const live = window._tpexChartState.live;
+  const foot = document.getElementById('tpex-foot');
+  if(!foot) return;
+  if(!live){ foot.innerHTML=''; return; }
+  // 試從 intraday 累計成交金額
+  const intra = window._tpexChartState.intraday || [];
+  const totalVal = intra.reduce((a,b)=>a+(b.value||0),0);
+  foot.innerHTML = `
+    <span>開盤 <span style="color:var(--text)">${live.open?.toFixed(2)||'—'}</span></span>
+    <span>昨收 <span style="color:var(--text)">${live.prev?.toFixed(2)||'—'}</span></span>
+    <span>最高 <span style="color:var(--green2)">${live.high?.toFixed(2)||'—'}</span></span>
+    <span>最低 <span style="color:var(--red2)">${live.low?.toFixed(2)||'—'}</span></span>
+    <span>成交金額 <span style="color:var(--text)">${totalVal>0?totalVal.toFixed(2)+' 億元':'—'}</span></span>`;
+}
 
-    c.innerHTML=`${liveBar}<div style="position:relative;height:calc(100% - ${liveBarH}px)"><canvas id="tpex-candle-cv" style="width:100%;height:100%;display:block"></canvas></div>`;
-    const cv=document.getElementById('tpex-candle-cv');
-    if(!cv) return;
+function renderTPExChart(){
+  const cv = document.getElementById('tpex-line-cv');
+  if(!cv) return;
+  // 高亮頁籤
+  document.querySelectorAll('#tpex-period-tabs button').forEach(b=>{
+    const active = b.dataset.p === window._tpexChartState.period;
+    b.style.borderBottomColor = active ? '#ff8c00' : 'transparent';
+    b.style.color = active ? 'var(--text)' : 'var(--text2)';
+    b.style.fontWeight = active ? '700' : '400';
+  });
 
-    if(window._tpexCandleChart){ try{window._tpexCandleChart.destroy();}catch(e){} }
+  const period = window._tpexChartState.period;
+  let pts = [];
+  let xLabelFn = (d,i)=>d.dateF||d.date||'';
 
-    const labels=kdata.map(d=>d.date.slice(5)); // MM/DD
-    const wicks=kdata.map(d=>[d.low,d.high]);
-    const colors=kdata.map(d=>d.close>=d.open?'#3fb950':'#f85149');
+  if(period === 'RT'){
+    pts = (window._tpexChartState.intraday||[]).map(x=>({
+      label: x.time,
+      price: x.price,
+      value: x.value
+    }));
+  } else {
+    const hist = window._tpexChartState.historical || {};
+    const arr = hist[period] || [];
+    pts = arr.map(d=>({
+      label: d.dateF ? d.dateF.slice(5) : d.date,
+      fullDate: d.dateF || d.date,
+      price: d.price,
+      value: d.value
+    }));
+  }
 
-    const candlePlugin={
-      id:'candleBody',
-      afterDatasetsDraw(chart){
-        const {ctx, chartArea, scales:{x,y}}=chart;
-        if(!x||!y) return;
-        const bw=Math.max(2,Math.min(10,((chartArea.right-chartArea.left)/kdata.length)*0.55));
-        kdata.forEach((d,i)=>{
-          const cx=x.getPixelForValue(i);
-          const yO=y.getPixelForValue(d.open);
-          const yC=y.getPixelForValue(d.close);
-          const yH=y.getPixelForValue(d.high);
-          const yL=y.getPixelForValue(d.low);
-          ctx.strokeStyle=colors[i];
-          ctx.fillStyle=colors[i];
-          ctx.lineWidth=1;
-          // 影線
-          ctx.beginPath();
-          ctx.moveTo(cx,yH);
-          ctx.lineTo(cx,yL);
-          ctx.stroke();
-          // 實體
-          const top=Math.min(yO,yC);
-          const h=Math.max(1,Math.abs(yO-yC));
-          ctx.fillRect(cx-bw/2,top,bw,h);
-        });
-      }
-    };
+  if(!pts.length){
+    if(window._tpexLineChart){ try{window._tpexLineChart.destroy();}catch(e){} }
+    const ctx = cv.getContext('2d');
+    ctx.clearRect(0,0,cv.width,cv.height);
+    ctx.fillStyle = '#484f58';
+    ctx.font = '13px sans-serif';
+    ctx.textAlign = 'center';
+    ctx.fillText('暫無資料', cv.width/2, cv.height/2);
+    return;
+  }
 
-    Chart.defaults.color='#8b949e';
-    Chart.defaults.font.family="'JetBrains Mono',monospace";
-    window._tpexCandleChart=new Chart(cv,{
-      type:'bar',
-      data:{labels,datasets:[{
-        label:'櫃買指數',
-        data:wicks,
-        backgroundColor:'transparent',
-        borderColor:'transparent',
-        borderWidth:0,
-        barPercentage:0.0001,
-        categoryPercentage:1
-      }]},
-      options:{
-        responsive:true, maintainAspectRatio:false,
-        animation:false,
-        interaction:{mode:'index',intersect:false},
-        plugins:{
-          legend:{display:false},
-          tooltip:{
-            backgroundColor:'rgba(12,18,32,.95)',
-            borderColor:'var(--border)',
-            borderWidth:1,
-            padding:10,
-            callbacks:{
-              title:(items)=>kdata[items[0]?.dataIndex]?.date||'',
-              label:(ctx)=>{
-                const d=kdata[ctx.dataIndex];
-                if(!d) return '';
-                const chg=d.close-d.open;
-                const chgP=(chg/d.open*100);
-                return [
-                  `開 ${d.open.toFixed(2)}`,
-                  `高 ${d.high.toFixed(2)}`,
-                  `低 ${d.low.toFixed(2)}`,
-                  `收 ${d.close.toFixed(2)}`,
-                  `${chg>=0?'+':''}${chg.toFixed(2)} (${chg>=0?'+':''}${chgP.toFixed(2)}%)`
-                ];
-              }
+  if(window._tpexLineChart){ try{window._tpexLineChart.destroy();}catch(e){} }
+
+  const prevClose = window._tpexChartState.live?.prev;
+  const labels = pts.map(p=>p.label);
+  const prices = pts.map(p=>p.price);
+  const vals   = pts.map(p=>p.value);
+
+  Chart.defaults.color = '#8b949e';
+  Chart.defaults.font.family = "'JetBrains Mono',monospace";
+
+  window._tpexLineChart = new Chart(cv, {
+    type: 'line',
+    data: {
+      labels,
+      datasets: [
+        {
+          label: '指數',
+          data: prices,
+          borderColor: '#ff8c00',
+          backgroundColor: 'transparent',
+          borderWidth: 1.8,
+          pointRadius: 0,
+          pointHoverRadius: 4,
+          tension: 0.15,
+          yAxisID: 'y',
+          order: 1
+        },
+        {
+          label: '成交金額(億)',
+          data: vals,
+          borderColor: 'rgba(255,180,80,.7)',
+          backgroundColor: 'rgba(255,180,80,.25)',
+          borderWidth: 1,
+          pointRadius: 0,
+          fill: 'origin',
+          tension: 0.1,
+          yAxisID: 'y1',
+          order: 2
+        },
+        ...(period==='RT' && prevClose ? [{
+          label: '昨收',
+          data: prices.map(()=>prevClose),
+          borderColor: 'rgba(255,255,255,.35)',
+          backgroundColor: 'transparent',
+          borderWidth: 1,
+          borderDash: [5,4],
+          pointRadius: 0,
+          yAxisID: 'y',
+          order: 0
+        }] : [])
+      ]
+    },
+    options: {
+      responsive: true,
+      maintainAspectRatio: false,
+      animation: false,
+      interaction: { mode: 'index', intersect: false },
+      plugins: {
+        legend: {
+          display: true,
+          position: 'bottom',
+          labels: { color: '#8b949e', font:{size:11}, boxWidth: 12, boxHeight: 8, padding: 10 }
+        },
+        tooltip: {
+          backgroundColor: 'rgba(12,18,32,.95)',
+          borderColor: 'rgba(255,140,0,.4)',
+          borderWidth: 1,
+          padding: 10,
+          callbacks: {
+            title: (items)=>{
+              const i = items[0]?.dataIndex;
+              return pts[i]?.fullDate || pts[i]?.label || '';
+            },
+            label: (ctx)=>{
+              const v = ctx.parsed.y;
+              if(ctx.dataset.label==='指數') return `指數: ${v?.toFixed(2)}`;
+              if(ctx.dataset.label==='成交金額(億)') return `成交金額: ${v?.toFixed(2)} 億`;
+              if(ctx.dataset.label==='昨收') return `昨收: ${v?.toFixed(2)}`;
+              return `${ctx.dataset.label}: ${v}`;
             }
           }
-        },
-        scales:{
-          x:{grid:{color:'rgba(56,139,253,.04)'},ticks:{color:'#8b949e',font:{size:10},maxTicksLimit:14,autoSkip:true}},
-          y:{position:'right',grid:{color:'rgba(56,139,253,.06)'},ticks:{color:'#8b949e',font:{size:10},callback:v=>v.toFixed(0)}}
         }
       },
-      plugins:[candlePlugin]
-    });
-  }catch(e){
-    c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--red2);font-size:13px">載入失敗：${e.message}</div>`;
-  }
+      scales: {
+        x: {
+          grid: { color: 'rgba(56,139,253,.04)' },
+          ticks: {
+            color: '#8b949e',
+            font: { size: 10 },
+            maxTicksLimit: period==='RT' ? 10 : 12,
+            autoSkip: true
+          }
+        },
+        y: {
+          position: 'left',
+          grid: { color: 'rgba(56,139,253,.06)' },
+          ticks: { color: '#ff8c00', font:{size:10}, callback:v=>v.toFixed(1) },
+          title: { display:false }
+        },
+        y1: {
+          position: 'right',
+          grid: { display: false },
+          beginAtZero: true,
+          ticks: { color: 'rgba(255,180,80,.8)', font:{size:10}, callback:v=>v.toFixed(0) },
+          title: { display:false }
+        }
+      }
+    }
+  });
 }
 window._globalTVSym=GLOBAL_CHARTS[0].sym;
 window._globalTVIv='D';

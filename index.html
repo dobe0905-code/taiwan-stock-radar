@@ -77,6 +77,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .tbl-wrap{flex:1;overflow:auto;}
 .tbl{width:100%;border-collapse:collapse;}
 .tbl thead th{position:sticky;top:0;z-index:5;background:var(--bg3);padding:12px 13px;font-size:15px;font-weight:700;letter-spacing:.06em;color:var(--text3);text-transform:uppercase;white-space:nowrap;border-bottom:1px solid var(--border);text-align:left;}
+.tbl thead th.sortable{cursor:pointer;user-select:none;transition:color .12s,background .12s;}
+.tbl thead th.sortable:hover{color:var(--accent2);background:var(--bg4);}
+.tbl thead th.sortable.active{color:var(--accent2);}
+.sort-ind{display:inline-block;margin-left:5px;font-size:11px;color:var(--accent);}
+.tbl thead th.sortable:hover .sort-ind:empty::before{content:'⇅';color:var(--text3);}
 .tbl thead th:first-child{padding-left:16px;}
 .tbl tbody tr{border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;contain:content;}
 .tbl tbody tr:hover{background:rgba(56,139,253,.04);}
@@ -237,13 +242,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
       <button class="f-btn" id="fb-pe" onclick="tqf('pe')">本益比&lt;15</button>
       <button class="f-btn" id="fb-yld" onclick="tqf('yld')">殖利率&gt;4%</button>
       <div class="f-sep"></div>
-      <select class="f-sort" id="sortSel" onchange="renderTable()">
-        <option value="cd">漲幅↓</option>
-        <option value="ca">漲幅↑</option>
-        <option value="vd">成交量↓</option>
-        <option value="pd">股價↓</option>
-        <option value="pea">本益比↑</option>
-        <option value="yld">殖利率↓</option>
+      <select class="f-sort" id="sigFilter" onchange="renderTable()" title="依 AI 訊號分類篩選">
+        <option value="">全部訊號</option>
+        <option value="buy">買進</option>
+        <option value="hold">偏多 / 偏空</option>
+        <option value="sell">賣出</option>
+        <option value="watch">觀察</option>
       </select>
     </div>
     <div class="tbl-wrap">
@@ -251,10 +255,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
         <thead><tr>
           <th style="width:32px"></th>
           <th>代號</th><th>名稱/產業</th>
-          <th>現價</th><th>漲跌幅</th>
-          <th class="col-law">本益比</th>
-          <th class="col-yld">殖利率</th>
-          <th>成交量</th><th>漲跌價</th><th>AI訊號</th>
+          <th>現價</th>
+          <th class="sortable" data-key="chgP" onclick="setSort('chgP')">漲跌幅<span class="sort-ind"></span></th>
+          <th class="col-law sortable" data-key="peV" onclick="setSort('peV')">本益比<span class="sort-ind"></span></th>
+          <th class="col-yld sortable" data-key="yld" onclick="setSort('yld')">殖利率<span class="sort-ind"></span></th>
+          <th class="sortable" data-key="vol" onclick="setSort('vol')">成交量<span class="sort-ind"></span></th>
+          <th class="sortable" data-key="chg" onclick="setSort('chg')">漲跌價<span class="sort-ind"></span></th>
+          <th class="sortable" data-key="sig" onclick="setSort('sig')">AI訊號<span class="sort-ind"></span></th>
         </tr></thead>
         <tbody id="tblBody">
           <tr><td colspan="10"><div class="loading"><div class="spinner"></div><div>正在從台灣證交所載入資料...</div></div></td></tr>
@@ -485,12 +492,14 @@ function processTWSE(data){
     // TradeVolume 單位：MI_INDEX=股數(÷1000=張)；MIS(_mis=true) 已是張數
     const rawVol = parseInt((d.TradeVolume||'0').replace(/,/g,''))||0;
     const vol = d._mis ? rawVol : Math.round(rawVol / 1000);
+    // TradeValue (成交金額, 元) → 用於均價公式：累計成交值 / 累計成交量
+    const tradeValue = parseFloat((d.TradeValue||'0').toString().replace(/,/g,''))||0;
     const pe=perMap[d.Code];
     const peV=pe?.per||null, yld=pe?.yld||null, pbV=pe?.pbr||null;
     const isETF=detectETF(d.Code, d.Name||'');
     const sector=isETF?'ETF':getSec(d.IndustryCategory||'');
     return{id:d.Code, name:d.Name||d.Code, sector, isETF, market:'twse',
-      open, close, high, low, vol, chg, prev,
+      open, close, high, low, vol, chg, prev, tradeValue,
       chgP: isNaN(chgP)?0:chgP,
       peV, yld, pbV,
       sig:calcSig({open,close,high,low,chgP,peV,turn:0,ff:0}), turn:0};
@@ -569,23 +578,52 @@ function getFiltered(){
   else if(sf.startsWith('s:')) l=l.filter(s=>s.sector===sf.slice(2));
   else if(sf.startsWith('g:')) l=l.filter(s=>THEME_MAP[sf.slice(2)]?.has(s.id));
 
+  const q=(document.getElementById('searchInput')?.value||'').toLowerCase().trim();
+  // 搜尋有字 → 忽略 sidebar/market 篩選，跨全部股票搜尋
+  if(q){ l=stocks.filter(s=>s.id.includes(q)||s.name.toLowerCase().includes(q)); }
+
   if(qf.has('up')) l=l.filter(s=>s.chgP>0);
   if(qf.has('dn')) l=l.filter(s=>s.chgP<0);
   if(qf.has('vol')) l=l.filter(s=>s.vol>5000);
   if(qf.has('pe')) l=l.filter(s=>s.peV&&s.peV>0&&s.peV<15);
   if(qf.has('yld')) l=l.filter(s=>s.yld&&s.yld>4);
 
-  const q=(document.getElementById('searchInput')?.value||'').toLowerCase();
-  if(q) l=l.filter(s=>s.id.includes(q)||s.name.toLowerCase().includes(q));
+  const sigF=document.getElementById('sigFilter')?.value||'';
+  if(sigF) l=l.filter(s=>s.sig?.cls==='sig-'+sigF);
 
-  const sv=document.getElementById('sortSel')?.value||'cd';
-  if(sv==='cd') l.sort((a,b)=>b.chgP-a.chgP);
-  else if(sv==='ca') l.sort((a,b)=>a.chgP-b.chgP);
-  else if(sv==='vd') l.sort((a,b)=>b.vol-a.vol);
-  else if(sv==='pd') l.sort((a,b)=>b.close-a.close);
-  else if(sv==='pea') l.sort((a,b)=>(a.peV||999)-(b.peV||999));
-  else if(sv==='yld') l.sort((a,b)=>(b.yld||0)-(a.yld||0));
+  // 表頭可點擊排序：sortKey + sortDir 由 setSort() 切換
+  const dir = sortDir==='asc' ? 1 : -1;
+  const getV=(s)=>{
+    if(sortKey==='sig') return s.sig?.sc||0;
+    if(sortKey==='peV') return s.peV||(sortDir==='asc'?999:-1);
+    if(sortKey==='yld') return s.yld||0;
+    return s[sortKey]||0;
+  };
+  l.sort((a,b)=>(getV(a)-getV(b))*dir);
   return l;
+}
+
+// 表頭排序狀態（預設：漲跌幅 由大到小）
+let sortKey='chgP', sortDir='desc';
+// DOM ready 後設定初始排序指示器
+setTimeout(()=>{
+  const th=document.querySelector('.tbl thead th.sortable[data-key="chgP"]');
+  if(th){ th.classList.add('active'); const ind=th.querySelector('.sort-ind'); if(ind) ind.textContent='▼'; }
+},0);
+function setSort(k){
+  if(sortKey===k){
+    if(sortDir==='desc') sortDir='asc';
+    else { sortKey='chgP'; sortDir='desc'; } // 第三次點擊歸位預設
+  } else {
+    sortKey=k;
+    sortDir=(k==='peV')?'asc':'desc'; // 本益比預設由小到大
+  }
+  document.querySelectorAll('.tbl thead th.sortable').forEach(th=>{
+    const ind=th.querySelector('.sort-ind');
+    if(th.dataset.key===sortKey){ ind.textContent=sortDir==='desc'?'▼':'▲'; th.classList.add('active'); }
+    else { ind.textContent=''; th.classList.remove('active'); }
+  });
+  renderTable();
 }
 
 const TBL_PAGE=500; // 每次最多渲染500行
@@ -866,7 +904,7 @@ function buildDetHTML(s,live){
       <div class="kv"><div class="kv-l">最高</div><div class="kv-v c-up" id="dq-high">${s.high>0?s.high.toFixed(2):'—'}</div></div>
       <div class="kv"><div class="kv-l">最低</div><div class="kv-v c-dn" id="dq-low">${s.low>0?s.low.toFixed(2):'—'}</div></div>
       <div class="kv"><div class="kv-l">昨收</div><div class="kv-v c-neu" id="dq-prev">${prev>0?prev.toFixed(2):'—'}</div></div>
-      <div class="kv"><div class="kv-l">均價</div><div class="kv-v" id="dq-avg">—</div></div>
+      <div class="kv"><div class="kv-l">均價</div><div class="kv-v" id="dq-avg" title="當日累計成交值/累計成交量">${(s.tradeValue&&s.vol)?(s.tradeValue/(s.vol*1000)).toFixed(2):'—'}</div></div>
       <div class="kv"><div class="kv-l">成交量(張)</div><div class="kv-v" id="dq-vol">${fmV(s.vol)}</div></div>
       <div class="kv"><div class="kv-l">振幅</div><div class="kv-v" id="dq-amp">${amp}</div></div>
       <div class="kv"><div class="kv-l">漲跌</div><div class="kv-v ${s.chg>0?'c-up':s.chg<0?'c-dn':'c-neu'}" id="dq-chg">${s.chg>0?'+':''}${s.chg.toFixed(2)}</div></div>
@@ -1298,30 +1336,90 @@ function showStockTV(stockId, market, interval, btnEl){
     return;
   }
 
-  // 日/週/月 → embed-widget-advanced-chart.js (避免 widgetembed 的跳窗問題)
-  wrap.innerHTML=''; // 清除舊 widget
-  const sym=market==='twse'?`TWSE:${stockId}`:`TPEX:${stockId}`;
-  const containerId='tv_adv_'+stockId+'_'+Date.now();
-  const outer=document.createElement('div');
-  outer.className='tradingview-widget-container';
-  outer.style.cssText='height:100%;width:100%;';
-  const inner=document.createElement('div');
-  inner.className='tradingview-widget-container__widget';
-  inner.style.cssText='height:100%;width:100%;';
-  outer.appendChild(inner);
-  wrap.appendChild(outer);
-  const scr=document.createElement('script');
-  scr.type='text/javascript';
-  scr.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-  scr.async=true;
-  scr.innerHTML=JSON.stringify({
-    autosize:true,symbol:sym,interval:interval,
-    timezone:'Asia/Taipei',theme:'dark',style:'1',locale:'zh_TW',
-    enable_publishing:false,hide_top_toolbar:false,hide_legend:false,
-    save_image:false,withdateranges:true,allow_symbol_change:false,
-    studies:['MACD@tv-basicstudies','RSIIndicator@tv-basicstudies','MASimple@tv-basicstudies|{"length":20}','MASimple@tv-basicstudies|{"length":60}']
+  // 日/週/月 → 全部改用我們自家 K 線資料 + Chart.js（避免 TradingView 免費 widget 跳窗）
+  wrap.innerHTML='<div class="loading" style="height:100%"><div class="spinner"></div><div>載入 K 線資料中…</div></div>';
+  const s=stocks.find(x=>x.id===stockId);
+  const useCached=s?._kdata&&s._kdata.length;
+  const drawIt=(kdata)=>{
+    if(!kdata||!kdata.length){
+      wrap.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:14px">K 線資料暫無</div>`;
+      return;
+    }
+    let view=kdata;
+    if(interval==='W') view=aggregateKLine(kdata,5);
+    else if(interval==='M') view=aggregateKLine(kdata,20);
+    drawStockKLine(wrap, view, interval);
+  };
+  if(useCached) drawIt(s._kdata);
+  else{
+    fetch(`/api/quote?type=kline&stock_id=${stockId}`).then(r=>r.json()).then(j=>{
+      const d=j.data||[];
+      if(s) s._kdata=d;
+      drawIt(d);
+    }).catch(()=>{ wrap.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--red2);font-size:14px">K 線載入失敗</div>`; });
+  }
+}
+
+// 將日 K 線聚合成週/月 K（每 period 個交易日為一根）
+function aggregateKLine(kdata,period){
+  const out=[];
+  for(let i=0;i<kdata.length;i+=period){
+    const slice=kdata.slice(i,i+period);
+    if(!slice.length) break;
+    out.push({
+      date: slice[slice.length-1].date,
+      open: slice[0].open,
+      close: slice[slice.length-1].close,
+      high: Math.max(...slice.map(d=>d.high)),
+      low:  Math.min(...slice.map(d=>d.low)),
+      volume: slice.reduce((a,b)=>a+(b.volume||b.vol||0),0)
+    });
+  }
+  return out;
+}
+
+// 在個股面板的 tv-stock-wrap 內畫 Chart.js K 線（高低影線 + 開收柱）+ MA20/MA60
+function drawStockKLine(wrap, kdata, interval){
+  wrap.innerHTML=`<canvas id="stock-kline-cv" style="width:100%;height:100%"></canvas>`;
+  const cv=document.getElementById('stock-kline-cv');
+  if(!cv) return;
+  const labels=kdata.map(d=>(d.date||'').slice(5));
+  const closes=kdata.map(d=>d.close);
+  const ma=(n)=>closes.map((_,i)=>i<n-1?null:closes.slice(i-n+1,i+1).reduce((a,b)=>a+b,0)/n);
+  const ma20=ma(20), ma60=ma(60);
+  // 用 bar 模擬開收實體（顏色綠/紅）+ 線顯示高低範圍
+  const bodyData=kdata.map(d=>[Math.min(d.open,d.close),Math.max(d.open,d.close)]);
+  const wickData=kdata.map(d=>[d.low,d.high]);
+  const colors=kdata.map(d=>d.close>=d.open?'rgba(63,185,80,.85)':'rgba(248,81,73,.85)');
+  if(dCharts.stockK){ try{dCharts.stockK.destroy();}catch(e){} }
+  dCharts.stockK=new Chart(cv,{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'高低',data:wickData,backgroundColor:'rgba(139,148,158,.35)',borderWidth:0,barThickness:1.4,categoryPercentage:1,barPercentage:1,order:3},
+      {label:'開收',data:bodyData,backgroundColor:colors,borderWidth:0,barThickness:7,categoryPercentage:1,barPercentage:.85,order:2},
+      {label:'MA20',type:'line',data:ma20,borderColor:'#79b8ff',backgroundColor:'transparent',borderWidth:1.4,pointRadius:0,tension:.25,order:1},
+      {label:'MA60',type:'line',data:ma60,borderColor:'#e3b341',backgroundColor:'transparent',borderWidth:1.4,pointRadius:0,tension:.25,order:1}
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:true,position:'top',labels:{color:'#8b949e',font:{size:11},filter:i=>!['高低','開收'].includes(i.text)}},
+        tooltip:{backgroundColor:'rgba(12,18,32,.95)',callbacks:{
+          label:(ctx)=>{
+            const i=ctx.dataIndex, d=kdata[i];
+            if(ctx.dataset.label==='開收'||ctx.dataset.label==='高低')
+              return [`開 ${d.open}`,`高 ${d.high}`,`低 ${d.low}`,`收 ${d.close}`];
+            return `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}`;
+          }
+        }}
+      },
+      scales:{
+        x:{ticks:{color:'#8b949e',maxTicksLimit:10,font:{size:11}},grid:{color:'rgba(56,139,253,.04)'}},
+        y:{position:'right',ticks:{color:'#8b949e',font:{size:11}},grid:{color:'rgba(56,139,253,.06)'}}
+      }
+    }
   });
-  outer.appendChild(scr);
 }
 
 function drawCandleChart(stockId, kdata){

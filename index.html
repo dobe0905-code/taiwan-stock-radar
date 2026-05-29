@@ -111,7 +111,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 #det-handle:hover{background:rgba(56,139,253,.07);}
 #det-handle:hover::after{background:var(--accent);height:80px;}
 #det-handle:active::after{background:var(--accent2);}
-.dh{padding:16px 22px 14px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:1;}
+.dh{padding:22px 22px 14px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:1;cursor:move;}
+.dh-drag{position:absolute;left:50%;top:8px;transform:translateX(-50%);width:36px;height:4px;background:var(--border2);border-radius:2px;pointer-events:none;transition:background .15s,width .15s;}
+.dh:hover .dh-drag{background:var(--accent2);width:48px;}
+#det.floating{right:auto;border:1px solid var(--border2);border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.65);}
 .d-close{position:absolute;right:16px;top:16px;width:30px;height:30px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}
 .d-close:hover{border-color:var(--border2);color:var(--text);}
 .d-id{font-family:var(--mono);font-size:13px;color:var(--accent2);margin-bottom:4px;}
@@ -264,6 +267,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
   <aside id="det">
     <div id="det-handle" title="拖曳調整寬度"></div>
     <div class="dh">
+      <div class="dh-drag"></div>
       <button class="d-close" onclick="closeDet()">✕</button>
       <div class="d-id" id="d-id">—</div>
       <div class="d-name" id="d-name">—</div>
@@ -689,7 +693,17 @@ function openDet(id){
 function closeDet(){
   currentDetId=null;
   if(detPollTimer){clearInterval(detPollTimer);detPollTimer=null;}
-  document.getElementById('det').classList.remove('open');
+  const det=document.getElementById('det');
+  if(det.classList.contains('floating')){
+    det.style.transition='opacity .18s';
+    det.style.opacity='0';
+    setTimeout(()=>{
+      det.classList.remove('open','floating');
+      ['left','top','right','height','opacity','transition'].forEach(p=>det.style[p]='');
+    },200);
+  } else {
+    det.classList.remove('open');
+  }
   Object.values(dCharts).forEach(c=>c&&c.destroy&&c.destroy());
   dCharts={};
 }
@@ -715,6 +729,48 @@ function closeDet(){
     if(!dragging) return;
     dragging=false;document.body.style.userSelect='';document.body.style.cursor='';
     det.style.transition='';
+  });
+})();
+
+// ── 面板拖曳移動 ──
+(function(){
+  const det=document.getElementById('det');
+  const dh=det.querySelector('.dh');
+  let maybeMove=false,moving=false,sx=0,sy=0,sl=0,st=0;
+  dh.addEventListener('mousedown',e=>{
+    if(e.target.closest('.d-close')) return;
+    maybeMove=true;sx=e.clientX;sy=e.clientY;
+  });
+  document.addEventListener('mousemove',e=>{
+    if(!maybeMove) return;
+    if(!moving){
+      if(Math.hypot(e.clientX-sx,e.clientY-sy)<5) return;
+      if(!det.classList.contains('floating')){
+        const r=det.getBoundingClientRect();
+        det.style.left=r.left+'px';det.style.top=r.top+'px';det.style.right='auto';
+        det.style.height=Math.min(det.offsetHeight,Math.floor(window.innerHeight*.85))+'px';
+        det.classList.add('floating');
+      }
+      moving=true;sl=det.offsetLeft;st=det.offsetTop;
+      sx=e.clientX;sy=e.clientY;
+      document.body.style.userSelect='none';document.body.style.cursor='move';
+    }
+    const nl=Math.max(0,Math.min(sl+e.clientX-sx,window.innerWidth-det.offsetWidth));
+    const nt=Math.max(0,Math.min(st+e.clientY-sy,window.innerHeight-det.offsetHeight-10));
+    det.style.left=nl+'px';det.style.top=nt+'px';
+    det.style.transition='none';
+  },{passive:true});
+  document.addEventListener('mouseup',()=>{
+    maybeMove=false;
+    if(!moving) return;
+    moving=false;document.body.style.userSelect='';document.body.style.cursor='';
+    det.style.transition='';
+  },{passive:true});
+  // 雙擊標題列 → 歸位右側
+  dh.addEventListener('dblclick',e=>{
+    if(e.target.closest('.d-close')) return;
+    det.classList.remove('floating');
+    ['left','top','right','height'].forEach(p=>det.style[p]='');
   });
 })();
 

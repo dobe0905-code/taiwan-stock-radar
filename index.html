@@ -117,6 +117,18 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 #det-handle:hover::before{opacity:1;width:6px;background:var(--accent2);}
 #det-handle:hover::after{background:var(--accent2);color:var(--bg);transform:translateY(-50%) scale(1.08);}
 #det-handle:active::before{opacity:1;background:var(--accent2);}
+/* 八向 resize 把手 — 透明熱區，cursor 變化讓使用者察覺可拖曳 */
+.det-rz{position:absolute;z-index:51;background:transparent;}
+.det-rz[data-dir="n"]{top:0;left:14px;right:8px;height:6px;cursor:ns-resize;}
+.det-rz[data-dir="s"]{bottom:0;left:14px;right:8px;height:8px;cursor:ns-resize;}
+.det-rz[data-dir="e"]{top:8px;bottom:8px;right:0;width:6px;cursor:ew-resize;}
+.det-rz[data-dir="nw"]{top:0;left:0;width:14px;height:14px;cursor:nwse-resize;z-index:53;}
+.det-rz[data-dir="ne"]{top:0;right:0;width:14px;height:14px;cursor:nesw-resize;z-index:53;}
+.det-rz[data-dir="sw"]{bottom:0;left:0;width:14px;height:14px;cursor:nesw-resize;z-index:53;}
+.det-rz[data-dir="se"]{bottom:0;right:0;width:18px;height:18px;cursor:nwse-resize;z-index:53;}
+/* 右下角加個視覺指示（最常用的縮放角） */
+.det-rz[data-dir="se"]::after{content:'';position:absolute;right:3px;bottom:3px;width:10px;height:10px;background:linear-gradient(135deg,transparent 50%,var(--accent) 50%,var(--accent) 65%,transparent 65%,transparent 75%,var(--accent) 75%,var(--accent) 90%,transparent 90%);opacity:.5;transition:opacity .15s;}
+.det-rz[data-dir="se"]:hover::after{opacity:1;}
 /* 標題列 — 可拖曳移動整個面板 */
 .dh{padding:26px 22px 14px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:1;cursor:move;}
 .dh::before{content:'⠿ 拖曳移動';position:absolute;left:50%;top:6px;transform:translateX(-50%);font-size:10px;color:var(--text3);letter-spacing:1.5px;pointer-events:none;transition:color .15s;font-weight:600;}
@@ -276,6 +288,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 
   <aside id="det">
     <div id="det-handle" title="拖曳調整寬度"></div>
+    <!-- 邊框/邊角 resize handles（八向 — 全方位視窗縮放）-->
+    <div class="det-rz" data-dir="n"  title="上下調整高度"></div>
+    <div class="det-rz" data-dir="s"  title="上下調整高度"></div>
+    <div class="det-rz" data-dir="e"  title="左右調整寬度"></div>
+    <div class="det-rz" data-dir="nw" title="調整大小"></div>
+    <div class="det-rz" data-dir="ne" title="調整大小"></div>
+    <div class="det-rz" data-dir="sw" title="調整大小"></div>
+    <div class="det-rz" data-dir="se" title="調整大小"></div>
     <div class="dh">
       <div class="dh-drag"></div>
       <button class="d-close" onclick="closeDet()">✕</button>
@@ -751,40 +771,117 @@ function closeDet(){
   dCharts={};
 }
 
-// ── 面板拖曳調整寬度（穩固版：stopPropagation 避免 dh 互踩、state 永遠歸零）──
+// ── 面板拖曳調整大小（八向，視窗式縮放） ──
 (function(){
-  const handle=document.getElementById('det-handle');
   const det=document.getElementById('det');
-  let dragging=false, startX=0, startW=0;
-  function endDrag(){
-    if(!dragging) return;
-    dragging=false;
+  const leftHandle=document.getElementById('det-handle');
+  const HEADER=parseInt(getComputedStyle(document.documentElement).getPropertyValue('--header'))||52;
+  const MIN_W=360, MIN_H=240;
+  const MAX_W_RATIO=0.95, MAX_H_RATIO=0.92;
+
+  let st=null;  // {dir, startX, startY, startW, startH, startL, startT, isFloating, cursor}
+
+  function ensureFloating(){
+    if(det.classList.contains('floating')) return;
+    const r=det.getBoundingClientRect();
+    det.style.left=r.left+'px';
+    det.style.top=r.top+'px';
+    det.style.right='auto';
+    det.style.height=r.height+'px';
+    det.classList.add('floating');
+  }
+
+  function beginResize(dir, cursor, e){
+    e.preventDefault();
+    e.stopPropagation();
+    // 任何「非左邊緣」的方向都先進入 floating，才能自由縮放
+    if(dir!=='w') ensureFloating();
+    const r=det.getBoundingClientRect();
+    st={
+      dir, cursor,
+      startX:e.clientX, startY:e.clientY,
+      startW:r.width, startH:r.height,
+      startL:r.left,   startT:r.top,
+      isFloating:det.classList.contains('floating')
+    };
+    document.body.style.userSelect='none';
+    document.body.style.cursor=cursor;
+    det.style.transition='none';
+  }
+
+  function endResize(){
+    if(!st) return;
+    st=null;
     document.body.style.userSelect='';
     document.body.style.cursor='';
     det.style.transition='';
   }
-  handle.addEventListener('mousedown',e=>{
-    e.stopPropagation();           // 不讓 .dh 的 mousedown 同時觸發
-    e.preventDefault();
-    dragging=true;
-    startX=e.clientX;
-    startW=det.offsetWidth;
-    document.body.style.userSelect='none';
-    document.body.style.cursor='ew-resize';
+
+  // 左邊緣（既有 #det-handle，視覺上是 ⋮ 抓取塊）
+  leftHandle.addEventListener('mousedown', e=> beginResize('w','ew-resize',e));
+
+  // 其他七向
+  document.querySelectorAll('.det-rz').forEach(el=>{
+    el.addEventListener('mousedown', e=>{
+      const dir=el.dataset.dir;
+      const cursorMap={n:'ns-resize',s:'ns-resize',e:'ew-resize',
+                       nw:'nwse-resize',ne:'nesw-resize',sw:'nesw-resize',se:'nwse-resize'};
+      beginResize(dir, cursorMap[dir]||'auto', e);
+    });
   });
-  document.addEventListener('mousemove',e=>{
-    if(!dragging) return;
-    // 在 docked 模式（right:0）下：向左拖 → 增寬
-    // 在 floating 模式下：向右拖 → 增寬（panel.left 不變、右邊外延）
-    const isFloating=det.classList.contains('floating');
-    const dx=isFloating?(e.clientX-startX):(startX-e.clientX);
-    const nw=Math.min(Math.max(startW+dx,360),window.innerWidth*0.92);
-    det.style.width=nw+'px';
-    det.style.transition='none';
+
+  document.addEventListener('mousemove', e=>{
+    if(!st) return;
+    const dx=e.clientX-st.startX;
+    const dy=e.clientY-st.startY;
+    const maxW=window.innerWidth*MAX_W_RATIO;
+    const maxH=window.innerHeight*MAX_H_RATIO;
+    const dir=st.dir;
+    let w=st.startW, h=st.startH, l=st.startL, t=st.startT;
+
+    if(dir.includes('e')) w=st.startW+dx;
+    if(dir.includes('w')){
+      if(st.isFloating){ w=st.startW-dx; l=st.startL+dx; }
+      else { w=st.startW-dx; }   // docked: right 固定為 0，只動 width
+    }
+    if(dir.includes('s')) h=st.startH+dy;
+    if(dir.includes('n')){ h=st.startH-dy; t=st.startT+dy; }
+
+    // clamp width
+    if(w<MIN_W){
+      if(dir.includes('w') && st.isFloating) l-=(MIN_W-w);
+      w=MIN_W;
+    }
+    if(w>maxW){
+      if(dir.includes('w') && st.isFloating) l+=(w-maxW);
+      w=maxW;
+    }
+    // clamp height
+    if(h<MIN_H){
+      if(dir.includes('n')) t-=(MIN_H-h);
+      h=MIN_H;
+    }
+    if(h>maxH){
+      if(dir.includes('n')) t+=(h-maxH);
+      h=maxH;
+    }
+    // clamp 位置不可超出視窗
+    if(l<0) l=0;
+    if(t<HEADER-10) t=HEADER-10;
+    if(l+w>window.innerWidth) l=window.innerWidth-w;
+    if(t+h>window.innerHeight-4) t=window.innerHeight-4-h;
+
+    det.style.width=w+'px';
+    if(st.isFloating){
+      det.style.height=h+'px';
+      det.style.left=l+'px';
+      det.style.top=t+'px';
+    }
   });
-  document.addEventListener('mouseup', endDrag);
-  document.addEventListener('mouseleave', endDrag);  // 滑鼠離開視窗也要歸零
-  window.addEventListener('blur', endDrag);
+
+  document.addEventListener('mouseup', endResize);
+  document.addEventListener('mouseleave', endResize);
+  window.addEventListener('blur', endResize);
 })();
 
 // ── 面板拖曳移動（穩固版）──
@@ -802,7 +899,8 @@ function closeDet(){
   }
   dh.addEventListener('mousedown',e=>{
     if(e.target.closest('.d-close')) return;
-    if(e.target.closest('#det-handle')) return;   // handle 區域不觸發移動
+    if(e.target.closest('#det-handle')) return;   // 左邊緣寬度把手不觸發移動
+    if(e.target.closest('.det-rz')) return;       // 其他七向 resize 把手不觸發移動
     maybeMove=true;sx=e.clientX;sy=e.clientY;
   });
   document.addEventListener('mousemove',e=>{

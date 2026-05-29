@@ -957,11 +957,14 @@ function startDetPoll(s){
       const amp=o>0?((h-l)/o*100).toFixed(2)+'%':'—';
 
       // 均價：MIS pz = 加權均價，ov = 總成交金額(元)
+      // null = 不覆寫（保留初始 buildDetHTML 從後端 TradeValue 算出的均價）
       const pz=parseFloat(item.pz)||0;
       const ov=parseFloat(item.ov)||0;  // 總成交金額（元）
-      let avgPrice = '—';
+      let avgPrice = null;
       if(pz>0) avgPrice = pz.toFixed(2);
-      else if(ov>0 && v>0) avgPrice = (ov/(v*1000)).toFixed(2); // ov是元，v是張(=千股)
+      else if(ov>0 && v>0) avgPrice = (ov/(v*1000)).toFixed(2);
+      // 退回：用後端的 tradeValue + 即時 v（盤中 TradeValue 還沒同步時可能不準，但有總比沒有好）
+      else if(s.tradeValue && v>0) avgPrice = (s.tradeValue/(v*1000)).toFixed(2);
 
       // 內外盤：MIS ob=內盤量, oa=外盤量（字串，需解析）
       const ob = parseInt(item.ob||'0') || 0;
@@ -982,7 +985,7 @@ function startDetPoll(s){
       upd('dq-high',  h>0?h.toFixed(2):'—');
       upd('dq-low',   l>0?l.toFixed(2):'—');
       upd('dq-prev',  y>0?y.toFixed(2):'—');   // 昨收
-      upd('dq-avg',   avgPrice);                 // 均價
+      if(avgPrice!==null) upd('dq-avg', avgPrice);  // 均價：MIS 無資料時保留初始值
       upd('dq-vol',   fmV(v));                  // 成交量（張）
       upd('dq-amp',   amp);
       upd('dq-ob',    ob>0?fmV(ob):'—');        // 內盤

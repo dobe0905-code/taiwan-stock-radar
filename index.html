@@ -1367,29 +1367,28 @@ function showStockTV(stockId, market, interval, btnEl){
     return;
   }
 
-  // 日/週/月 → 還原為 TradingView advanced-chart widget（依使用者要求）
-  wrap.innerHTML='';
-  const sym=market==='twse'?`TWSE:${stockId}`:`TPEX:${stockId}`;
-  const outer=document.createElement('div');
-  outer.className='tradingview-widget-container';
-  outer.style.cssText='height:100%;width:100%;';
-  const inner=document.createElement('div');
-  inner.className='tradingview-widget-container__widget';
-  inner.style.cssText='height:100%;width:100%;';
-  outer.appendChild(inner);
-  wrap.appendChild(outer);
-  const scr=document.createElement('script');
-  scr.type='text/javascript';
-  scr.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-  scr.async=true;
-  scr.innerHTML=JSON.stringify({
-    autosize:true,symbol:sym,interval:interval,
-    timezone:'Asia/Taipei',theme:'dark',style:'1',locale:'zh_TW',
-    enable_publishing:false,hide_top_toolbar:false,hide_legend:false,
-    save_image:false,withdateranges:true,allow_symbol_change:false,
-    studies:['MACD@tv-basicstudies','RSIIndicator@tv-basicstudies','MASimple@tv-basicstudies|{"length":20}','MASimple@tv-basicstudies|{"length":60}']
-  });
-  outer.appendChild(scr);
+  // 日/週/月 → Chart.js 蠟燭 K 線（避免 TradingView 對台股跳 popup 並 fallback 成 AAPL）
+  wrap.innerHTML='<div class="loading" style="height:100%"><div class="spinner"></div><div>載入 K 線資料中…</div></div>';
+  const s=stocks.find(x=>x.id===stockId);
+  const useCached=s?._kdata&&s._kdata.length;
+  const drawIt=(kdata)=>{
+    if(!kdata||!kdata.length){
+      wrap.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:14px">K 線資料暫無</div>`;
+      return;
+    }
+    let view=kdata;
+    if(interval==='W') view=aggregateKLine(kdata,5);
+    else if(interval==='M') view=aggregateKLine(kdata,20);
+    drawStockKLine(wrap, view, interval);
+  };
+  if(useCached) drawIt(s._kdata);
+  else{
+    fetch(`/api/quote?type=kline&stock_id=${stockId}`).then(r=>r.json()).then(j=>{
+      const d=j.data||[];
+      if(s) s._kdata=d;
+      drawIt(d);
+    }).catch(()=>{ wrap.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--red2);font-size:14px">K 線載入失敗</div>`; });
+  }
 }
 
 // 將日 K 線聚合成週/月 K（每 period 個交易日為一根）
@@ -2163,12 +2162,12 @@ function renderUSTable(){
 
 // ── 全球指數 TradingView 圖表切換 ──
 const GLOBAL_CHARTS=[
-  // 完全還原為使用者要的 TradingView 版本（即使部分 symbol 會 fallback，但 UI 一致）
-  {sym:'TWSE:TAIEX',   label:'🇹🇼 加權指數'},
-  {sym:'^TWO',         label:'🏪 櫃買指數', yahoo:true, name:'台灣櫃買指數'},
-  {sym:'CBOT:YM1!',    label:'🇺🇸 道瓊期貨'},
-  {sym:'NASDAQ:SOX',   label:'💻 費城半導體'},
-  {sym:'TAIFEX:TX1!',  label:'📅 台指近月'},
+  // 全部走 Yahoo + 自家蠟燭圖（TradingView 對台股/期貨/費半全部 popup + AAPL fallback）
+  {sym:'^TWII', label:'🇹🇼 加權指數', name:'台灣加權指數 TAIEX'},
+  {sym:'^TWO',  label:'🏪 櫃買指數', name:'台灣櫃買指數'},
+  {sym:'YM=F',  label:'🇺🇸 道瓊期貨', name:'道瓊期貨 YM=F'},
+  {sym:'^SOX',  label:'💻 費城半導體', name:'費城半導體 SOX'},
+  {sym:'^TWII', label:'📅 台指近月', name:'台指近月（≈加權，TAIFEX 無免費 API）'},
 ];
 window._globalTVSym=GLOBAL_CHARTS[0].sym;
 window._globalTVIv='D';
@@ -2204,43 +2203,75 @@ function showGlobalTV(sym, iv){
   const wrap=document.getElementById('global-tv-wrap');
   if(!wrap) return;
 
-  // 還原原本邏輯：Yahoo 標記的走 Chart.js 折線；其他全部用 TradingView widget（使用者要的 UI）
-  if(curChart.yahoo){
-    wrap.innerHTML='';
-    const cvWrap=document.createElement('div');
-    cvWrap.id='global-yahoo-wrap';
-    cvWrap.style.cssText='width:100%;height:100%;padding:12px;box-sizing:border-box;background:var(--bg);';
-    wrap.appendChild(cvWrap);
-    showYahooLineChart('global-yahoo-wrap', curSym, curChart.name||curChart.label);
-    return;
-  }
+  // 全部走 Yahoo + 自家蠟燭圖（無 TradingView popup 風險）
+  wrap.innerHTML=`<div class="loading" style="height:100%"><div class="spinner"></div><div>載入 ${curChart.name||curChart.label||curSym} 資料中…</div></div>`;
+  fetch(`/api/global?type=us_detail&symbol=${encodeURIComponent(curSym)}&range=1y`)
+    .then(r=>r.json())
+    .then(j=>{
+      const kdata=j.kdata||[];
+      if(!kdata.length){
+        wrap.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:14px">暫無資料（Yahoo Finance 未回傳 ${curSym}）</div>`;
+        return;
+      }
+      let view=kdata;
+      if(curIv==='W') view=aggregateKLine(kdata,5);
+      else if(curIv==='M') view=aggregateKLine(kdata,20);
+      drawGlobalCandle(wrap, view, curChart.name||curChart.label||curSym, j.quote);
+    })
+    .catch(e=>{ wrap.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--red2);font-size:14px">載入失敗：${e.message}</div>`; });
+}
 
-  // TradingView advanced-chart widget（完整 K 線 UI + MACD/RSI/MA 指標）
-  wrap.innerHTML='';
-  const outer=document.createElement('div');
-  outer.className='tradingview-widget-container';
-  outer.style.cssText='height:100%;width:100%;';
-  const inner=document.createElement('div');
-  inner.className='tradingview-widget-container__widget';
-  inner.style.cssText='height:100%;width:100%;';
-  outer.appendChild(inner);
-  wrap.appendChild(outer);
-  const scr=document.createElement('script');
-  scr.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
-  scr.async=true;
-  scr.innerHTML=JSON.stringify({
-    autosize:true, symbol:curSym, interval:curIv,
-    timezone:'Asia/Taipei', theme:'dark', style:'1', locale:'zh_TW',
-    enable_publishing:false, hide_top_toolbar:false, hide_legend:false,
-    save_image:false, withdateranges:true, allow_symbol_change:false,
-    studies:[
-      'MASimple@tv-basicstudies|{"length":20}',
-      'MASimple@tv-basicstudies|{"length":60}',
-      'MACD@tv-basicstudies',
-      'RSIIndicator@tv-basicstudies'
-    ]
+// 全球指數蠟燭 K 線（高低影線 + 開收實體 + MA20/MA60）
+function drawGlobalCandle(wrap, kdata, label, quote){
+  const q = quote||{};
+  const last = kdata[kdata.length-1]||{};
+  const chgCls = (q.changeP>0)?'c-up':(q.changeP<0)?'c-dn':'c-neu';
+  const headerHtml=`<div style="display:flex;align-items:baseline;gap:14px;padding:8px 14px 6px;border-bottom:1px solid var(--border);background:var(--bg2);flex-shrink:0">
+    <div style="font-size:14px;font-weight:600;color:var(--text)">${label}</div>
+    <div class="${chgCls}" style="font-family:var(--mono);font-size:20px;font-weight:700">${(q.price||last.close||0).toFixed(2)}</div>
+    <div class="pill ${q.changeP>0?'pill-up':q.changeP<0?'pill-dn':'pill-neu'}" style="font-size:11px">${q.changeP>=0?'+':''}${(q.changeP||0).toFixed(2)}%</div>
+    <div class="${chgCls}" style="font-family:var(--mono);font-size:12px">${q.change>=0?'+':''}${(q.change||0).toFixed(2)}</div>
+    <div style="margin-left:auto;font-size:10px;color:var(--text3)">52週 高 ${(q.wk52High||0).toFixed(2)} · 低 ${(q.wk52Low||0).toFixed(2)}</div>
+  </div>`;
+  wrap.innerHTML=headerHtml+`<div style="position:relative;height:calc(100% - 50px)"><canvas id="global-candle-cv" style="width:100%;height:100%"></canvas></div>`;
+  const cv=document.getElementById('global-candle-cv');
+  if(!cv) return;
+  const labels=kdata.map(d=>(d.date||'').slice(5));
+  const closes=kdata.map(d=>d.close);
+  const ma=(n)=>closes.map((_,i)=>i<n-1?null:closes.slice(i-n+1,i+1).reduce((a,b)=>a+b,0)/n);
+  const ma20=ma(20), ma60=ma(60);
+  const bodyData=kdata.map(d=>[Math.min(d.open,d.close),Math.max(d.open,d.close)]);
+  const wickData=kdata.map(d=>[d.low,d.high]);
+  const colors=kdata.map(d=>d.close>=d.open?'rgba(63,185,80,.85)':'rgba(248,81,73,.85)');
+  if(window._globalCandle){ try{window._globalCandle.destroy();}catch(e){} }
+  window._globalCandle=new Chart(cv,{
+    type:'bar',
+    data:{labels,datasets:[
+      {label:'高低',data:wickData,backgroundColor:'rgba(139,148,158,.4)',borderWidth:0,barThickness:1.6,categoryPercentage:1,barPercentage:1,order:3},
+      {label:'開收',data:bodyData,backgroundColor:colors,borderWidth:0,barThickness:8,categoryPercentage:1,barPercentage:.85,order:2},
+      {label:'MA20',type:'line',data:ma20,borderColor:'#79b8ff',backgroundColor:'transparent',borderWidth:1.4,pointRadius:0,tension:.25,order:1},
+      {label:'MA60',type:'line',data:ma60,borderColor:'#e3b341',backgroundColor:'transparent',borderWidth:1.4,pointRadius:0,tension:.25,order:1}
+    ]},
+    options:{
+      responsive:true,maintainAspectRatio:false,
+      interaction:{mode:'index',intersect:false},
+      plugins:{
+        legend:{display:true,position:'top',labels:{color:'#8b949e',font:{size:11},filter:i=>!['高低','開收'].includes(i.text)}},
+        tooltip:{backgroundColor:'rgba(12,18,32,.95)',callbacks:{
+          label:(ctx)=>{
+            const i=ctx.dataIndex, d=kdata[i];
+            if(ctx.dataset.label==='開收'||ctx.dataset.label==='高低')
+              return [`日期 ${d.date}`,`開 ${d.open.toFixed(2)}`,`高 ${d.high.toFixed(2)}`,`低 ${d.low.toFixed(2)}`,`收 ${d.close.toFixed(2)}`];
+            return `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}`;
+          }
+        }}
+      },
+      scales:{
+        x:{ticks:{color:'#8b949e',maxTicksLimit:10,font:{size:11}},grid:{color:'rgba(56,139,253,.04)'}},
+        y:{position:'right',ticks:{color:'#8b949e',font:{size:11}},grid:{color:'rgba(56,139,253,.06)'}}
+      }
+    }
   });
-  outer.appendChild(scr);
 }
 
 // ── renderGlobalTable：相容舊呼叫，轉發到新函式 ──

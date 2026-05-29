@@ -242,12 +242,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
       <button class="f-btn" id="fb-pe" onclick="tqf('pe')">本益比&lt;15</button>
       <button class="f-btn" id="fb-yld" onclick="tqf('yld')">殖利率&gt;4%</button>
       <div class="f-sep"></div>
-      <select class="f-sort" id="sigFilter" onchange="renderTable()" title="依 AI 訊號分類篩選">
+      <select class="f-sort" id="sigFilter" onchange="renderTable()" title="依 AI 訊號分類篩選（對應表格 AI訊號 欄位）">
         <option value="">全部訊號</option>
-        <option value="buy">買進</option>
-        <option value="hold">偏多 / 偏空</option>
-        <option value="sell">賣出</option>
-        <option value="watch">觀察</option>
+        <option value="買進">買進</option>
+        <option value="賣出">賣出</option>
+        <option value="觀察">觀察</option>
       </select>
     </div>
     <div class="tbl-wrap">
@@ -518,11 +517,13 @@ function processTPEx(data){
     // TradingShares 上櫃也是股數，除1000
     const rawVol=parseInt((d.TradingShares||'0').replace(/,/g,''))||0;
     const vol = d._mis ? rawVol : Math.round(rawVol / 1000);
+    // 成交金額（元）：均價公式用
+    const tradeValue = parseFloat((d.TradeValue||'0').toString().replace(/,/g,''))||0;
     const isETF=detectETF(d.SecuritiesCompanyCode, d.CompanyName||'');
     const sector=isETF?'ETF':getSec(d.Industry||'');
     return{id:d.SecuritiesCompanyCode, name:d.CompanyName||d.SecuritiesCompanyCode,
       sector, isETF, market:'tpex',
-      open, close, high, low, vol, chg, prev,
+      open, close, high, low, vol, chg, prev, tradeValue,
       chgP: isNaN(chgP)?0:chgP,
       peV:null, yld:null, pbV:null,
       sig:calcSig({open,close,high,low,chgP,peV:null,turn:0,ff:0}), turn:0};
@@ -589,7 +590,7 @@ function getFiltered(){
   if(qf.has('yld')) l=l.filter(s=>s.yld&&s.yld>4);
 
   const sigF=document.getElementById('sigFilter')?.value||'';
-  if(sigF) l=l.filter(s=>s.sig?.cls==='sig-'+sigF);
+  if(sigF) l=l.filter(s=>s.sig?.lbl===sigF);
 
   // 表頭可點擊排序：sortKey + sortDir 由 setSort() 切換
   const dir = sortDir==='asc' ? 1 : -1;
@@ -909,8 +910,8 @@ function buildDetHTML(s,live){
       <div class="kv"><div class="kv-l">振幅</div><div class="kv-v" id="dq-amp">${amp}</div></div>
       <div class="kv"><div class="kv-l">漲跌</div><div class="kv-v ${s.chg>0?'c-up':s.chg<0?'c-dn':'c-neu'}" id="dq-chg">${s.chg>0?'+':''}${s.chg.toFixed(2)}</div></div>
       <div class="kv"><div class="kv-l">漲跌幅</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}" id="dq-chgp">${s.chgP>=0?'+':''}${s.chgP.toFixed(2)}%</div></div>
-      <div class="kv"><div class="kv-l">內盤(張)</div><div class="kv-v c-dn" id="dq-ob">—</div></div>
-      <div class="kv"><div class="kv-l">外盤(張)</div><div class="kv-v c-up" id="dq-oa">—</div></div>
+      <div class="kv" title="盤中即時資料來自證交所 MIS API（09:00–13:30），盤後無數據"><div class="kv-l">內盤(張) <span style="font-size:9px;color:var(--text3);font-weight:400">盤中</span></div><div class="kv-v c-dn" id="dq-ob">—</div></div>
+      <div class="kv" title="盤中即時資料來自證交所 MIS API（09:00–13:30），盤後無數據"><div class="kv-l">外盤(張) <span style="font-size:9px;color:var(--text3);font-weight:400">盤中</span></div><div class="kv-v c-up" id="dq-oa">—</div></div>
     </div>
   </div>
   <div class="ds" id="ma-section"><div class="dst">均線乖離率</div>

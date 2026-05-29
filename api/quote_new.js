@@ -39,6 +39,7 @@ export default async function handler(req, res) {
               Code:          row[0]?.trim(),
               Name:          row[1]?.trim(),
               TradeVolume:   row[2]?.replace(/,/g,''),
+              TradeValue:    row[4]?.replace(/,/g,''),   // 成交金額（元）→ 前端均價公式
               OpeningPrice:  row[5]?.replace(/,/g,''),
               HighestPrice:  row[6]?.replace(/,/g,''),
               LowestPrice:   row[7]?.replace(/,/g,''),
@@ -133,6 +134,7 @@ export default async function handler(req, res) {
               High:         row[6]?.replace(/,/g,''),
               Low:          row[7]?.replace(/,/g,''),
               TradingShares: row[8]?.replace(/,/g,''),
+              TradeValue:   row[9]?.replace(/,/g,''),  // 成交金額（元）
               Industry:     '',
               _today: true
             })).filter(d => d.SecuritiesCompanyCode && d.Close && d.Close !== '--');

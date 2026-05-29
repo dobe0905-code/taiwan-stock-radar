@@ -61,7 +61,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .mkt-tab:hover{color:var(--text);}
 .mkt-tab.active{color:var(--accent2);border-bottom-color:var(--accent);}
 .summary-bar{display:flex;gap:8px;padding:10px 16px;overflow-x:auto;flex-shrink:0;}
-.sum-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;white-space:nowrap;flex-shrink:0;min-width:110px;}
+.sum-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;white-space:nowrap;flex-shrink:0;min-width:110px;cursor:pointer;transition:all .15s;}
+.sum-card:hover{border-color:var(--border2);background:var(--bg3);transform:translateY(-1px);}
 .sum-lbl{font-size:12px;color:var(--text3);margin-bottom:3px;}
 .sum-val{font-size:28px;font-weight:700;font-family:var(--mono);}
 .sum-lbl{font-size:13px;color:var(--text3);margin-bottom:3px;}
@@ -218,13 +219,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
       <div class="mkt-tab" onclick="setMkt('global',this)">🌐 全球指數</div>
     </div>
     <div class="summary-bar">
-      <div class="sum-card"><div class="sum-lbl">已載入</div><div class="sum-val c-neu" id="s-tot">—</div><div class="sum-sub">檔股票</div></div>
-      <div class="sum-card"><div class="sum-lbl">上市</div><div class="sum-val c-neu" id="s-twse">—</div><div class="sum-sub">TWSE</div></div>
-      <div class="sum-card"><div class="sum-lbl">上櫃</div><div class="sum-val c-neu" id="s-tpex">—</div><div class="sum-sub">TPEx</div></div>
-      <div class="sum-card"><div class="sum-lbl">上漲家數</div><div class="sum-val c-up" id="s-up">—</div><div class="sum-sub">漲幅>0</div></div>
-      <div class="sum-card"><div class="sum-lbl">下跌家數</div><div class="sum-val c-dn" id="s-dn">—</div><div class="sum-sub">跌幅>0</div></div>
-      <div class="sum-card"><div class="sum-lbl">買進訊號</div><div class="sum-val c-up" id="s-by">—</div><div class="sum-sub">技術面</div></div>
-      <div class="sum-card"><div class="sum-lbl">賣出訊號</div><div class="sum-val c-dn" id="s-sl">—</div><div class="sum-sub">技術面</div></div>
+      <div class="sum-card" title="點擊查看全部股票" onclick="sumCardClick('all')"><div class="sum-lbl">已載入</div><div class="sum-val c-neu" id="s-tot">—</div><div class="sum-sub">檔股票</div></div>
+      <div class="sum-card" title="點擊切換上市頁籤" onclick="sumCardClick('twse')"><div class="sum-lbl">上市</div><div class="sum-val c-neu" id="s-twse">—</div><div class="sum-sub">TWSE →</div></div>
+      <div class="sum-card" title="點擊切換上櫃頁籤" onclick="sumCardClick('tpex')"><div class="sum-lbl">上櫃</div><div class="sum-val c-neu" id="s-tpex">—</div><div class="sum-sub">TPEx →</div></div>
+      <div class="sum-card" title="點擊篩選上漲股票" onclick="sumCardClick('up')"><div class="sum-lbl">上漲家數</div><div class="sum-val c-up" id="s-up">—</div><div class="sum-sub">漲幅&gt;0 →</div></div>
+      <div class="sum-card" title="點擊篩選下跌股票" onclick="sumCardClick('dn')"><div class="sum-lbl">下跌家數</div><div class="sum-val c-dn" id="s-dn">—</div><div class="sum-sub">跌幅&gt;0 →</div></div>
+      <div class="sum-card" title="點擊查看買進訊號股票" onclick="sumCardClick('buy')"><div class="sum-lbl">買進訊號</div><div class="sum-val c-up" id="s-by">—</div><div class="sum-sub">技術面 →</div></div>
+      <div class="sum-card" title="點擊查看賣出訊號股票" onclick="sumCardClick('sell')"><div class="sum-lbl">賣出訊號</div><div class="sum-val c-dn" id="s-sl">—</div><div class="sum-sub">技術面 →</div></div>
     </div>
     <div class="filter-bar">
       <button class="f-btn" id="fb-up" onclick="tqf('up')">▲ 上漲</button>
@@ -1622,19 +1623,96 @@ function showTWTbl(){
 
 // ── 顯示大盤K線面板（單圖 + 頁籤切換）──
 const MKT_CHARTS=[
-  {sym:'TWSE:TAIEX',           label:'🇹🇼 加權指數'},
-  {sym:'TWSE:CABK',            label:'🏪 櫃買指數'},
-  {sym:'CAPITALFUTURES:TX1!',  label:'📅 台指近月'},
-  {sym:'CBOT:YM1!',            label:'🇺🇸 道瓊期貨'},
-  {sym:'NASDAQ:NDX',           label:'📈 那斯達克'},
-  {sym:'NASDAQ:SOX',           label:'💻 費城半導體'},
+  {sym:'TWSE:TAIEX',    label:'🇹🇼 加權指數'},
+  {sym:'^TWO',          label:'🏪 櫃買指數',  yahoo:true, name:'台灣櫃買指數'},
+  {sym:'TAIFEX:TX1!',   label:'📅 台指近月'},
+  {sym:'CBOT:YM1!',     label:'🇺🇸 道瓊期貨'},
+  {sym:'NASDAQ:NDX',    label:'📈 那斯達克'},
+  {sym:'NASDAQ:SOX',    label:'💻 費城半導體'},
 ];
 let mktChartCurSym=MKT_CHARTS[0].sym;
 
-function loadTVChart(sym){
+// ── Yahoo Finance 折線圖（用於 TradingView 無法顯示的台灣指數）──
+async function showYahooLineChart(containerId, yahooSym, label){
+  const c=document.getElementById(containerId);
+  if(!c) return;
+  c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:13px">載入 ${label} 資料中…</div>`;
+  try{
+    const r=await fetch(`/api/global?type=us_detail&stock_id=${encodeURIComponent(yahooSym)}`);
+    const j=await r.json();
+    const kdata=(j.data?.kdata||j.kdata||[]).slice(-60); // 近60日
+    if(!kdata.length){ c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3)">暫無資料</div>`; return; }
+    c.innerHTML=`<canvas id="yahoo-line-cv" style="width:100%;height:calc(100% - 8px)"></canvas>`;
+    const cv=document.getElementById('yahoo-line-cv');
+    if(!cv) return;
+    const labels=kdata.map(d=>d.date||d[0]||'');
+    const prices=kdata.map(d=>parseFloat(d.close||d[4]||d.adjclose||0));
+    const firstP=prices[0]||0;
+    const lastP=prices[prices.length-1]||0;
+    const color=lastP>=firstP?'#7ee787':'#ffa198';
+    if(window._yahooLineChart) { try{window._yahooLineChart.destroy();}catch(e){} }
+    window._yahooLineChart=new Chart(cv,{
+      type:'line',
+      data:{
+        labels,
+        datasets:[{
+          label,
+          data:prices,
+          borderColor:color,
+          backgroundColor:color.replace(')',', 0.08)').replace('rgb','rgba'),
+          borderWidth:2,
+          pointRadius:0,
+          fill:true,
+          tension:0.3
+        }]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false,
+        interaction:{mode:'index',intersect:false},
+        plugins:{
+          legend:{display:false},
+          tooltip:{
+            backgroundColor:'rgba(12,18,32,.95)',
+            callbacks:{label:ctx=>`${label}: ${ctx.parsed.y?.toLocaleString()}`}
+          }
+        },
+        scales:{
+          x:{ticks:{color:'#8b949e',maxTicksLimit:8,font:{size:11}},grid:{color:'rgba(56,139,253,.06)'}},
+          y:{ticks:{color:'#8b949e',font:{size:11},callback:v=>v?.toLocaleString()},grid:{color:'rgba(56,139,253,.06)'}}
+        }
+      }
+    });
+  }catch(e){
+    c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--red2)">載入失敗：${e.message}</div>`;
+  }
+}
+
+function loadTVChart(sym, chartDef){
   mktChartCurSym=sym;
+  const def=chartDef||MKT_CHARTS.find(c=>c.sym===sym)||{};
+
+  // Yahoo Finance 類型 → Chart.js 折線圖
+  if(def.yahoo){
+    const iframe=document.getElementById('mktchart-iframe');
+    if(iframe){ iframe.style.display='none'; }
+    let canvas=document.getElementById('mktchart-yahoo');
+    if(!canvas){
+      canvas=document.createElement('div');
+      canvas.id='mktchart-yahoo';
+      canvas.style.cssText='position:absolute;top:0;left:0;right:0;bottom:0;padding:12px;background:var(--bg);';
+      iframe?.parentElement?.appendChild(canvas);
+    }
+    canvas.style.display='block';
+    showYahooLineChart('mktchart-yahoo', sym, def.name||def.label);
+    return;
+  }
+
+  // TradingView iframe
   const iframe=document.getElementById('mktchart-iframe');
   if(!iframe) return;
+  const yahooCanvas=document.getElementById('mktchart-yahoo');
+  if(yahooCanvas) yahooCanvas.style.display='none';
+  iframe.style.display='block';
   const enc=encodeURIComponent(sym);
   iframe.src=`https://s.tradingview.com/widgetembed/?frameElementId=mktchart_tv&symbol=${enc}&interval=D`
     +`&hidesidetoolbar=0&symboledit=0&saveimage=0&toolbarbg=070b14`
@@ -1670,7 +1748,7 @@ function showMktChart(){
           t.style.color='var(--text2)';t.style.borderBottomColor='transparent';
         });
         tab.style.color='var(--accent2)';tab.style.borderBottomColor='var(--accent)';
-        loadTVChart(c.sym);
+        loadTVChart(c.sym, c);
       });
       tabBar.appendChild(tab);
     });
@@ -1900,20 +1978,25 @@ function renderUSTable(){
 
 // ── 全球指數 TradingView 圖表切換 ──
 const GLOBAL_CHARTS=[
-  {sym:'TWSE:TAIEX',          label:'🇹🇼 加權指數'},
-  {sym:'TWSE:CABK',           label:'🏪 櫃買指數'},
-  {sym:'CBOT:YM1!',           label:'🇺🇸 道瓊期貨'},
-  {sym:'NASDAQ:SOX',          label:'💻 費城半導體'},
-  {sym:'CAPITALFUTURES:TX1!', label:'📅 台指近月'},
+  {sym:'TWSE:TAIEX',   label:'🇹🇼 加權指數'},
+  {sym:'^TWO',         label:'🏪 櫃買指數',  yahoo:true, name:'台灣櫃買指數'},
+  {sym:'CBOT:YM1!',    label:'🇺🇸 道瓊期貨'},
+  {sym:'NASDAQ:SOX',   label:'💻 費城半導體'},
+  {sym:'TAIFEX:TX1!',  label:'📅 台指近月'},
 ];
 window._globalTVSym='TWSE:TAIEX';
 window._globalTVIv='D';
+window._globalCurChart=GLOBAL_CHARTS[0];
 
 function showGlobalTV(sym, iv){
-  if(sym) window._globalTVSym=sym;
+  if(sym){
+    window._globalTVSym=sym;
+    window._globalCurChart=GLOBAL_CHARTS.find(c=>c.sym===sym)||{sym};
+  }
   if(iv)  window._globalTVIv=iv;
   const curSym=window._globalTVSym;
   const curIv=window._globalTVIv;
+  const curChart=window._globalCurChart||{};
 
   // highlight symbol tabs
   const tabRow=document.getElementById('global-chart-tabs');
@@ -1934,6 +2017,19 @@ function showGlobalTV(sym, iv){
 
   const wrap=document.getElementById('global-tv-wrap');
   if(!wrap) return;
+
+  // Yahoo Finance 類型 → 隱藏 TradingView，顯示 Chart.js
+  if(curChart.yahoo){
+    wrap.innerHTML='';
+    const cvWrap=document.createElement('div');
+    cvWrap.id='global-yahoo-wrap';
+    cvWrap.style.cssText='width:100%;height:100%;padding:12px;box-sizing:border-box;background:var(--bg);';
+    wrap.appendChild(cvWrap);
+    showYahooLineChart('global-yahoo-wrap', curSym, curChart.name||curChart.label);
+    return;
+  }
+
+  // TradingView widget
   wrap.innerHTML='';
   const outer=document.createElement('div');
   outer.className='tradingview-widget-container';
@@ -2115,6 +2211,51 @@ async function openGlobalDetail(symbol, name){
 }
 
 function toggleSub(el){const s=document.getElementById('sub-sectors'),a=document.getElementById('sub-arr');s.classList.toggle('open');a.textContent=s.classList.contains('open')?'▼':'▶';}
+
+// ── 統計卡點擊：快速進入對應篩選 ──
+function sumCardClick(action){
+  // 找側欄 sb-item by text
+  function sbItem(text){ return [...document.querySelectorAll('.sb-item')].find(e=>e.textContent.includes(text))||null; }
+  // 確保主表格可見（若在全球指數/大盤K線頁面時切回全部）
+  function ensureTable(){
+    if(mkt==='global'||mkt==='mktchart'){
+      setMkt('all', document.querySelector('.mkt-tab'));
+    }
+  }
+  if(action==='all'){
+    ensureTable();
+    setSF('all', sbItem('全部股票'));
+  } else if(action==='twse'){
+    const tab=[...document.querySelectorAll('.mkt-tab')].find(e=>e.textContent.includes('上市'));
+    setMkt('twse', tab);
+    setSF('all', sbItem('全部股票'));
+  } else if(action==='tpex'){
+    const tab=[...document.querySelectorAll('.mkt-tab')].find(e=>e.textContent.includes('上櫃'));
+    setMkt('tpex', tab);
+    setSF('all', sbItem('全部股票'));
+  } else if(action==='up'){
+    ensureTable();
+    setSF('all', sbItem('全部股票'));
+    qf.clear(); qf.add('up');
+    const ids={up:'fb-up',dn:'fb-dn',vol:'fb-vol',pe:'fb-pe',yld:'fb-yld'};
+    Object.entries(ids).forEach(([k,id])=>document.getElementById(id)?.classList.toggle('active',qf.has(k)));
+    renderTable();
+  } else if(action==='dn'){
+    ensureTable();
+    setSF('all', sbItem('全部股票'));
+    qf.clear(); qf.add('dn');
+    const ids={up:'fb-up',dn:'fb-dn',vol:'fb-vol',pe:'fb-pe',yld:'fb-yld'};
+    Object.entries(ids).forEach(([k,id])=>document.getElementById(id)?.classList.toggle('active',qf.has(k)));
+    renderTable();
+  } else if(action==='buy'){
+    ensureTable();
+    setSF('buy', sbItem('買進訊號'));
+  } else if(action==='sell'){
+    ensureTable();
+    setSF('sell', sbItem('賣出訊號'));
+  }
+}
+
 function tqf(f){
   if(qf.has(f)){ qf.delete(f); } else { qf.clear(); qf.add(f); }
   const ids={up:'fb-up',dn:'fb-dn',vol:'fb-vol',pe:'fb-pe',yld:'fb-yld'};

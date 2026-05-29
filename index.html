@@ -20,7 +20,7 @@
 }
 *{box-sizing:border-box;margin:0;padding:0;}
 html,body{height:100%;overflow:hidden;}
-body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15px;}
+body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:17px;}
 ::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-thumb{background:var(--bg5);border-radius:2px;}
 #header{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--header);background:rgba(7,11,20,.95);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;}
@@ -45,7 +45,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 #app{display:flex;height:100vh;padding-top:var(--header);}
 #sidebar{width:var(--sidebar);flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;padding:8px 0;}
 .sb-label{font-size:11px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;padding:10px 14px 4px;}
-.sb-item{display:flex;align-items:center;justify-content:space-between;padding:8px 14px;font-size:14px;color:var(--text2);cursor:pointer;transition:all .15s;border-left:2px solid transparent;}
+.sb-item{display:flex;align-items:center;justify-content:space-between;padding:9px 14px;font-size:15px;color:var(--text2);cursor:pointer;transition:all .15s;border-left:2px solid transparent;}
 .sb-item:hover{background:var(--bg3);color:var(--text);}
 .sb-item.active{background:rgba(56,139,253,.08);border-left-color:var(--accent);color:var(--accent2);}
 .sb-cnt{font-size:10px;font-family:var(--mono);background:var(--bg4);padding:1px 6px;border-radius:8px;color:var(--text3);}
@@ -57,40 +57,40 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:15
 .sb-sub-item.active{color:var(--accent2);}
 #main{flex:1;overflow-y:auto;display:flex;flex-direction:column;min-width:0;}
 .mkt-tabs{display:flex;align-items:center;padding:0 16px;border-bottom:1px solid var(--border);background:var(--bg2);position:sticky;top:0;z-index:10;flex-shrink:0;}
-.mkt-tab{padding:10px 18px;font-size:14px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;}
+.mkt-tab{padding:11px 20px;font-size:15px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;}
 .mkt-tab:hover{color:var(--text);}
 .mkt-tab.active{color:var(--accent2);border-bottom-color:var(--accent);}
 .summary-bar{display:flex;gap:8px;padding:10px 16px;overflow-x:auto;flex-shrink:0;}
 .sum-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;white-space:nowrap;flex-shrink:0;min-width:110px;}
 .sum-lbl{font-size:12px;color:var(--text3);margin-bottom:3px;}
-.sum-val{font-size:22px;font-weight:700;font-family:var(--mono);}
+.sum-val{font-size:24px;font-weight:700;font-family:var(--mono);}
 .sum-sub{font-size:11px;color:var(--text3);margin-top:1px;}
 .c-up{color:var(--green2);}.c-dn{color:var(--red2);}.c-neu{color:var(--text2);}
 .filter-bar{display:flex;align-items:center;gap:6px;padding:8px 16px;flex-wrap:wrap;flex-shrink:0;border-bottom:1px solid var(--border);}
-.f-btn{padding:5px 13px;border-radius:6px;font-size:13px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;transition:all .15s;white-space:nowrap;}
+.f-btn{padding:6px 14px;border-radius:6px;font-size:14px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;transition:all .15s;white-space:nowrap;}
 .f-btn:hover{border-color:var(--border2);color:var(--text);}
 .f-btn.active{border-color:var(--accent);color:var(--accent2);background:rgba(56,139,253,.08);}
 .f-sep{width:1px;height:16px;background:var(--border);flex-shrink:0;}
 .f-sort{padding:5px 12px;border-radius:6px;font-size:13px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;outline:none;}
 .tbl-wrap{flex:1;overflow:auto;}
 .tbl{width:100%;border-collapse:collapse;}
-.tbl thead th{position:sticky;top:0;z-index:5;background:var(--bg3);padding:9px 12px;font-size:12px;font-weight:700;letter-spacing:.07em;color:var(--text3);text-transform:uppercase;white-space:nowrap;border-bottom:1px solid var(--border);text-align:left;}
+.tbl thead th{position:sticky;top:0;z-index:5;background:var(--bg3);padding:10px 12px;font-size:13px;font-weight:700;letter-spacing:.07em;color:var(--text3);text-transform:uppercase;white-space:nowrap;border-bottom:1px solid var(--border);text-align:left;}
 .tbl thead th:first-child{padding-left:16px;}
 .tbl tbody tr{border-bottom:1px solid var(--border);cursor:pointer;transition:background .1s;animation:rowIn .2s ease both;}
 @keyframes rowIn{from{opacity:0;transform:translateX(-6px)}to{opacity:1;transform:none}}
 .tbl tbody tr:hover{background:rgba(56,139,253,.04);}
 .tbl tbody td{padding:10px 12px;white-space:nowrap;vertical-align:middle;}
 .tbl tbody td:first-child{padding-left:16px;}
-.td-id{font-family:var(--mono);font-size:13px;color:var(--accent2);font-weight:600;}
-.td-name{font-size:14px;font-weight:500;}
+.td-id{font-family:var(--mono);font-size:14px;color:var(--accent2);font-weight:600;}
+.td-name{font-size:15px;font-weight:500;}
 .td-sec{font-size:12px;color:var(--text3);background:var(--bg4);padding:2px 6px;border-radius:3px;display:inline-block;margin-top:2px;}
-.td-price{font-family:var(--mono);font-size:15px;font-weight:600;}
+.td-price{font-family:var(--mono);font-size:16px;font-weight:600;}
 .pill{font-size:10px;font-family:var(--mono);font-weight:600;padding:2px 7px;border-radius:5px;display:inline-block;}
 .pill-up{background:rgba(63,185,80,.12);color:var(--green2);}
 .pill-dn{background:rgba(248,81,73,.12);color:var(--red2);}
 .pill-neu{background:var(--bg4);color:var(--text3);}
-.td-m{font-family:var(--mono);font-size:13px;color:var(--text2);}
-.sig{font-size:12px;font-weight:700;padding:3px 10px;border-radius:4px;letter-spacing:.03em;display:inline-block;}
+.td-m{font-family:var(--mono);font-size:14px;color:var(--text2);}
+.sig{font-size:13px;font-weight:700;padding:4px 11px;border-radius:4px;letter-spacing:.03em;display:inline-block;}
 .sig-buy{background:rgba(63,185,80,.15);color:#7ee787;border:1px solid rgba(63,185,80,.25);}
 .sig-sell{background:rgba(248,81,73,.15);color:#ffa198;border:1px solid rgba(248,81,73,.25);}
 .sig-hold{background:rgba(210,153,34,.12);color:#e3b341;border:1px solid rgba(210,153,34,.2);}
@@ -416,35 +416,48 @@ window.addEventListener('firebase-ready', ()=>{
   // Firebase 保留備用（不主動使用）
 });
 
-// ── 資料載入 ──
+// ── 資料載入（分階段：TWSE 先顯示，TPEx+PER 背景載入）──
 async function loadData(){
-  setLd('正在從台灣證交所載入上市股票...');
+  setLd('正在載入上市股票...');
   try{
-    // 同時載入上市、上櫃、本益比
-    const [twseRes, tpexRes, perRes] = await Promise.all([
-      fetch(`${API}?type=twse_list`).then(r=>r.json()),
+    // 第一階段：先載入 TWSE，快速顯示
+    const twseRes = await fetch(`${API}?type=twse_list`).then(r=>r.json());
+    let twseStocks = processTWSE(twseRes.data||[]);
+    stocks = twseStocks;
+    if(stocks.length>0){
+      document.getElementById('twseBadge').className='api-badge api-on';
+      updSum(); updSB(); renderTable();
+      setLd('');
+      showToast(`✓ 上市 ${twseStocks.length} 檔已載入，上櫃載入中...`);
+    }
+
+    // 第二階段：背景載入 TPEx + PER
+    const [tpexRes, perRes] = await Promise.all([
       fetch(`${API}?type=tpex_list`).then(r=>r.json()),
       fetch(`${API}?type=twse_per`).then(r=>r.json()),
     ]);
 
-    // 本益比 map
+    // 建立本益比 map
     perMap={};
     if(perRes.data) for(const p of perRes.data){
       perMap[p.Code]={ per: parseFloat(p.PEratio)||null, yld: parseFloat(p.DividendYield)||null, pbr: parseFloat(p.PBratio)||null };
     }
+    // 補上 TWSE 本益比（原本 processTWSE 時 perMap 還是空的）
+    for(const s of twseStocks){
+      const pe=perMap[s.id];
+      if(pe){ s.peV=pe.per; s.yld=pe.yld; s.pbV=pe.pbr; }
+    }
 
-    const twseStocks = processTWSE(twseRes.data||[]);
     const tpexStocks = processTPEx(tpexRes.data||[]);
     stocks = [...twseStocks, ...tpexStocks];
 
     if(stocks.length===0){ setLd('無資料，請稍後再試'); return; }
-
     document.getElementById('twseBadge').className='api-badge api-on';
     document.getElementById('tpexBadge').className='api-badge api-on';
 
     updSum(); updSB(); renderTable();
     setLU(); schedRef();
-    showToast(`✓ 已載入 ${stocks.length} 檔股票（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length}）`);
+    showToast(`✓ 全部載入完成：${stocks.length} 檔（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length}）`);
     startMisPolling();
   }catch(e){
     setLd('載入失敗：'+e.message);
@@ -567,13 +580,18 @@ function getFiltered(){
   return l;
 }
 
+const TBL_PAGE=500; // 每次最多渲染500行
+let tblShowAll=false;
+
 function renderTable(){
   const l=getFiltered(), tb=document.getElementById('tblBody');
   if(!l.length){tb.innerHTML='<tr><td colspan="10"><div class="empty">找不到符合條件的股票</div></td></tr>';return;}
-  tb.innerHTML=l.map((s,i)=>{
+  const useAnim=l.length<=100; // 小列表才用動畫
+  const visible = (tblShowAll || l.length<=TBL_PAGE) ? l : l.slice(0,TBL_PAGE);
+  const makeRow=(s,i)=>{
     const isLive=!!liveData[s.id];
     const mktTag=s.market==='tpex'?'<span style="font-size:9px;color:var(--amber2);margin-left:3px">櫃</span>':'';
-    return`<tr style="animation-delay:${Math.min(i*5,600)}ms" data-id="${s.id}" onclick="openDet('${s.id}')">
+    return`<tr ${useAnim?`style="animation-delay:${Math.min(i*3,300)}ms"`:''} data-id="${s.id}" onclick="openDet('${s.id}')">
       <td onclick="event.stopPropagation()"><button class="star-btn ${wl.has(s.id)?'on':''}" onclick="togWL('${s.id}',this)">★</button></td>
       <td><span class="td-id">${s.id}</span>${s.isETF?'<span class="etf-tag">ETF</span>':''}${mktTag}${isLive?'<span style="font-size:9px;color:var(--red2);margin-left:3px">●</span>':''}</td>
       <td><div class="td-name">${s.name}</div>${!s.isETF?'<div class="td-sec">'+s.sector+'</div>':''}</td>
@@ -585,7 +603,17 @@ function renderTable(){
       <td><span class="td-m ${s.chg>0?'c-up':s.chg<0?'c-dn':'c-neu'}">${s.chg>0?'+':''}${s.chg.toFixed(2)}</span></td>
       <td><span class="sig ${s.sig.cls}">${s.sig.lbl}</span></td>
     </tr>`;
-  }).join('');
+  };
+  let html=visible.map(makeRow).join('');
+  if(!tblShowAll && l.length>TBL_PAGE){
+    html+=`<tr><td colspan="10" style="text-align:center;padding:14px">
+      <button onclick="tblShowAll=true;renderTable()" style="padding:8px 24px;background:var(--bg3);border:1px solid var(--border2);border-radius:6px;color:var(--accent2);cursor:pointer;font-size:13px">
+        顯示全部 ${l.length.toLocaleString()} 筆 ↓
+      </button>
+    </td></tr>`;
+  }
+  tb.innerHTML=html;
+  tblShowAll=false; // reset after each render triggered by filter/sort change
 }
 
 function fmV(v){if(v>=1e8)return(v/1e8).toFixed(1)+'億';if(v>=1e4)return Math.round(v/1e3)+'千';return v.toLocaleString();}
@@ -837,11 +865,23 @@ function buildDetHTML(s,live){
   </div>
   <div class="ds" id="price-chart-section"><div class="dst">價格走勢</div>
     <div id="tv-interval-row" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
-      ${[['當日走勢','today'],['日線','D'],['週線','W'],['月線','M']].map(([lbl,iv],i)=>{
-        const active=i===1;
-        return `<button onclick="showStockTV('${s.id}','${s.market}','${iv}',this)" data-iv="${iv}" style="font-size:13px;padding:5px 16px;border-radius:5px;border:1px solid ${active?'var(--accent)':'var(--border)'};background:${active?'rgba(56,139,253,.15)':'var(--bg3)'};color:${active?'var(--accent2)':'var(--text2)'};cursor:pointer">${lbl}</button>`;
-      }).join('')}
+      ${(()=>{
+        // 權證（6位代號 or 名稱含購/售）不支援 TradingView 日K
+        const isWarrant=s.id.length>=6||s.name.includes('購')||s.name.includes('售');
+        const tabs=isWarrant
+          ?[['當日走勢','today']]
+          :[['當日走勢','today'],['日線','D'],['週線','W'],['月線','M']];
+        const defaultIv=isWarrant?'today':'D';
+        return tabs.map(([lbl,iv])=>{
+          const active=iv===defaultIv;
+          return `<button onclick="showStockTV('${s.id}','${s.market}','${iv}',this)" data-iv="${iv}" style="font-size:13px;padding:5px 16px;border-radius:5px;border:1px solid ${active?'var(--accent)':'var(--border)'};background:${active?'rgba(56,139,253,.15)':'var(--bg3)'};color:${active?'var(--accent2)':'var(--text2)'};cursor:pointer">${lbl}</button>`;
+        }).join('');
+      })()}
     </div>
+    ${(()=>{
+      const isWarrant=s.id.length>=6||s.name.includes('購')||s.name.includes('售');
+      return isWarrant?'<div style="font-size:11px;color:var(--text3);margin-bottom:6px;padding:4px 8px;background:var(--bg4);border-radius:4px">⚠ 權證商品僅支援當日走勢（TradingView 不支援此商品類型）</div>':'';
+    })()}
     <div id="tv-stock-wrap" style="height:440px;border-radius:8px;overflow:hidden;background:var(--bg);position:relative">
     </div>
   </div>
@@ -959,9 +999,11 @@ async function buildDetCharts(s){
   Chart.defaults.font.family="'JetBrains Mono',monospace";
   Chart.defaults.font.size=10;
 
-  // ── TradingView 個股 K 線（預設日線）──
-  const defBtn=document.querySelector('#tv-interval-row [data-iv="D"]');
-  showStockTV(s.id, s.market, 'D', defBtn);
+  // ── TradingView 個股 K 線（權證預設當日走勢，一般股預設日線）──
+  const isWarrant=s.id.length>=6||s.name.includes('購')||s.name.includes('售');
+  const defIv=isWarrant?'today':'D';
+  const defBtn=document.querySelector(`#tv-interval-row [data-iv="${defIv}"]`);
+  showStockTV(s.id, s.market, defIv, defBtn);
 
   // ── K 線資料 → 技術分析 + MA 乖離 ──
   try{

@@ -291,28 +291,47 @@ export default async function handler(req, res) {
       try {
         const mkt = req.query.market || 'twse';
         const prefix = mkt === 'tpex' ? 'otc' : 'tse';
-        const url = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${prefix}_${stock_id}.tw&json=1&delay=0&_=${Date.now()}`;
-        const r = await fetch(url, {
-          headers: {'Accept':'application/json','User-Agent':'Mozilla/5.0','Referer':'https://mis.twse.com.tw/stock/index.jsp'}
-        });
-        const j = await r.json();
-        const item = (j.msgArray||[])[0];
+        const yahooSuffix = mkt === 'tpex' ? 'TWO' : 'TW';
+        // 並行抓 MIS 即時 + Yahoo 1 分鐘走勢
+        const misUrl = `https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=${prefix}_${stock_id}.tw&json=1&delay=0&_=${Date.now()}`;
+        const yahooUrl = `https://query1.finance.yahoo.com/v8/finance/chart/${stock_id}.${yahooSuffix}?range=1d&interval=1m`;
+        const [misR, yahooR] = await Promise.allSettled([
+          fetch(misUrl, { headers: {'Accept':'application/json','User-Agent':'Mozilla/5.0','Referer':'https://mis.twse.com.tw/stock/index.jsp'} }),
+          fetch(yahooUrl, { headers: {'Accept':'application/json','User-Agent':'Mozilla/5.0'} })
+        ]);
+        const item = misR.status==='fulfilled' && misR.value.ok ? ((await misR.value.json()).msgArray||[])[0] : null;
+        // 解析 Yahoo 1 分鐘 ticks
+        let ticks = [];
+        if (yahooR.status==='fulfilled' && yahooR.value.ok) {
+          try {
+            const yj = await yahooR.value.json();
+            const result = yj?.chart?.result?.[0];
+            if (result) {
+              const ts = result.timestamp || [];
+              const closes = result.indicators?.quote?.[0]?.close || [];
+              const vols = result.indicators?.quote?.[0]?.volume || [];
+              ticks = ts.map((t,i) => ({
+                t,                          // unix timestamp (sec)
+                price: closes[i] ?? null,
+                volume: vols[i] ?? 0
+              })).filter(d => d.price != null);
+            }
+          } catch(e) {}
+        }
         res.setHeader('Cache-Control','no-cache,no-store');
         return res.status(200).json({
           stock_id,
-          data: item ? {
-            price:  parseFloat(item.z)||parseFloat(item.y)||0,
-            open:   parseFloat(item.o)||0,
-            high:   parseFloat(item.h)||0,
-            low:    parseFloat(item.l)||0,
-            prev:   parseFloat(item.y)||0,
-            volume: parseFloat(item.v)||0,
-            time:   item.t||'',
-            // 分時成交序列（最多20筆）
-            trades: (item.tv||'').split('_').filter(Boolean).slice(-20).map(v=>parseFloat(v)||0),
-            prices: (item.z||'').split('_').filter(Boolean).slice(-20).map(v=>parseFloat(v)||0),
+          data: item || ticks.length ? {
+            price:  parseFloat(item?.z)||parseFloat(item?.y)||(ticks.length?ticks[ticks.length-1].price:0)||0,
+            open:   parseFloat(item?.o)||(ticks[0]?.price)||0,
+            high:   parseFloat(item?.h)||Math.max(...ticks.map(d=>d.price), 0)||0,
+            low:    parseFloat(item?.l)||(ticks.length?Math.min(...ticks.map(d=>d.price)):0)||0,
+            prev:   parseFloat(item?.y)||0,
+            volume: parseFloat(item?.v)||0,
+            time:   item?.t||'',
+            ticks   // [{t:unix_sec, price, volume}]
           } : null,
-          source: 'TWSE_MIS_INTRADAY'
+          source: 'TWSE_MIS+Yahoo1m'
         });
       } catch(e) {
         return res.status(200).json({ stock_id, data: null, error: e.message });

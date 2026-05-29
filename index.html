@@ -1307,23 +1307,53 @@ function showStockTV(stockId, market, interval, btnEl){
   const wrap=document.getElementById('tv-stock-wrap');
   if(!wrap) return;
 
-  // 當日走勢 → 用 Chart.js (TradingView 不支援 TWSE 盤中免費嵌入)
+  // 當日走勢 → 用 Chart.js (Yahoo 1分鐘 ticks → 真實時間軸；無 ticks 才退回 4 點折線)
   if(interval==='today'){
     const s=stocks.find(x=>x.id===stockId)||{chgP:0};
     wrap.innerHTML=`<div style="position:relative;height:100%"><canvas id="c-intraday" style="width:100%;height:100%"></canvas></div>`;
     fetch(`/api/quote?type=intraday&stock_id=${stockId}&market=${market}`)
       .then(r=>r.json()).then(j=>{
         const d=j.data;
-        if(!d||(!d.open&&!d.price)){
+        if(!d||(!d.open&&!d.price&&!(d.ticks&&d.ticks.length))){
           wrap.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:14px">當日走勢盤後無法取得</div>`;
           return;
         }
-        const prev=d.prev||d.open||s.prev||0;
-        const cc=d.price>=prev?'#3fb950':'#f85149';
         const cnv=document.getElementById('c-intraday');
         if(!cnv) return;
+        const prev=d.prev||d.open||s.prev||0;
+        const cur=d.price||(d.ticks?.length?d.ticks[d.ticks.length-1].price:0);
+        const cc=cur>=prev?'#3fb950':'#f85149';
         Chart.defaults.color='#8b949e';
         if(dCharts.p){dCharts.p.destroy();delete dCharts.p;}
+
+        // 有 ticks 資料 → 真實時間軸（HH:MM）
+        if(d.ticks&&d.ticks.length>5){
+          const fmt=(t)=>{const dt=new Date(t*1000);return String(dt.getHours()).padStart(2,'0')+':'+String(dt.getMinutes()).padStart(2,'0');};
+          const labels=d.ticks.map(x=>fmt(x.t));
+          const prices=d.ticks.map(x=>x.price);
+          dCharts.p=new Chart(cnv,{
+            type:'line',
+            data:{labels,datasets:[
+              {label:'股價',data:prices,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.1)':'rgba(248,81,73,.1)',borderWidth:1.8,fill:true,tension:.15,pointRadius:0,pointHoverRadius:4},
+              {label:'昨收',data:prices.map(()=>prev),borderColor:'rgba(255,220,0,.55)',borderWidth:1.2,borderDash:[5,4],fill:false,pointRadius:0}
+            ]},
+            options:{
+              responsive:true,maintainAspectRatio:false,
+              interaction:{mode:'index',intersect:false},
+              plugins:{
+                legend:{display:true,position:'top',labels:{color:'#8b949e',font:{size:11}}},
+                tooltip:{backgroundColor:'rgba(12,18,32,.95)',callbacks:{title:(items)=>items[0]?.label||'',label:(ctx)=>`${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}`}}
+              },
+              scales:{
+                x:{grid:{color:'rgba(56,139,253,.04)'},ticks:{color:'#8b949e',font:{size:11},maxTicksLimit:8,autoSkip:true}},
+                y:{position:'right',grid:{color:'rgba(56,139,253,.06)'},ticks:{color:'#8b949e',font:{size:11}}}
+              }
+            }
+          });
+          return;
+        }
+
+        // 退回：4 點 OHLC 折線
         dCharts.p=new Chart(cnv,{
           type:'line',
           data:{labels:['開盤','最高','最低','現價'],
@@ -2132,15 +2162,15 @@ function renderUSTable(){
 
 // ── 全球指數 TradingView 圖表切換 ──
 const GLOBAL_CHARTS=[
-  {sym:'TWSE:TAIEX',   label:'🇹🇼 加權指數'},
-  {sym:'^TWO',         label:'🏪 櫃買指數',  yahoo:true, name:'台灣櫃買指數'},
-  {sym:'CBOT:YM1!',    label:'🇺🇸 道瓊期貨'},
-  {sym:'NASDAQ:SOX',   label:'💻 費城半導體'},
-  {sym:'TAIFEX:TX1!',  label:'📅 台指近月'},
+  {sym:'^TWII',  label:'🇹🇼 加權指數', yahoo:true, name:'台灣加權指數 TAIEX'},
+  {sym:'^TWO',   label:'🏪 櫃買指數', yahoo:true, name:'台灣櫃買指數'},
+  {sym:'YM=F',   label:'🇺🇸 道瓊期貨', yahoo:true, name:'道瓊期貨 YM=F'},
+  {sym:'^SOX',   label:'💻 費城半導體', yahoo:true, name:'費城半導體 SOX'},
+  {sym:'^TWII',  label:'📅 台指近全', yahoo:true, name:'台指近全（近似加權，Yahoo 股市，TAIFEX 無免費 API）'},
 ];
-window._globalTVSym='TWSE:TAIEX';
+window._globalTVSym=GLOBAL_CHARTS[0].sym;
 window._globalTVIv='D';
-window._globalCurChart=GLOBAL_CHARTS[0];
+window._globalCurChart={...GLOBAL_CHARTS[0]};
 
 function showGlobalTV(sym, iv){
   if(sym){

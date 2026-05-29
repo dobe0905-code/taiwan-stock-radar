@@ -151,11 +151,12 @@ export default async function handler(req, res) {
     // ══════════════════════════════════════════════════
     if (type === 'us_detail') {
       if (!symbol) return res.status(400).json({ error: '缺少 symbol' });
+      const range = req.query.range || '4mo';   // 支援 1d/5d/1mo/3mo/4mo/6mo/1y/2y/5y
       // Yahoo v7 quote 端點現在需要 crumb 認證會回 401，必須讓它失敗也不影響 chart
       const [quoteSettled, chartSettled] = await Promise.allSettled([
         yqQuote([symbol]),
         fetch(
-          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=4mo&interval=1d`,
+          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=1d`,
           { headers: YF_HEADERS }
         ).then(r => r.json()),
       ]);

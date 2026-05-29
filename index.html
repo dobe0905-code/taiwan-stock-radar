@@ -219,20 +219,30 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <div class="sb-item" onclick="setSF('etf',this)"><span>📦 ETF</span><span class="sb-cnt" id="c-etf">—</span></div>
     <div class="sb-item" onclick="toggleSub(this)"><span>個股產業</span><div style="display:flex;align-items:center;gap:5px;"><span class="sb-cnt" id="c-stk">—</span><span id="sub-arr" style="font-size:10px;color:var(--text3)">▶</span></div></div>
     <div id="sub-sectors" class="sb-sub"></div>
-    <div class="sb-label">買賣訊號</div>
-    <div class="sb-item" onclick="setSF('buy',this)"><span>📈 買進訊號</span><span class="sb-cnt" id="c-buy">—</span></div>
-    <div class="sb-item" onclick="setSF('sell',this)"><span>📉 賣出訊號</span><span class="sb-cnt" id="c-sell">—</span></div>
-    <div class="sb-item" onclick="setSF('hold',this)"><span>⏸ 觀察中</span><span class="sb-cnt" id="c-hold">—</span></div>
     <div class="sb-label">熱門族群</div>
-    <div class="sb-item" onclick="setSF('g:ai',this)"><span>🤖 AI/伺服器</span><span class="sb-cnt" id="c-g-ai">—</span></div>
-    <div class="sb-item" onclick="setSF('g:chip',this)"><span>💻 半導體</span><span class="sb-cnt" id="c-g-chip">—</span></div>
+    <div class="sb-item" onclick="setSF('g:tw50',this)"><span>🏆 台灣50</span><span class="sb-cnt" id="c-g-tw50">—</span></div>
+    <div class="sb-item" onclick="setSF('g:highdiv',this)"><span>💰 高股息指數</span><span class="sb-cnt" id="c-g-highdiv">—</span></div>
+    <div class="sb-item" onclick="setSF('g:gtpu',this)"><span>🔍 Google TPU</span><span class="sb-cnt" id="c-g-gtpu">—</span></div>
+    <div class="sb-item" onclick="setSF('g:copos',this)"><span>🔆 COPOS</span><span class="sb-cnt" id="c-g-copos">—</span></div>
+    <div class="sb-item" onclick="setSF('g:robot',this)"><span>🤖 機器人</span><span class="sb-cnt" id="c-g-robot">—</span></div>
+    <div class="sb-item" onclick="setSF('g:computex',this)"><span>💻 COMPUTEX</span><span class="sb-cnt" id="c-g-computex">—</span></div>
+    <div class="sb-item" onclick="setSF('g:drone',this)"><span>🛸 無人機</span><span class="sb-cnt" id="c-g-drone">—</span></div>
+    <div class="sb-item" onclick="setSF('g:foplp',this)"><span>📐 FOPLP</span><span class="sb-cnt" id="c-g-foplp">—</span></div>
+    <div class="sb-item" onclick="setSF('g:leo',this)"><span>🛰 低軌衛星</span><span class="sb-cnt" id="c-g-leo">—</span></div>
+    <div class="sb-item" onclick="setSF('g:glass',this)"><span>🔲 玻璃基板</span><span class="sb-cnt" id="c-g-glass">—</span></div>
+    <div class="sb-item" onclick="setSF('g:cowos',this)"><span>🧊 CoWoS</span><span class="sb-cnt" id="c-g-cowos">—</span></div>
+    <div class="sb-item" onclick="setSF('g:siphoto',this)"><span>✨ SEMI矽光子</span><span class="sb-cnt" id="c-g-siphoto">—</span></div>
+    <div class="sb-item" onclick="setSF('g:nvda',this)"><span>🎮 輝達</span><span class="sb-cnt" id="c-g-nvda">—</span></div>
+    <div class="sb-item" onclick="setSF('g:thermal',this)"><span>❄️ 散熱族群</span><span class="sb-cnt" id="c-g-thermal">—</span></div>
+    <div class="sb-item" onclick="setSF('g:heavypower',this)"><span>⚡ 重電能源</span><span class="sb-cnt" id="c-g-heavypower">—</span></div>
+    <div class="sb-item" onclick="setSF('g:ccl',this)"><span>🟧 銅箔基板</span><span class="sb-cnt" id="c-g-ccl">—</span></div>
+    <div class="sb-item" onclick="setSF('g:defense',this)"><span>🛡 軍工</span><span class="sb-cnt" id="c-g-defense">—</span></div>
+    <div class="sb-item" onclick="setSF('g:meta',this)"><span>🌐 元宇宙</span><span class="sb-cnt" id="c-g-meta">—</span></div>
+    <div class="sb-item" onclick="setSF('g:gen3',this)"><span>🧬 第三代半導體</span><span class="sb-cnt" id="c-g-gen3">—</span></div>
     <div class="sb-item" onclick="setSF('g:passive',this)"><span>🔌 被動元件</span><span class="sb-cnt" id="c-g-passive">—</span></div>
-    <div class="sb-item" onclick="setSF('g:pcb',this)"><span>🟩 PCB/載板</span><span class="sb-cnt" id="c-g-pcb">—</span></div>
-    <div class="sb-item" onclick="setSF('g:ic',this)"><span>📦 IC設計</span><span class="sb-cnt" id="c-g-ic">—</span></div>
-    <div class="sb-item" onclick="setSF('g:storage',this)"><span>💾 記憶體</span><span class="sb-cnt" id="c-g-storage">—</span></div>
-    <div class="sb-item" onclick="setSF('g:ev',this)"><span>⚡ 電動車/儲能</span><span class="sb-cnt" id="c-g-ev">—</span></div>
-    <div class="sb-item" onclick="setSF('g:fin',this)"><span>🏦 金融/銀行</span><span class="sb-cnt" id="c-g-fin">—</span></div>
-    <div class="sb-item" onclick="setSF('g:etf',this)"><span>📊 熱門ETF</span><span class="sb-cnt" id="c-g-etf">—</span></div>
+    <div class="sb-item" onclick="setSF('g:pktest',this)"><span>🔬 封裝測試</span><span class="sb-cnt" id="c-g-pktest">—</span></div>
+    <div class="sb-item" onclick="setSF('g:wafer',this)"><span>💿 晶圓</span><span class="sb-cnt" id="c-g-wafer">—</span></div>
+    <div class="sb-item" onclick="setSF('g:amd',this)"><span>🎯 AMD</span><span class="sb-cnt" id="c-g-amd">—</span></div>
   </aside>
 
   <main id="main">
@@ -324,17 +334,54 @@ let sf='all', mkt='all', qf=new Set(), nxt, cdTimer, dCharts={};
 let liveData={}, liveCount=0, currentDetId=null;
 let perMap={}, yldMap={};
 
-// ── 熱門族群定義（代號 Set）──
+// ── 熱門族群定義（代號 Set）— 依產品性質/開發技術/國際新聞/供應鏈分類 ──
 const THEME_MAP = {
-  'ai':      new Set(['2330','2317','2382','3034','3231','6669','3443','8299','3706','6472','2379','3711','6789','2308','2357','2345','6598','3022','5269','6770','6510']),
-  'chip':    new Set(['2330','2303','2454','3034','3711','2379','6770','2344','2408','3533','5347','8016','6244','3443','6415']),
-  'passive': new Set(['2327','2375','2428','2472','2478','2480','6269','2492','2312','6190']),
-  'pcb':     new Set(['2383','3037','2308','8046','6274','3481','3406','2367','8150','6111','3044']),
-  'ic':      new Set(['2454','3034','3231','6669','3443','8299','3706','6472','2379','3711','6789','5269','6510','2388','2303']),
-  'storage': new Set(['2408','3443','2337','4919','2458','6202','8271','2351']),
-  'ev':      new Set(['2207','6732','8215','3008','1519','2478','6770','3653','6213','1590','2364']),
-  'fin':     new Set(['2882','2881','2891','2886','2880','2884','2885','2892','2887','2883','5880','2801','2812','2836','2837']),
-  'etf':     new Set(['0050','0056','00878','00919','00940','00713','00757','00646','00631L','006208']),
+  // 1. 台灣50（0050 主要成分股，市值前 ~30 大）
+  'tw50':       new Set(['2330','2317','2454','2308','2382','2412','2881','2882','2891','2884','2886','2885','2892','2880','2883','2887','1216','1303','1301','1326','2002','2207','2303','2327','2357','2379','2395','3008','3034','3045','3231','3711','4904','4938','5871','5880','6505','8046','9910','2912']),
+  // 2. 高股息指數（0056 / 00878 / 00919 高頻成分）
+  'highdiv':    new Set(['2356','2376','2382','2308','2880','2881','2882','2883','2884','2885','2886','2887','2891','2892','2412','6505','1216','2002','9904','2354','2385','2371','2474','3045','4904','9933','2105','2606','2615']),
+  // 3. Google TPU 供應鏈（TPU 由台積電製造，組裝/散熱主供應商）
+  'gtpu':       new Set(['2330','3661','3017','2317','2382','2376','3231','6669','3653','5269']),
+  // 4. COPOS / 共封裝光學 CPO（光通訊收發模組、矽光子封裝）
+  'copos':      new Set(['3081','3450','4979','3363','3094','2455','3105','8086','6285','6451','3163','3669']),
+  // 5. 機器人（精密零組件、減速機、伺服馬達、自動化）
+  'robot':      new Set(['2049','1590','3227','2634','6188','6438','3019','4576','3552','4534','6754','2486','1605','2070']),
+  // 6. COMPUTEX（AI PC、主機板、伺服器、品牌商）
+  'computex':   new Set(['2382','2376','3231','6669','2356','4938','2353','2357','2474','3034','3017','3653','2308','2308']),
+  // 7. 無人機（軍工 + 商用無人機關鍵零組件）
+  'drone':      new Set(['3144','1597','6573','3162','4577','6230','1525','4576','8033','8495','2634','8027']),
+  // 8. FOPLP（扇出型面板級封裝，面板廠跨入先進封裝）
+  'foplp':      new Set(['3481','2409','6147','2449','3264','6120','3030','3289','6515']),
+  // 9. 低軌衛星 LEO（衛星地面站、CPE、Ku/Ka 模組、SpaceX/Amazon Kuiper 供應鏈）
+  'leo':        new Set(['6285','5388','3596','4906','2314','3491','3380','6451','2419','3454','6679']),
+  // 10. 玻璃基板（取代 ABF 載板的新世代基板技術）
+  'glass':      new Set(['1773','6552','6213','3081','1979','2480','3037','3189']),
+  // 11. CoWoS（台積電先進封裝主流，AI GPU 必經，含封裝/載板/設備）
+  'cowos':      new Set(['2330','3037','3189','6147','8150','3583','3413','3680','3661','8016','2449','3231']),
+  // 12. SEMI 矽光子（光子整合電路、GaAs/GaN 製程）
+  'siphoto':    new Set(['3105','2455','8086','3081','3450','4979','6679','6531','3163','8121','6488']),
+  // 13. 輝達 NVIDIA 供應鏈（GB200/B100 GPU 模組 + AI 伺服器 ODM）
+  'nvda':       new Set(['2330','2317','2382','3231','6669','2376','3017','3653','4977','2356','4938','5269']),
+  // 14. 散熱族群（液冷板、3DVC、均熱片、CDU）
+  'thermal':    new Set(['3017','3324','3653','6230','3483','6124','4763','5285','6643','8054']),
+  // 15. 重電能源（電網升級、再生能源、變壓器、配電盤）
+  'heavypower': new Set(['1503','1513','1519','1504','1514','2371','1517','1532','1525','5469']),
+  // 16. 銅箔基板 CCL（高速 PCB 上游材料、AI 伺服器板材）
+  'ccl':        new Set(['2383','6213','6274','4746','6672','1303','6116','8038']),
+  // 17. 軍工（航太、火砲、無人載具、雷達）
+  'defense':    new Set(['2634','8033','8495','8027','6753','5439','4533','4540','6515','2049','6207','3406']),
+  // 18. 元宇宙（VR/AR 光學、頭戴顯示、Apple Vision Pro 供應鏈）
+  'meta':       new Set(['3008','3406','3504','2352','2353','2474','2317','4938','2393','6233','6285','2330']),
+  // 19. 第三代半導體（SiC 碳化矽 / GaN 氮化鎵）
+  'gen3':       new Set(['3105','8086','6488','2455','6164','2330','5530','6486','6531','3036']),
+  // 20. 被動元件（MLCC、晶片電阻、電感、變壓器）
+  'passive':    new Set(['2327','2375','2428','2472','2478','2480','6269','2492','2312','6190']),
+  // 21. 封裝測試（OSAT，IC 後段封測）
+  'pktest':     new Set(['3711','2449','6239','6147','8150','3264','2311','8131','3257']),
+  // 22. 晶圓（晶圓代工 + 矽晶圓）
+  'wafer':      new Set(['2330','2303','5347','6770','6488','3105','2344','2451','2329','5443']),
+  // 23. AMD 供應鏈（CPU/GPU 封測代工、AI MI300 伺服器 ODM）
+  'amd':        new Set(['2330','2317','2382','6669','3231','2376','2357','4961','3017','3711']),
 };
 
 // ── MIS 盤中即時輪詢（取代 Firebase + 凱基）──

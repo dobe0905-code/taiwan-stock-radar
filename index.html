@@ -1822,7 +1822,7 @@ async function showYahooLineChart(containerId, yahooSym, label){
   if(!c) return;
   c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:13px">載入 ${label} 資料中…</div>`;
   try{
-    const r=await fetch(`/api/global?type=us_detail&stock_id=${encodeURIComponent(yahooSym)}`);
+    const r=await fetch(`/api/global?type=us_detail&symbol=${encodeURIComponent(yahooSym)}`);
     const j=await r.json();
     const kdata=(j.data?.kdata||j.kdata||[]).slice(-60); // 近60日
     if(!kdata.length){ c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3)">暫無資料</div>`; return; }
@@ -2162,11 +2162,14 @@ function renderUSTable(){
 
 // ── 全球指數 TradingView 圖表切換 ──
 const GLOBAL_CHARTS=[
-  {sym:'^TWII',  label:'🇹🇼 加權指數', yahoo:true, name:'台灣加權指數 TAIEX'},
-  {sym:'^TWO',   label:'🏪 櫃買指數', yahoo:true, name:'台灣櫃買指數'},
-  {sym:'YM=F',   label:'🇺🇸 道瓊期貨', yahoo:true, name:'道瓊期貨 YM=F'},
-  {sym:'^SOX',   label:'💻 費城半導體', yahoo:true, name:'費城半導體 SOX'},
-  {sym:'^TWII',  label:'📅 台指近全', yahoo:true, name:'台指近全（近似加權，Yahoo 股市，TAIFEX 無免費 API）'},
+  // 台股指數：TradingView 對 TWSE:TAIEX/TPEX 會跳 popup（要訂閱），故走 Yahoo 折線
+  {sym:'^TWII',     label:'🇹🇼 加權指數', yahoo:true, name:'台灣加權指數 TAIEX'},
+  {sym:'^TWO',      label:'🏪 櫃買指數', yahoo:true, name:'台灣櫃買指數'},
+  // 美股指數/期貨：TradingView 免費可用 → 用 TV 顯示完整 K 線
+  {sym:'CBOT:YM1!', label:'🇺🇸 道瓊期貨'},
+  {sym:'NASDAQ:SOX',label:'💻 費城半導體'},
+  // 台指期：TAIFEX 無免費 API，用加權近似 + Yahoo 折線
+  {sym:'^TWII',     label:'📅 台指近全', yahoo:true, name:'台指近全（近似加權，TAIFEX 無免費 API）'},
 ];
 window._globalTVSym=GLOBAL_CHARTS[0].sym;
 window._globalTVIv='D';

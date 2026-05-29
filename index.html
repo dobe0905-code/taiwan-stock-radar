@@ -108,17 +108,19 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .star-btn.on{color:var(--amber2);}
 .flash{animation:priceFlash .4s ease;}
 @keyframes priceFlash{0%{background:rgba(56,139,253,.3)}100%{background:transparent}}
-#det{position:fixed;right:0;top:var(--header);width:720px;min-width:360px;max-width:95vw;height:calc(100vh - var(--header));background:var(--bg2);border-left:1px solid var(--border2);overflow-y:auto;z-index:50;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);}
+#det{position:fixed;right:0;top:var(--header);width:720px;min-width:360px;max-width:95vw;height:calc(100vh - var(--header));background:var(--bg2);border-left:4px solid var(--accent);box-shadow:-4px 0 16px rgba(0,0,0,.35);overflow-y:auto;z-index:50;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);}
 #det.open{transform:none;}
-#det-handle{position:absolute;left:0;top:0;width:16px;height:100%;cursor:ew-resize;z-index:51;background:transparent;transition:background .15s;display:flex;align-items:center;justify-content:center;}
-#det-handle::after{content:'';display:block;width:3px;height:48px;border-radius:3px;background:var(--border2);transition:background .15s,height .15s;}
-#det-handle:hover{background:rgba(56,139,253,.07);}
-#det-handle:hover::after{background:var(--accent);height:80px;}
-#det-handle:active::after{background:var(--accent2);}
+/* 左邊緣拖曳把手 — 6px 寬視覺帶 + 14px 寬熱區，永遠可見 */
+#det-handle{position:absolute;left:-3px;top:0;width:14px;height:100%;cursor:ew-resize;z-index:51;background:transparent;display:flex;align-items:center;justify-content:center;}
+#det-handle::before{content:'';position:absolute;left:0;top:0;width:6px;height:100%;background:linear-gradient(180deg,var(--accent) 0%,#79b8ff 50%,var(--accent) 100%);opacity:.55;transition:opacity .15s,width .15s;}
+#det-handle::after{content:'⋮⋮';position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);font-size:14px;color:#fff;background:var(--accent);width:18px;height:64px;border-radius:9px;display:flex;align-items:center;justify-content:center;letter-spacing:-2px;line-height:1;box-shadow:0 2px 8px rgba(56,139,253,.6);transition:all .15s;font-weight:700;}
+#det-handle:hover::before{opacity:1;width:8px;}
+#det-handle:hover::after{transform:translate(-50%,-50%) scale(1.1);background:var(--accent2);color:var(--bg);}
+#det-handle:active::before{opacity:1;background:var(--accent2);}
 .dh{padding:22px 22px 14px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2);z-index:1;cursor:move;}
 .dh-drag{position:absolute;left:50%;top:8px;transform:translateX(-50%);width:36px;height:4px;background:var(--border2);border-radius:2px;pointer-events:none;transition:background .15s,width .15s;}
 .dh:hover .dh-drag{background:var(--accent2);width:48px;}
-#det.floating{right:auto;border:1px solid var(--border2);border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.65);}
+#det.floating{right:auto;border:2px solid var(--accent);border-radius:10px;box-shadow:0 20px 60px rgba(0,0,0,.65);}
 .d-close{position:absolute;right:16px;top:16px;width:30px;height:30px;border-radius:6px;background:var(--bg3);border:1px solid var(--border);color:var(--text2);cursor:pointer;font-size:16px;display:flex;align-items:center;justify-content:center;}
 .d-close:hover{border-color:var(--border2);color:var(--text);}
 .d-id{font-family:var(--mono);font-size:13px;color:var(--accent2);margin-bottom:4px;}

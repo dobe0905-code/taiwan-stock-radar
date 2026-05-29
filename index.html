@@ -108,7 +108,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .star-btn.on{color:var(--amber2);}
 .flash{animation:priceFlash .4s ease;}
 @keyframes priceFlash{0%{background:rgba(56,139,253,.3)}100%{background:transparent}}
-#det{position:fixed;right:0;top:var(--header);width:720px;min-width:360px;max-width:95vw;height:calc(100vh - var(--header));background:var(--bg2);border-left:3px solid var(--accent);box-shadow:-4px 0 16px rgba(0,0,0,.35);overflow-y:auto;z-index:50;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);}
+#det{position:fixed;right:0;top:var(--header);width:720px;min-width:360px;max-width:95vw;height:calc(100vh - var(--header));background:var(--bg2);border-left:3px solid var(--accent);box-shadow:-4px 0 16px rgba(0,0,0,.35);overflow:hidden;z-index:50;transform:translateX(100%);transition:transform .3s cubic-bezier(.4,0,.2,1);}
+#det-scroll{position:absolute;inset:0;overflow-y:auto;overflow-x:hidden;}
 #det.open{transform:none;}
 /* 左邊緣寬度拖曳把手 — 12px 熱區、4px 視覺帶、中央 ⋮ 指示，永遠可見 */
 #det-handle{position:absolute;left:0;top:0;width:12px;height:100%;cursor:ew-resize;z-index:52;background:transparent;}
@@ -287,8 +288,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
   </main>
 
   <aside id="det">
+    <!-- 拖曳/resize 把手（在滾動容器之外，捲動時不會跟著移動）-->
     <div id="det-handle" title="拖曳調整寬度"></div>
-    <!-- 邊框/邊角 resize handles（八向 — 全方位視窗縮放）-->
     <div class="det-rz" data-dir="n"  title="上下調整高度"></div>
     <div class="det-rz" data-dir="s"  title="上下調整高度"></div>
     <div class="det-rz" data-dir="e"  title="左右調整寬度"></div>
@@ -296,19 +297,22 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <div class="det-rz" data-dir="ne" title="調整大小"></div>
     <div class="det-rz" data-dir="sw" title="調整大小"></div>
     <div class="det-rz" data-dir="se" title="調整大小"></div>
-    <div class="dh">
-      <div class="dh-drag"></div>
-      <button class="d-close" onclick="closeDet()">✕</button>
-      <div class="d-id" id="d-id">—</div>
-      <div class="d-name" id="d-name">—</div>
-      <div class="d-sec" id="d-sec">—</div>
-      <div class="d-prow">
-        <div class="d-price" id="d-price">—</div>
-        <div class="pill" id="d-chg">—</div>
-        <div class="d-live-tag" id="d-live-tag" style="display:none">● LIVE</div>
+    <!-- 內部捲動容器 -->
+    <div id="det-scroll">
+      <div class="dh">
+        <div class="dh-drag"></div>
+        <button class="d-close" onclick="closeDet()">✕</button>
+        <div class="d-id" id="d-id">—</div>
+        <div class="d-name" id="d-name">—</div>
+        <div class="d-sec" id="d-sec">—</div>
+        <div class="d-prow">
+          <div class="d-price" id="d-price">—</div>
+          <div class="pill" id="d-chg">—</div>
+          <div class="d-live-tag" id="d-live-tag" style="display:none">● LIVE</div>
+        </div>
       </div>
+      <div class="db" id="detBody"></div>
     </div>
-    <div class="db" id="detBody"></div>
   </aside>
 </div>
 <div class="toast" id="toast"></div>

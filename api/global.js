@@ -151,15 +151,18 @@ export default async function handler(req, res) {
     // ══════════════════════════════════════════════════
     if (type === 'us_detail') {
       if (!symbol) return res.status(400).json({ error: '缺少 symbol' });
-      const [quoteRes, chartRes] = await Promise.all([
+      // Yahoo v7 quote 端點現在需要 crumb 認證會回 401，必須讓它失敗也不影響 chart
+      const [quoteSettled, chartSettled] = await Promise.allSettled([
         yqQuote([symbol]),
         fetch(
-          `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=4mo&interval=1d`,
+          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=4mo&interval=1d`,
           { headers: YF_HEADERS }
-        ).then(r => r.json()).catch(() => null),
+        ).then(r => r.json()),
       ]);
-      const q = quoteRes[0] || {};
-      const chart = chartRes?.chart?.result?.[0];
+      const q = (quoteSettled.status==='fulfilled' && quoteSettled.value[0]) || {};
+      const chart = chartSettled.status==='fulfilled' ? chartSettled.value?.chart?.result?.[0] : null;
+      // chart.meta 有完整即時報價，當 v7 quote 401 時用它做 fallback
+      const meta = chart?.meta || {};
       const kdata = chart ? (() => {
         const ts = chart.timestamp || [];
         const ohlcv = chart.indicators?.quote?.[0] || {};
@@ -172,33 +175,38 @@ export default async function handler(req, res) {
           volume: ohlcv.volume?.[i] || 0,
         })).filter(d => d.close > 0);
       })() : [];
+      const lastClose = kdata.length ? kdata[kdata.length-1].close : 0;
+      const prevClose = kdata.length>1 ? kdata[kdata.length-2].close : (meta.chartPreviousClose||lastClose);
+      const computedChange = lastClose - prevClose;
+      const computedChangeP = prevClose>0 ? (computedChange/prevClose*100) : 0;
 
       res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
       return res.status(200).json({
         symbol,
         quote: {
-          name:      q.shortName || q.longName || symbol,
-          price:     q.regularMarketPrice || 0,
-          change:    parseFloat((q.regularMarketChange || 0).toFixed(2)),
-          changeP:   parseFloat((q.regularMarketChangePercent || 0).toFixed(2)),
-          open:      q.regularMarketOpen || 0,
-          high:      q.regularMarketDayHigh || 0,
-          low:       q.regularMarketDayLow || 0,
-          prev:      q.regularMarketPreviousClose || 0,
-          volume:    q.regularMarketVolume || 0,
+          name:      q.shortName || q.longName || meta.longName || meta.shortName || symbol,
+          price:     q.regularMarketPrice || meta.regularMarketPrice || lastClose,
+          change:    parseFloat(((q.regularMarketChange ?? computedChange) || 0).toFixed(2)),
+          changeP:   parseFloat(((q.regularMarketChangePercent ?? computedChangeP) || 0).toFixed(2)),
+          open:      q.regularMarketOpen || meta.regularMarketDayHigh || 0,
+          high:      q.regularMarketDayHigh || meta.regularMarketDayHigh || 0,
+          low:       q.regularMarketDayLow || meta.regularMarketDayLow || 0,
+          prev:      q.regularMarketPreviousClose || meta.chartPreviousClose || prevClose,
+          volume:    q.regularMarketVolume || meta.regularMarketVolume || 0,
           mktCap:    q.marketCap || 0,
           pe:        q.trailingPE || null,
           eps:       q.epsTrailingTwelveMonths || null,
-          wk52High:  q.fiftyTwoWeekHigh || 0,
-          wk52Low:   q.fiftyTwoWeekLow || 0,
-          currency:  q.currency || 'USD',
-          exchange:  q.fullExchangeName || '',
+          wk52High:  q.fiftyTwoWeekHigh || meta.fiftyTwoWeekHigh || 0,
+          wk52Low:   q.fiftyTwoWeekLow || meta.fiftyTwoWeekLow || 0,
+          currency:  q.currency || meta.currency || 'USD',
+          exchange:  q.fullExchangeName || meta.fullExchangeName || '',
           sector:    q.sector || '',
           industry:  q.industry || '',
           state:     q.marketState || 'CLOSED',
         },
         kdata,
         source: 'YAHOO_FINANCE',
+        quoteSource: quoteSettled.status==='fulfilled' ? 'v7' : 'chart.meta(v7 401)',
         ts: new Date().toISOString()
       });
     }

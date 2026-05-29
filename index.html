@@ -33,6 +33,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
 .search-wrap input{background:none;border:none;outline:none;color:var(--text);font-size:12px;width:100%;}
 .search-wrap input::placeholder{color:var(--text3);}
 .header-right{display:flex;align-items:center;gap:8px;margin-left:auto;}
+.delay-badge{display:flex;align-items:center;gap:5px;padding:3px 9px;border-radius:5px;font-size:10px;font-family:var(--mono);background:rgba(227,179,65,.08);border:1px solid rgba(227,179,65,.25);color:var(--amber2);white-space:nowrap;}
 .api-badge{display:flex;align-items:center;gap:6px;padding:4px 10px;border-radius:6px;font-size:11px;font-family:var(--mono);border:1px solid;cursor:pointer;}
 .api-on{border-color:rgba(63,185,80,.3);background:rgba(63,185,80,.08);color:var(--green2);}
 .api-off{border-color:var(--border);background:var(--bg3);color:var(--text3);}
@@ -185,6 +186,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
     <div class="api-badge api-off" id="tpexBadge">
       <div class="api-dot"></div><span>櫃買中心</span>
     </div>
+    <div class="delay-badge">⏱ 報價延遲30秒</div>
     <div class="upd-info">更新 <span id="lastUpd">--:--</span> &nbsp;·&nbsp; <span class="upd-val" id="cd">--:--</span></div>
   </div>
 </div>
@@ -251,6 +253,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:13
       <div class="mkt-tab" onclick="setMkt('etf',this)">📦 ETF</div>
       <div class="mkt-tab" onclick="setMkt('us',this)">🇺🇸 美股</div>
       <div class="mkt-tab" onclick="setMkt('global',this)">🌐 全球指數</div>
+      <div class="mkt-tab" onclick="setMkt('mktchart',this)">📊 大盤K線</div>
     </div>
     <div class="summary-bar">
       <div class="sum-card"><div class="sum-lbl">已載入</div><div class="sum-val c-neu" id="s-tot">—</div><div class="sum-sub">檔股票</div></div>
@@ -861,6 +864,36 @@ function buildDetHTML(s,live){
       </div>
     </div>
   </div>`:''}
+  <div class="ds" id="tech-analysis-section" style="margin-bottom:14px">
+    <div class="dst">技術分析狀態</div>
+    <div id="tech-status-row" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px">
+      <div style="background:var(--bg3);border-radius:7px;padding:9px 11px;border:1px solid var(--border)">
+        <div style="font-size:9px;color:var(--text3);margin-bottom:4px">狀態</div>
+        <div id="ta-status" style="font-size:13px;font-weight:700;font-family:var(--mono);color:var(--text2)">—</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:7px;padding:9px 11px;border:1px solid var(--border)">
+        <div style="font-size:9px;color:var(--text3);margin-bottom:4px">MACD</div>
+        <div id="ta-macd" style="font-size:13px;font-weight:700;font-family:var(--mono);color:var(--text2)">—</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:7px;padding:9px 11px;border:1px solid var(--border)">
+        <div style="font-size:9px;color:var(--text3);margin-bottom:4px">區間</div>
+        <div id="ta-range" style="font-size:13px;font-weight:700;font-family:var(--mono);color:var(--text2)">—</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:7px;padding:9px 11px;border:1px solid var(--border)">
+        <div style="font-size:9px;color:var(--text3);margin-bottom:4px">趨勢</div>
+        <div id="ta-trend" style="font-size:13px;font-weight:700;font-family:var(--mono);color:var(--text2)">—</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:7px;padding:9px 11px;border:1px solid var(--border)">
+        <div style="font-size:9px;color:var(--text3);margin-bottom:4px">RSI(14)</div>
+        <div id="ta-rsi" style="font-size:13px;font-weight:700;font-family:var(--mono);color:var(--text2)">—</div>
+      </div>
+      <div style="background:var(--bg3);border-radius:7px;padding:9px 11px;border:1px solid var(--border)">
+        <div style="font-size:9px;color:var(--text3);margin-bottom:4px">量能</div>
+        <div id="ta-volume" style="font-size:13px;font-weight:700;font-family:var(--mono);color:var(--text2)">—</div>
+      </div>
+    </div>
+    <div id="ta-signals" style="font-size:10px;color:var(--text3);line-height:1.8;min-height:16px"></div>
+  </div>
   <div class="ds" id="price-chart-section"><div class="dst">價格走勢</div>
     <div id="chart-btn-row" style="display:flex;gap:6px;margin-bottom:8px">
       <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>
@@ -992,6 +1025,8 @@ async function buildDetCharts(s){
 
       // 預設顯示近兩個月折線
       drawLineChart(s.id, s._kdata2m, s.chgP);
+      // 技術分析狀態計算
+      calcAndShowTechStatus(kdata);
     } else {
       if(btnRow) btnRow.innerHTML='<span style="font-size:10px;color:var(--text3)">暫無K線資料</span>';
       drawSimulatedChart(s, chWrap||document.querySelector('.ch-wrap'));
@@ -1017,6 +1052,101 @@ async function buildDetCharts(s){
   loadHoldersData(s.id);
   loadMarginData(s.id);
   loadInstitutionData(s.id);
+
+  // ── 技術分析狀態（RSI / MACD / 趨勢 / 量能）──
+  function calcAndShowTechStatus(kdata){
+    if(!kdata||kdata.length<26) return;
+    const closes=kdata.map(d=>d.close);
+    const vols=kdata.map(d=>d.volume||d.vol||0);
+
+    // RSI(14)
+    function calcRSI(n){
+      if(closes.length<n+1) return null;
+      let gains=0,losses=0;
+      for(let i=closes.length-n;i<closes.length;i++){
+        const d=closes[i]-closes[i-1];
+        if(d>0) gains+=d; else losses+=Math.abs(d);
+      }
+      const avgG=gains/n, avgL=losses/n;
+      if(avgL===0) return 100;
+      return parseFloat((100-100/(1+avgG/avgL)).toFixed(1));
+    }
+
+    // EMA
+    function ema(data,n){
+      const k=2/(n+1);
+      let e=data[0];
+      for(let i=1;i<data.length;i++) e=data[i]*k+e*(1-k);
+      return e;
+    }
+
+    // MACD(12,26,9)
+    const ema12=ema(closes,12);
+    const ema26=ema(closes,26);
+    const macd=parseFloat((ema12-ema26).toFixed(3));
+
+    // MA20 / MA60 趨勢
+    const ma20 = closes.length>=20 ? closes.slice(-20).reduce((a,b)=>a+b,0)/20 : null;
+    const ma60 = closes.length>=60 ? closes.slice(-60).reduce((a,b)=>a+b,0)/60 : null;
+    const cur = closes[closes.length-1];
+
+    // 量能（近5日均量 vs 近20日均量）
+    const avg5v = vols.slice(-5).reduce((a,b)=>a+b,0)/5;
+    const avg20v = vols.slice(-20).reduce((a,b)=>a+b,0)/20;
+    const volRatio = avg20v>0 ? avg5v/avg20v : 1;
+
+    // RSI
+    const rsi=calcRSI(14);
+
+    // 判斷各指標
+    const _s=(id,txt,col)=>{const e=document.getElementById(id);if(e){e.textContent=txt;e.style.color=col||'var(--text2)';}};
+
+    // 趨勢
+    let trendTxt='—', trendCol='var(--text2)';
+    if(ma20&&ma60){
+      if(cur>ma20&&ma20>ma60){trendTxt='多頭';trendCol='var(--green2)';}
+      else if(cur<ma20&&ma20<ma60){trendTxt='空頭';trendCol='var(--red2)';}
+      else if(cur>ma60){trendTxt='偏多';trendCol='var(--green2)';}
+      else{trendTxt='偏空';trendCol='var(--amber2)';}
+    }
+    _s('ta-trend', trendTxt, trendCol);
+
+    // MACD
+    _s('ta-macd', macd.toFixed(3), macd>0?'var(--green2)':'var(--red2)');
+
+    // RSI + 區間判斷
+    if(rsi!==null){
+      let rsiCol='var(--text2)';
+      let rangeTxt='中間', rangeCol='var(--text2)';
+      if(rsi>=70){rsiCol='var(--red2)';rangeTxt='高檔';rangeCol='var(--red2)';}
+      else if(rsi<=30){rsiCol='var(--green2)';rangeTxt='低檔';rangeCol='var(--green2)';}
+      else if(rsi>=55){rangeCol='var(--green2)';rangeTxt='偏高';}
+      else if(rsi<=45){rangeCol='var(--amber2)';rangeTxt='偏低';}
+      _s('ta-rsi', rsi.toFixed(1), rsiCol);
+      _s('ta-range', rangeTxt, rangeCol);
+    }
+
+    // 量能
+    let volTxt='正常', volCol='var(--text2)';
+    if(volRatio>=1.5){volTxt='爆量';volCol='var(--red2)';}
+    else if(volRatio>=1.2){volTxt='偏高';volCol='var(--green2)';}
+    else if(volRatio<0.7){volTxt='低檔';volCol='var(--amber2)';}
+    _s('ta-volume', volTxt, volCol);
+
+    // 狀態綜合判斷
+    let statusTxt='整理', statusCol='var(--amber2)';
+    const signals=[];
+    if(trendTxt==='多頭'&&macd>0&&rsi>50){statusTxt='突破';statusCol='var(--green2)';signals.push('均線多排，MACD 翻正');}
+    else if(trendTxt==='空頭'&&macd<0&&rsi<50){statusTxt='下跌';statusCol='var(--red2)';signals.push('均線空排，MACD 翻負');}
+    else if(macd>0&&rsi>55){statusTxt='上漲';statusCol='var(--green2)';signals.push('MACD 正值，RSI 偏強');}
+    else if(macd<0&&rsi<45){statusTxt='弱勢';statusCol='var(--red2)';signals.push('MACD 負值，RSI 偏弱');}
+    if(rsi>=70) signals.push('RSI 進入超買區（≥70），注意壓力');
+    if(rsi<=30) signals.push('RSI 進入超賣區（≤30），注意支撐');
+    if(volRatio>=1.5) signals.push('近期爆量（5日均量 '+volRatio.toFixed(1)+'x 20日均量）');
+    _s('ta-status', statusTxt, statusCol);
+    const sigEl=document.getElementById('ta-signals');
+    if(sigEl) sigEl.innerHTML=signals.map(t=>`<span style="margin-right:10px">· ${t}</span>`).join('');
+  }
 
   // ── MA 均線乖離率（季線公式：BIAS = (現價 - MA60) / MA60 × 100%）──
   // 複用已抓到的 _kdata，避免重複 fetch
@@ -1408,6 +1538,8 @@ function setMkt(m,el){
   } else if(m==='global'){
     showGlobalTbl();
     if(!globalLoaded) loadGlobalIndices();
+  } else if(m==='mktchart'){
+    showMktChart();
   } else {
     showTWTbl();
     renderTable();
@@ -1418,10 +1550,81 @@ function setMkt(m,el){
 function showTWTbl(){
   const usTbl=document.getElementById('us-panel');
   const glTbl=document.getElementById('global-panel');
+  const mcTbl=document.getElementById('mktchart-panel');
   if(usTbl) usTbl.style.display='none';
   if(glTbl) glTbl.style.display='none';
+  if(mcTbl) mcTbl.style.display='none';
   document.querySelector('.tbl-wrap').style.display='';
   document.querySelector('.filter-bar').style.display='';
+}
+
+// ── 顯示大盤K線面板 ──
+let mktChartLoaded=false;
+function showMktChart(){
+  document.querySelector('.tbl-wrap').style.display='none';
+  document.querySelector('.filter-bar').style.display='none';
+  const usTbl=document.getElementById('us-panel');
+  const glTbl=document.getElementById('global-panel');
+  if(usTbl) usTbl.style.display='none';
+  if(glTbl) glTbl.style.display='none';
+  let panel=document.getElementById('mktchart-panel');
+  if(!panel){
+    panel=document.createElement('div');
+    panel.id='mktchart-panel';
+    panel.style.cssText='flex:1;overflow:auto;padding:16px;display:grid;grid-template-columns:1fr 1fr;grid-template-rows:auto auto auto;gap:14px;';
+    document.getElementById('main').appendChild(panel);
+
+    const charts=[
+      {sym:'TWSE:TAIEX',  label:'🇹🇼 加權指數', interval:'D'},
+      {sym:'TWSE:CABINET', label:'🏪 櫃買指數',  interval:'D'},
+      {sym:'CAPITALFUTURES:TX1!', label:'📅 台指近月', interval:'D'},
+      {sym:'CAPITALFUTURES:TXF1!',label:'⚡ 台指期', interval:'D'},
+      {sym:'CBOT:YM1!',    label:'🇺🇸 道瓊期貨',  interval:'D'},
+      {sym:'NASDAQ:PHLX',  label:'💻 費城半導體', interval:'D'},
+    ];
+    charts.forEach(c=>{
+      const card=document.createElement('div');
+      card.style.cssText='background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;';
+      card.innerHTML=`
+        <div style="padding:10px 14px 6px;font-size:11px;font-weight:700;color:var(--text2);display:flex;align-items:center;gap:6px;border-bottom:1px solid var(--border);">
+          ${c.label}
+          <span style="font-size:9px;color:var(--text3);font-family:var(--mono);margin-left:auto">${c.sym}</span>
+        </div>
+        <div style="height:280px;">
+          <div class="tradingview-widget-container" style="height:100%">
+            <div class="tradingview-widget-container__widget" style="height:100%"></div>
+          </div>
+        </div>`;
+      panel.appendChild(card);
+      // 建立 TradingView widget
+      const script=document.createElement('script');
+      script.type='text/javascript';
+      script.src='https://s3.tradingview.com/external-embedding/embed-widget-advanced-chart.js';
+      script.async=true;
+      script.innerHTML=JSON.stringify({
+        symbol: c.sym,
+        interval: c.interval,
+        timezone: 'Asia/Taipei',
+        theme: 'dark',
+        style: '1',
+        locale: 'zh_TW',
+        toolbar_bg: '#0c1220',
+        enable_publishing: false,
+        hide_top_toolbar: false,
+        hide_legend: false,
+        save_image: false,
+        backgroundColor: 'rgba(7,11,20,0)',
+        gridColor: 'rgba(56,139,253,0.04)',
+        width: '100%',
+        height: '100%',
+        studies: ['MASimple@tv-basicstudies', 'MACD@tv-basicstudies', 'RSI@tv-basicstudies'],
+        container_id: 'tv_'+c.sym.replace(/[^a-zA-Z0-9]/g,'_')
+      });
+      card.querySelector('.tradingview-widget-container__widget').appendChild(script);
+    });
+    mktChartLoaded=true;
+  }
+  panel.style.display='grid';
 }
 
 // ── 顯示美股面板 ──

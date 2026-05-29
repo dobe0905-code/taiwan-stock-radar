@@ -1174,17 +1174,53 @@ function buildDetHTML(s,live){
       <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>載入籌碼資料...
     </div>
     <div id="holders-content" style="display:none">
-      <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:10px">
-        <div style="background:var(--bg3);border-radius:7px;padding:10px;text-align:center">
-          <div style="font-size:10px;color:var(--text3);margin-bottom:4px">千張大戶持股</div>
-          <div id="big-ratio" style="font-size:20px;font-weight:700;font-family:var(--mono);color:var(--red2)">—%</div>
-          <div id="big-people" style="font-size:10px;color:var(--text3);margin-top:2px">— 人</div>
+      <!-- 4 張持股比例卡片 -->
+      <div style="display:grid;grid-template-columns:1fr 1fr 1fr 1fr;gap:6px;margin-bottom:10px">
+        <div style="background:var(--bg3);border-radius:7px;padding:9px 6px;text-align:center" title="持股 > 1000 張之大戶（主力/法人/大股東）">
+          <div style="font-size:9px;color:var(--text3);margin-bottom:3px">千張大戶</div>
+          <div id="big-ratio" style="font-size:18px;font-weight:700;font-family:var(--mono);color:var(--red2)">—%</div>
+          <div id="big-people" style="font-size:9px;color:var(--text3);margin-top:2px">— 人</div>
         </div>
-        <div style="background:var(--bg3);border-radius:7px;padding:10px;text-align:center">
-          <div style="font-size:10px;color:var(--text3);margin-bottom:4px">散戶持股</div>
-          <div id="small-ratio" style="font-size:20px;font-weight:700;font-family:var(--mono);color:var(--green2)">—%</div>
-          <div id="small-people" style="font-size:10px;color:var(--text3);margin-top:2px">— 人</div>
+        <div style="background:var(--bg3);border-radius:7px;padding:9px 6px;text-align:center" title="持股 ≥ 400 張之大戶（廣義大戶）">
+          <div style="font-size:9px;color:var(--text3);margin-bottom:3px">400張以上</div>
+          <div id="h400-ratio" style="font-size:18px;font-weight:700;font-family:var(--mono);color:var(--amber2)">—%</div>
+          <div style="font-size:9px;color:var(--text3);margin-top:2px">廣義大戶</div>
         </div>
+        <div style="background:var(--bg3);border-radius:7px;padding:9px 6px;text-align:center" title="持股 ≥ 100 張（業界常用籌碼集中指標）">
+          <div style="font-size:9px;color:var(--text3);margin-bottom:3px">100張以上</div>
+          <div id="h100-ratio" style="font-size:18px;font-weight:700;font-family:var(--mono);color:var(--accent2)">—%</div>
+          <div style="font-size:9px;color:var(--text3);margin-top:2px">集中度</div>
+        </div>
+        <div style="background:var(--bg3);border-radius:7px;padding:9px 6px;text-align:center" title="持股 < 20 張之小散戶">
+          <div style="font-size:9px;color:var(--text3);margin-bottom:3px">散戶&lt;20張</div>
+          <div id="small-ratio" style="font-size:18px;font-weight:700;font-family:var(--mono);color:var(--green2)">—%</div>
+          <div id="small-people" style="font-size:9px;color:var(--text3);margin-top:2px">— 人</div>
+        </div>
+      </div>
+      <!-- 籌碼集中度進度條（紅綠燈視覺）-->
+      <div style="background:var(--bg3);border-radius:7px;padding:10px 12px;margin-bottom:10px">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:11px;color:var(--text2);font-weight:600">籌碼集中度</span>
+          <span id="conc-label" style="font-size:11px;font-family:var(--mono);font-weight:700;color:var(--text)">—</span>
+        </div>
+        <div style="position:relative;height:10px;background:rgba(255,255,255,.05);border-radius:5px;overflow:hidden">
+          <div id="conc-bar" style="height:100%;width:0%;background:linear-gradient(90deg,#3fb950 0%,#e3b341 50%,#f85149 100%);border-radius:5px;transition:width .4s ease-out"></div>
+          <div style="position:absolute;left:33.3%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.1)"></div>
+          <div style="position:absolute;left:66.6%;top:0;bottom:0;width:1px;background:rgba(255,255,255,.1)"></div>
+        </div>
+        <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:9px;color:var(--text3)">
+          <span>分散 (&lt;33%)</span>
+          <span>中性 (33~66%)</span>
+          <span>集中 (&gt;66%)</span>
+        </div>
+      </div>
+      <!-- 千張大戶歷史趨勢圖（從 GitHub Action 累積的 holders_history 拉）-->
+      <div id="holders-trend-section" style="background:var(--bg3);border-radius:7px;padding:10px 12px;margin-bottom:10px;display:none">
+        <div style="display:flex;justify-content:space-between;align-items:center;margin-bottom:6px">
+          <span style="font-size:11px;color:var(--text2);font-weight:600">千張大戶歷史趨勢</span>
+          <span id="trend-meta" style="font-size:9px;color:var(--text3)">—</span>
+        </div>
+        <div style="position:relative;height:140px"><canvas id="c-holders-trend"></canvas></div>
       </div>
       <div style="position:relative;height:160px"><canvas id="c-holders"></canvas></div>
       <div style="margin-top:8px">
@@ -1836,10 +1872,30 @@ async function loadHoldersData(stockId){
     if(dst) dst.textContent=`籌碼分析（集保持股分散）${dateLabel}`;
 
     const _sh=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
-    _sh('big-ratio',(sum.bigHolder||0).toFixed(1)+'%');
-    _sh('big-people',(sum.bigPeople||0).toLocaleString()+' 人');
-    _sh('small-ratio',(sum.smallHolder||0).toFixed(1)+'%');
-    _sh('small-people',(sum.smallPeople||0).toLocaleString()+' 人');
+    // 4 卡：千張大戶 / 400張+ / 100張+ / 散戶<20張
+    _sh('big-ratio',  (sum.k1   ?? sum.bigHolder   ?? 0).toFixed(1)+'%');
+    _sh('big-people', (sum.n1k  ?? sum.bigPeople   ?? 0).toLocaleString()+' 人');
+    _sh('h400-ratio', (sum.h400 ?? 0).toFixed(1)+'%');
+    _sh('h100-ratio', (sum.h100 ?? 0).toFixed(1)+'%');
+    _sh('small-ratio',(sum.r20  ?? sum.smallHolder ?? 0).toFixed(1)+'%');
+    _sh('small-people',(sum.smallPeople ?? 0).toLocaleString()+' 人');
+
+    // 籌碼集中度（以 100張+% 為主指標：分散<33%、中性33~66%、集中>66%）
+    const conc = sum.h100 ?? 0;
+    const concBar = document.getElementById('conc-bar');
+    const concLbl = document.getElementById('conc-label');
+    if(concBar) concBar.style.width = Math.min(100, conc).toFixed(1) + '%';
+    if(concLbl){
+      let txt, col;
+      if(conc < 33)      { txt = `分散 ${conc.toFixed(1)}%`; col = 'var(--green2)'; }
+      else if(conc < 66) { txt = `中性 ${conc.toFixed(1)}%`; col = 'var(--amber2)'; }
+      else               { txt = `高度集中 ${conc.toFixed(1)}%`; col = 'var(--red2)'; }
+      concLbl.textContent = txt;
+      concLbl.style.color = col;
+    }
+
+    // 歷史趨勢圖（從 GitHub Action 累積的 holders_history 拉）
+    loadHoldersTrend(stockId);
 
     const canvas=document.getElementById('c-holders');
     if(canvas&&j.rows&&j.rows.length>0){
@@ -1873,6 +1929,70 @@ async function loadHoldersData(stockId){
     }
   }catch(e){
     if(hl) hl.innerHTML=`<span style="color:var(--text3);font-size:11px">籌碼資料載入失敗：${e.message}</span>`;
+  }
+}
+
+// ── 集保歷史趨勢（GitHub Action 每週累積，第一次部署後需等首次 Action 跑完）──
+async function loadHoldersTrend(stockId){
+  const section = document.getElementById('holders-trend-section');
+  if(!section) return;
+  try{
+    const r = await fetch(`/api/fundamental?type=holders_history&stock_id=${stockId}`);
+    const j = await r.json();
+    const series = j.series || [];
+    if(series.length < 2){
+      // 資料還不夠 2 週，先隱藏（GitHub Action 至少跑 2 次後才會出現）
+      section.style.display = 'none';
+      return;
+    }
+    section.style.display = 'block';
+    const meta = document.getElementById('trend-meta');
+    if(meta) meta.textContent = `${series.length} 週累計，最新 ${series[series.length-1].date||series[series.length-1].week}`;
+
+    const cv = document.getElementById('c-holders-trend');
+    if(!cv) return;
+    if(dCharts.holdersTrend){ try{dCharts.holdersTrend.destroy();}catch(e){} }
+
+    const labels = series.map(d => d.week.replace(/^\d{4}-/,''));   // 只顯示 WNN
+    Chart.defaults.color = '#8b949e';
+    Chart.defaults.font.family = "'JetBrains Mono',monospace";
+    dCharts.holdersTrend = new Chart(cv, {
+      type:'line',
+      data:{
+        labels,
+        datasets:[
+          { label:'千張大戶%', data:series.map(d=>d.k1),   borderColor:'#f85149', backgroundColor:'rgba(248,81,73,.08)', borderWidth:1.6, pointRadius:0, pointHoverRadius:4, fill:false, tension:.2, yAxisID:'y' },
+          { label:'400張+%',   data:series.map(d=>d.h400), borderColor:'#e3b341', backgroundColor:'transparent',         borderWidth:1.4, pointRadius:0, pointHoverRadius:4, fill:false, tension:.2, yAxisID:'y' },
+          { label:'100張+%',   data:series.map(d=>d.h100), borderColor:'#388bfd', backgroundColor:'transparent',         borderWidth:1.4, pointRadius:0, pointHoverRadius:4, fill:false, tension:.2, yAxisID:'y' },
+          { label:'散戶<20張%',data:series.map(d=>d.r20),  borderColor:'#3fb950', backgroundColor:'transparent',         borderWidth:1.4, pointRadius:0, pointHoverRadius:4, fill:false, tension:.2, yAxisID:'y' },
+          { label:'千張人數',  data:series.map(d=>d.n1k),  borderColor:'#bc8cff', backgroundColor:'transparent',         borderWidth:1, borderDash:[3,3], pointRadius:0, pointHoverRadius:4, fill:false, tension:.2, yAxisID:'y1' }
+        ]
+      },
+      options:{
+        responsive:true, maintainAspectRatio:false, animation:false,
+        interaction:{ mode:'index', intersect:false },
+        plugins:{
+          legend:{ position:'bottom', labels:{ font:{size:9}, color:'#8b949e', boxWidth:8, boxHeight:6, padding:6 } },
+          tooltip:{ backgroundColor:'rgba(12,18,32,.95)', padding:8,
+            callbacks:{
+              title:(items)=> series[items[0]?.dataIndex]?.date || items[0]?.label || '',
+              label:(ctx)=>{
+                if(ctx.dataset.label==='千張人數') return `千張人數: ${ctx.parsed.y?.toLocaleString()} 人`;
+                return `${ctx.dataset.label}: ${ctx.parsed.y?.toFixed(2)}%`;
+              }
+            }
+          }
+        },
+        scales:{
+          x:{ grid:{display:false}, ticks:{ font:{size:9}, color:'#8b949e', maxTicksLimit:10, autoSkip:true } },
+          y:{ position:'left', grid:{color:'rgba(56,139,253,.06)'}, ticks:{ font:{size:9}, color:'#8b949e', callback:v=>v+'%' } },
+          y1:{ position:'right', grid:{display:false}, ticks:{ font:{size:9}, color:'#bc8cff' } }
+        }
+      }
+    });
+  }catch(e){
+    if(section) section.style.display = 'none';
+    console.warn('holders trend err:', e);
   }
 }
 

@@ -1,5 +1,7 @@
 // api/fundamental.js
 // 基本面資料：集保持股分散、三大法人、融資融券、外資、董監
+import { promises as fs } from 'fs';
+import path from 'path';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -10,6 +12,62 @@ export default async function handler(req, res) {
   const { type, stock_id } = req.query;
 
   try {
+
+    // ══════════════════════════════════════════════════
+    // 集保歷史趨勢（GitHub Action 每週累積的 holders_history）
+    //   回傳該股票每週的 5 個聚合指標時序
+    // ══════════════════════════════════════════════════
+    if (type === 'holders_history') {
+      if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+      try {
+        const dir = path.join(process.cwd(), 'data', 'holders_history');
+        // 讀 index.json 取週次清單
+        const indexPath = path.join(dir, 'index.json');
+        let weeks = [];
+        try {
+          const idx = JSON.parse(await fs.readFile(indexPath, 'utf8'));
+          weeks = (idx.weeks || []).sort();
+        } catch {
+          // 若還沒有 index.json，掃描目錄
+          try {
+            const files = await fs.readdir(dir);
+            weeks = files.filter(f => /^\d{4}-W\d{2}\.json$/.test(f))
+                         .map(f => f.replace('.json',''))
+                         .sort();
+          } catch { weeks = []; }
+        }
+
+        // 讀每週快照、抽取該股票
+        const series = [];
+        for (const w of weeks) {
+          try {
+            const snap = JSON.parse(await fs.readFile(path.join(dir, `${w}.json`), 'utf8'));
+            const s = snap.stocks?.[stock_id];
+            if (s) {
+              series.push({
+                week: w,
+                date: snap.scaDate || snap.captured || '',
+                k1:   s.k1,
+                h400: s.h400,
+                h100: s.h100,
+                r20:  s.r20,
+                n1k:  s.n1k
+              });
+            }
+          } catch {}
+        }
+
+        res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+        return res.status(200).json({
+          stock_id,
+          weeks: weeks.length,
+          series,
+          source: 'holders_history'
+        });
+      } catch (e) {
+        return res.status(200).json({ stock_id, series: [], error: e.message });
+      }
+    }
 
     // ══════════════════════════════════════════════════
     // 1. 集保持股分散（大戶/散戶）
@@ -65,7 +123,30 @@ export default async function handler(req, res) {
                 };
               });
 
-            // 大戶 = HolderNum 16（1000張以上）
+            // 用 HolderNum 直接歸組（避開 levelMap 的 lots 欄位 bug）
+            // TDCC OpenAPI 編號：1=零股、2-5≤20張、6-9=20-100張、
+            //                    10-12=100-400張、13-15=400張+、16=>1000張
+            const ratioByLevel = {};
+            const peopleByLevel = {};
+            for (const row of rows) {
+              const lv = parseInt(row.holderNum) || 0;
+              ratioByLevel[lv]  = (ratioByLevel[lv]||0)  + row.ratio;
+              peopleByLevel[lv] = (peopleByLevel[lv]||0) + row.people;
+            }
+            const sumR = (...lvs) => lvs.reduce((s,lv)=>s+(ratioByLevel[lv]||0), 0);
+            const sumP = (...lvs) => lvs.reduce((s,lv)=>s+(peopleByLevel[lv]||0), 0);
+
+            // 5 個聚合指標（百分比 0~100）
+            const k1   = sumR(16);                      // 千張大戶 (>1000張)
+            const h400 = sumR(13,14,15,16);             // 400張以上
+            const h100 = sumR(10,11,12,13,14,15,16);    // 100張以上（含 50-100張的近似）
+            // 修正：100張以上應該不含 50-100張，但 TDCC 10=50,001-100,000股=50-100張
+            // 嚴格 100張+ 應該從 HolderNum=11 起算
+            const h100strict = sumR(11,12,13,14,15,16);
+            const r20  = sumR(1,2,3,4,5);               // 散戶<20張 (HolderNum 1-5)
+            const n1k  = sumP(16);                      // 千張大戶人數
+
+            // 大/散戶（既有定義：1000張）
             let bigRatio=0, smallRatio=0, bigPeople=0, smallPeople=0;
             for (const row of rows) {
               if (row.lots >= 1000) {
@@ -80,10 +161,17 @@ export default async function handler(req, res) {
             return res.status(200).json({
               stock_id, rows, scaDate,
               summary: {
+                // 既有（向後相容）
                 bigHolder:   parseFloat(bigRatio.toFixed(2)),
                 smallHolder: parseFloat(smallRatio.toFixed(2)),
                 bigPeople, smallPeople,
-                totalPeople: bigPeople + smallPeople
+                totalPeople: bigPeople + smallPeople,
+                // 新聚合
+                k1:   parseFloat(k1.toFixed(2)),         // 千張大戶 %
+                h400: parseFloat(h400.toFixed(2)),       // 400張+ %
+                h100: parseFloat(h100strict.toFixed(2)), // 100張+ %
+                r20:  parseFloat(r20.toFixed(2)),        // 散戶<20張 %
+                n1k                                        // 千張大戶人數
               },
               source: 'TDCC_OPENAPI'
             });

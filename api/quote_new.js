@@ -550,6 +550,7 @@ export default async function handler(req, res) {
           }
         });
         const j = await r.json();
+        // ohlcArray: 逐分鐘行情；t='000000' 是 placeholder，t='999999' 是收盤總和
         const arr = (j.ohlcArray||[])
           .map(x => ({
             t: x.t,
@@ -557,11 +558,25 @@ export default async function handler(req, res) {
             price: parseFloat(x.c) || 0,
             value: parseFloat(x.s) || 0
           }))
-          .filter(x => x.price > 0 && x.t !== '000000');
+          .filter(x => x.price > 0 && x.t !== '000000' && x.t !== '999999');
+        // infoArray: 官方總計（v=當日成交金額億元、o/h/l/y=開高低昨收），與 TPEx 官網顯示一致
+        const info = j.infoArray || {};
+        const num = v => { const n = parseFloat(v); return Number.isFinite(n) ? n : null; };
+        const summary = {
+          open:  num(info.o),
+          high:  num(info.h),
+          low:   num(info.l),
+          prev:  num(info.y),
+          totalValue: num(info.v),   // 成交金額（億元）
+          datetime: j.taiex?.datetime || '',
+          index:    num(j.taiex?.index),
+          diff:     num(j.taiex?.diff),
+          percent:  num(j.taiex?.percent),
+        };
         res.setHeader('Cache-Control','s-maxage=10, stale-while-revalidate');
-        return res.status(200).json({ data: arr, source: 'TPEx_mktRT' });
+        return res.status(200).json({ data: arr, summary, source: 'TPEx_mktRT' });
       } catch (e) {
-        return res.status(200).json({ data: [], error: e.message });
+        return res.status(200).json({ data: [], summary: null, error: e.message });
       }
     }
 

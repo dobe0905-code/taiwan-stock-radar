@@ -2201,7 +2201,7 @@ const GLOBAL_CHARTS=[
 ];
 
 // ── 櫃買指數 折線圖（仿 TPEx 官網：橘色折線 + 面積成交金額 + 即時/週/月/季/年）──
-window._tpexChartState = { period:'RT', historical:null, intraday:null, live:null, label:'' };
+window._tpexChartState = { period:'RT', historical:null, intraday:null, intradaySummary:null, live:null, label:'' };
 
 async function showTPExCandleChart(containerId, label){
   const c=document.getElementById(containerId);
@@ -2232,11 +2232,12 @@ async function showTPExCandleChart(containerId, label){
     const [hr,lr,ir]=await Promise.all([
       fetch('/api/quote?type=tpex_index_historical').then(r=>r.json()).catch(()=>({data:{}})),
       fetch('/api/quote?type=otc_index_live').then(r=>r.json()).catch(()=>({data:null})),
-      fetch('/api/quote?type=tpex_index_intraday').then(r=>r.json()).catch(()=>({data:[]})),
+      fetch('/api/quote?type=tpex_index_intraday').then(r=>r.json()).catch(()=>({data:[],summary:null})),
     ]);
     window._tpexChartState.historical = hr.data || {};
     window._tpexChartState.live = lr.data;
     window._tpexChartState.intraday = ir.data || [];
+    window._tpexChartState.intradaySummary = ir.summary || null;
     renderTPExLiveBar();
     renderTPExFoot();
     renderTPExChart();
@@ -2268,18 +2269,23 @@ function renderTPExLiveBar(){
 
 function renderTPExFoot(){
   const live = window._tpexChartState.live;
+  const summ = window._tpexChartState.intradaySummary;   // TPEx 官方總計
   const foot = document.getElementById('tpex-foot');
   if(!foot) return;
-  if(!live){ foot.innerHTML=''; return; }
-  // 試從 intraday 累計成交金額
-  const intra = window._tpexChartState.intraday || [];
-  const totalVal = intra.reduce((a,b)=>a+(b.value||0),0);
+  if(!live && !summ){ foot.innerHTML=''; return; }
+  // 優先使用 TPEx 官方 infoArray（與櫃買中心網站顯示一致），缺值才退回 MIS
+  const open  = summ?.open  ?? live?.open;
+  const high  = summ?.high  ?? live?.high;
+  const low   = summ?.low   ?? live?.low;
+  const prev  = summ?.prev  ?? live?.prev;
+  const total = summ?.totalValue;   // 成交金額（億元）只信任 TPEx 官方
+  const fmt = v => (v!=null && Number.isFinite(v)) ? v.toFixed(2) : '—';
   foot.innerHTML = `
-    <span>開盤 <span style="color:var(--text)">${live.open?.toFixed(2)||'—'}</span></span>
-    <span>昨收 <span style="color:var(--text)">${live.prev?.toFixed(2)||'—'}</span></span>
-    <span>最高 <span style="color:var(--green2)">${live.high?.toFixed(2)||'—'}</span></span>
-    <span>最低 <span style="color:var(--red2)">${live.low?.toFixed(2)||'—'}</span></span>
-    <span>成交金額 <span style="color:var(--text)">${totalVal>0?totalVal.toFixed(2)+' 億元':'—'}</span></span>`;
+    <span>開盤 <span style="color:var(--text)">${fmt(open)}</span></span>
+    <span>昨收 <span style="color:var(--text)">${fmt(prev)}</span></span>
+    <span>最高 <span style="color:var(--green2)">${fmt(high)}</span></span>
+    <span>最低 <span style="color:var(--red2)">${fmt(low)}</span></span>
+    <span>成交金額 <span style="color:var(--text)">${total!=null?fmt(total)+' 億元':'—'}</span></span>`;
 }
 
 function renderTPExChart(){

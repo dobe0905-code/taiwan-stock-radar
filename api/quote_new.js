@@ -430,6 +430,112 @@ export default async function handler(req, res) {
       }
     }
 
+    // ══════════════════════════════════════════════════
+    // 11. 櫃買指數 歷史 K 線（TPEx 官方）
+    //     POST https://www.tpex.org.tw/www/zh-tw/indexInfo/inx
+    //     date=YYYYMMDD (該月任一天 → 回傳整月), response=json
+    //     欄位順序: [日期, 開市, 最高, 最低, 收市, 漲/跌]
+    // ══════════════════════════════════════════════════
+    if (type === 'tpex_index') {
+      const months = Math.max(1, Math.min(parseInt(req.query.months) || 4, 12));
+      try {
+        const today = new Date();
+        const pad2 = n => String(n).padStart(2,'0');
+        const dates = [];
+        for (let i = 0; i < months; i++) {
+          const d = new Date(today.getFullYear(), today.getMonth() - i, 1);
+          dates.push(`${d.getFullYear()}${pad2(d.getMonth()+1)}01`);
+        }
+
+        const results = await Promise.all(dates.map(async d => {
+          try {
+            const r = await fetch('https://www.tpex.org.tw/www/zh-tw/indexInfo/inx', {
+              method: 'POST',
+              headers: {
+                'Content-Type': 'application/x-www-form-urlencoded',
+                'Accept': 'application/json',
+                'Referer': 'https://www.tpex.org.tw/zh-tw/indices/stock-index/industrial/inxh.html'
+              },
+              body: `date=${d}&response=json`
+            });
+            if (!r.ok) return [];
+            const j = await r.json();
+            const tbl = j.tables?.[0];
+            if (!tbl?.data) return [];
+            return tbl.data.map(row => ({
+              date:   row[0],
+              open:   parseFloat((row[1]||'0').replace(/,/g,'')) || 0,
+              high:   parseFloat((row[2]||'0').replace(/,/g,'')) || 0,
+              low:    parseFloat((row[3]||'0').replace(/,/g,'')) || 0,
+              close:  parseFloat((row[4]||'0').replace(/,/g,'')) || 0,
+              change: parseFloat((row[5]||'0').replace(/,/g,'')) || 0,
+            })).filter(d => d.close > 0);
+          } catch { return []; }
+        }));
+
+        // 合併 + 去重（依日期）+ 由舊到新排序
+        const seen = new Set();
+        const merged = [];
+        for (const arr of results) {
+          for (const it of arr) {
+            if (!seen.has(it.date)) { seen.add(it.date); merged.push(it); }
+          }
+        }
+        merged.sort((a,b) => a.date.localeCompare(b.date));
+
+        res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate');
+        return res.status(200).json({ data: merged, source: 'TPEx_indexInfo', months });
+      } catch (e) {
+        return res.status(200).json({ data: [], error: e.message });
+      }
+    }
+
+    // ══════════════════════════════════════════════════
+    // 12. 櫃買指數 即時報價（TWSE MIS otc_o00.tw）
+    //     回傳當日 OHLC + 現價 + 昨收 + 累計成交量
+    // ══════════════════════════════════════════════════
+    if (type === 'otc_index_live') {
+      try {
+        const r = await fetch(
+          'https://mis.twse.com.tw/stock/api/getStockInfo.jsp?ex_ch=otc_o00.tw&json=1&delay=0',
+          { headers: {
+              'Accept': 'application/json',
+              'User-Agent': 'Mozilla/5.0',
+              'Referer': 'https://mis.twse.com.tw/stock/index.jsp'
+          } }
+        );
+        const j = await r.json();
+        const it = j.msgArray?.[0];
+        if (!it) return res.status(200).json({ data: null, error: 'no data' });
+
+        const num = v => {
+          const n = parseFloat(String(v||'').replace(/,/g,''));
+          return Number.isFinite(n) ? n : null;
+        };
+        const data = {
+          name:   it.n || '櫃買指數',
+          open:   num(it.o),
+          high:   num(it.h),
+          low:    num(it.l),
+          price:  num(it.z),     // 現價（盤後 = 收盤）
+          prev:   num(it.y),     // 昨收
+          volume: num(it.v),     // 累計成交量
+          time:   it.t || it['%'] || '',
+          date:   it.d || '',
+          tlong:  parseInt(it.tlong) || null
+        };
+        if (data.price != null && data.prev != null) {
+          data.change  = +(data.price - data.prev).toFixed(2);
+          data.changeP = +((data.change / data.prev) * 100).toFixed(2);
+        }
+
+        res.setHeader('Cache-Control','s-maxage=3, stale-while-revalidate');
+        return res.status(200).json({ data, source: 'TWSE_MIS_OTC' });
+      } catch (e) {
+        return res.status(200).json({ data: null, error: e.message });
+      }
+    }
+
     return res.status(400).json({ error: '不支援的 type 參數' });
 
   } catch (err) {

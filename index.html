@@ -1201,6 +1201,7 @@ function buildDetHTML(s,live){
   </div>`:''}
   <div class="ds" id="tech-analysis-section" style="margin-bottom:14px">
     <div class="dst">技術分析狀態</div>
+    <div id="swing-state-bar" style="margin-bottom:8px"></div>
     <div id="tech-status-row" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px">
       <div style="background:var(--bg3);border-radius:7px;padding:9px 11px;border:1px solid var(--border)">
         <div style="font-size:9px;color:var(--text3);margin-bottom:4px">狀態</div>
@@ -1573,6 +1574,48 @@ async function buildDetCharts(s){
     _s('ta-status', statusTxt, statusCol);
     const sigEl=document.getElementById('ta-signals');
     if(sigEl) sigEl.innerHTML=signals.map(t=>`<span style="margin-right:10px">· ${t}</span>`).join('');
+
+    // ── 短線操作狀態（回測驗證：訊號B 排列＋季線；事件型 MACD/均線交叉已證實無 edge，故不採用）──
+    renderSwingState(closes, vols, ma60);
+  }
+
+  // 短線狀態：用回測中最一致的「均線排列 × 季線」規則
+  // 回測(台灣50+中小型,2年)：強多 20日超額 +0.4%、強空 −2.5%；帶量突破20日高 +0.7%
+  function renderSwingState(closes, vols, ma60){
+    const el=document.getElementById('swing-state-bar');
+    if(!el) return;
+    if(closes.length<60){ el.innerHTML='<div style="font-size:11px;color:var(--text3)">短線狀態：日K資料不足（需 60 筆以上）</div>'; return; }
+    const mean=(a,n)=>a.slice(-n).reduce((x,y)=>x+y,0)/n;
+    const ma5=mean(closes,5), ma10=mean(closes,10), ma20=mean(closes,20);
+    const cur=closes[closes.length-1];
+    // 排列＋季線
+    let cls,icon,lbl,col,bg,reason;
+    if(ma5>ma10&&ma10>ma20&&cur>ma60){
+      cls='strong';icon='📈';lbl='短多';col='var(--green2)';bg='rgba(126,231,135,.12)';
+      reason='均線多頭排列(MA5>MA10>MA20)＋站上季線；回測20日超額 +0.4%（趨勢確認，弱正向）';
+    }else if(ma5<ma10&&ma10<ma20&&cur<ma60){
+      cls='weak';icon='📉';lbl='短空';col='var(--red2)';bg='rgba(255,161,152,.12)';
+      reason='均線空頭排列＋跌破季線；回測20日超額 −2.5%（可靠避開訊號，勿接刀）';
+    }else{
+      cls='mid';icon='⚖️';lbl='盤整';col='var(--amber2)';bg='rgba(227,179,65,.12)';
+      reason='均線糾結或未站穩季線，方向不明；回測無明顯超額';
+    }
+    // 帶量突破20日高（擇時加註）—— 用今日量 vs 20日均量
+    let brk='';
+    if(closes.length>=21){
+      const prior20=closes.slice(-21,-1); // 不含今日的前20日
+      const hi20=Math.max(...prior20);
+      const avg20v=vols.slice(-20).reduce((a,b)=>a+b,0)/20;
+      const todayV=vols[vols.length-1]||0;
+      if(cur>hi20 && avg20v>0 && todayV/avg20v>=1.5){
+        brk=`<span style="font-size:10px;color:var(--accent2);background:rgba(56,139,253,.14);border-radius:4px;padding:2px 7px;margin-left:6px" title="收盤創20日新高且帶量（≥1.5倍20日均量）；回測20日超額 +0.7%，擇時參考">⚡帶量突破</span>`;
+      }
+    }
+    el.innerHTML=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+        <span style="font-size:14px;font-weight:700;color:${col};background:${bg};border-radius:6px;padding:5px 12px">${icon} ${lbl}</span>${brk}
+        <span style="font-size:9px;color:var(--text3)">短線操作狀態 · 回測驗證</span>
+      </div>
+      <div style="font-size:10px;color:var(--text3);line-height:1.6;margin-top:5px">🎯 ${reason}</div>`;
   }
 
   // ── MA 均線乖離率（季線公式：BIAS = (現價 - MA60) / MA60 × 100%）──

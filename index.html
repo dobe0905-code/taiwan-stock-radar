@@ -2101,13 +2101,29 @@ async function loadInstitutionData(stockId){
   }
 }
 
-function setSF(f,el){sf=f;document.querySelectorAll('.sb-item,.sb-sub-item').forEach(e=>e.classList.remove('active'));if(el)el.classList.add('active');renderTable();}
+function setSF(f,el){
+  sf=f;
+  // 清除搜尋字串，否則 getFiltered 會以搜尋結果覆蓋側欄篩選（個股面板開啟時點側欄仍可正常切換）
+  const si=document.getElementById('searchInput'); if(si) si.value='';
+  // 若目前停在全球指數/美股頁籤（表格被隱藏），切回台股表格才看得到結果
+  if(mkt==='global'||mkt==='us'){
+    mkt='all';
+    document.querySelectorAll('.mkt-tab').forEach(e=>e.classList.remove('active'));
+    const allTab=document.querySelector('.mkt-tab'); if(allTab) allTab.classList.add('active');
+    showTWTbl();
+  }
+  document.querySelectorAll('.sb-item,.sb-sub-item').forEach(e=>e.classList.remove('active'));
+  if(el)el.classList.add('active');
+  renderTable();
+}
 
 // ── setMkt：切換市場標籤 ──
 let usStocks=[], globalIndices=[], usLoaded=false, globalLoaded=false;
 
 function setMkt(m,el){
   mkt=m;
+  // 點頁籤即清除搜尋字串，讓頁籤篩選生效（避免殘留搜尋結果蓋過）
+  const si=document.getElementById('searchInput'); if(si) si.value='';
   document.querySelectorAll('.mkt-tab').forEach(e=>e.classList.remove('active'));
   if(el) el.classList.add('active');
   if(m==='global'){

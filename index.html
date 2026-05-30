@@ -213,6 +213,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <div class="sb-label">總覽</div>
     <div class="sb-item active" onclick="setSF('all',this)"><span>全部股票</span><span class="sb-cnt" id="c-all">—</span></div>
     <div class="sb-item" onclick="setSF('wl',this)"><span>⭐ 我的自選股</span><span class="sb-cnt" id="c-wl">0</span></div>
+    <div class="sb-label">選股因子（回測驗證）</div>
+    <div class="sb-item" onclick="setSF('rev_hi',this)" title="月營收年增>20%：回測20日對大盤超額+1.3%、勝率61%"><span>📈 營收高成長</span><span class="sb-cnt" id="c-rev_hi">—</span></div>
+    <div class="sb-item" onclick="setSF('rev_dn',this)" title="月營收年增<0%：回測20日跑輸大盤-3.3%，避雷用"><span>📉 營收衰退（避雷）</span><span class="sb-cnt" id="c-rev_dn">—</span></div>
     <div class="sb-label">市場類型</div>
     <div class="sb-item" onclick="setSF('twse',this)"><span>🏛 上市 TWSE</span><span class="sb-cnt" id="c-twse">—</span></div>
     <div class="sb-item" onclick="setSF('tpex',this)"><span>🏪 上櫃 TPEx</span><span class="sb-cnt" id="c-tpex">—</span></div>
@@ -333,6 +336,8 @@ let stocks=[], wl=new Set(JSON.parse(localStorage.getItem('wl')||'[]'));
 let sf='all', mkt='all', qf=new Set(), nxt, cdTimer, dCharts={};
 let liveData={}, liveCount=0, currentDetId=null;
 let perMap={}, yldMap={};
+let revMap={};  // 月營收 YoY map {code:{yoy,mom,tier}}（回測驗證的選股因子）
+let revMonth='';
 
 // ── 熱門族群定義（代號 Set）— 依產品性質/開發技術/國際新聞/供應鏈分類 ──
 const THEME_MAP = {
@@ -521,10 +526,11 @@ async function loadData(){
       showToast(`✓ 上市 ${twseStocks.length} 檔已載入，上櫃載入中...`);
     }
 
-    // 第二階段：背景載入 TPEx + PER
-    const [tpexRes, perRes] = await Promise.all([
+    // 第二階段：背景載入 TPEx + PER + 月營收 YoY
+    const [tpexRes, perRes, revRes] = await Promise.all([
       fetch(`${API}?type=tpex_list`).then(r=>r.json()),
       fetch(`${API}?type=twse_per`).then(r=>r.json()),
+      fetch('/api/fundamental?type=revenue').then(r=>r.json()).catch(()=>({stocks:{}})),
     ]);
 
     // 建立本益比 map
@@ -532,6 +538,9 @@ async function loadData(){
     if(perRes.data) for(const p of perRes.data){
       perMap[p.Code]={ per: parseFloat(p.PEratio)||null, yld: parseFloat(p.DividendYield)||null, pbr: parseFloat(p.PBratio)||null };
     }
+    // 建立月營收 map（回測驗證因子）
+    revMap = revRes?.stocks || {};
+    revMonth = revRes?.month || '';
     // 補上 TWSE 本益比（原本 processTWSE 時 perMap 還是空的）
     for(const s of twseStocks){
       const pe=perMap[s.id];
@@ -540,6 +549,11 @@ async function loadData(){
 
     const tpexStocks = processTPEx(tpexRes.data||[]);
     stocks = [...twseStocks, ...tpexStocks];
+    // 合併月營收因子到每檔
+    for(const s of stocks){
+      const rv=revMap[s.id];
+      if(rv){ s.revYoY=rv.yoy; s.revMom=rv.mom; s.revTier=rv.tier; }
+    }
 
     if(stocks.length===0){ setLd('無資料，請稍後再試'); return; }
     document.getElementById('twseBadge').className='api-badge api-on';
@@ -652,6 +666,8 @@ function getFiltered(){
   else if(sf==='hv') l=l.filter(s=>s.vol>5000000);
   else if(sf==='lpe') l=l.filter(s=>s.peV&&s.peV>0&&s.peV<15);
   else if(sf==='hyld') l=l.filter(s=>s.yld&&s.yld>4);
+  else if(sf==='rev_hi') l=l.filter(s=>s.revTier==='高成長');
+  else if(sf==='rev_dn') l=l.filter(s=>s.revTier==='衰退');
   else if(sf.startsWith('s:')) l=l.filter(s=>s.sector===sf.slice(2));
   else if(sf.startsWith('g:')) l=l.filter(s=>THEME_MAP[sf.slice(2)]?.has(s.id));
 
@@ -777,6 +793,8 @@ function updSB(){
   _sb('c-tpex',stocks.filter(s=>s.market==='tpex').length);
   _sb('c-etf',stocks.filter(s=>s.isETF).length);
   _sb('c-stk',stocks.filter(s=>!s.isETF).length);
+  _sb('c-rev_hi',stocks.filter(s=>s.revTier==='高成長').length);
+  _sb('c-rev_dn',stocks.filter(s=>s.revTier==='衰退').length);
   _sb('c-buy',stocks.filter(s=>s.sig.cls==='sig-buy').length);
   _sb('c-sell',stocks.filter(s=>s.sig.cls==='sig-sell').length);
   _sb('c-hold',stocks.filter(s=>s.sig.cls==='sig-hold').length);
@@ -1182,6 +1200,27 @@ function buildDetHTML(s,live){
       <div class="kv"><div class="kv-l">市場</div><div class="kv-v" style="font-size:11px">${s.market==='twse'?'上市 TWSE':'上櫃 TPEx'}</div></div>
     </div>
   </div>
+  ${(()=>{
+    if(s.revYoY==null&&s.revTier==null) return '';
+    const tier=s.revTier||'—';
+    const tCol=tier==='高成長'?'var(--green2)':tier==='衰退'?'var(--red2)':'var(--amber2)';
+    const tBg =tier==='高成長'?'rgba(126,231,135,.12)':tier==='衰退'?'rgba(255,161,152,.12)':'rgba(227,179,65,.12)';
+    const yoyTxt=s.revYoY!=null?(s.revYoY>=0?'+':'')+s.revYoY.toFixed(1)+'%':'—';
+    const momTxt=s.revMom!=null?(s.revMom>=0?'+':'')+s.revMom.toFixed(1)+'%':'—';
+    const note=tier==='高成長'?'回測：營收年增>20% → 20日對大盤超額 +1.3%、勝率 61%'
+              :tier==='衰退'?'回測：營收年增<0% → 20日跑輸大盤 -3.3%，留意基本面轉弱'
+              :'回測：營收年增 0~20% 區間對大盤無明顯超額';
+    return `<div class="ds"><div class="dst">月營收動能 ${revMonth?`<span style="font-size:10px;color:var(--text3);font-weight:400">(${revMonth} 公布)</span>`:''}</div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <span style="font-size:13px;font-weight:700;color:${tCol};background:${tBg};border-radius:6px;padding:4px 10px">${tier}</span>
+        <div class="kv2" style="flex:1;margin:0">
+          <div class="kv"><div class="kv-l">營收年增 YoY</div><div class="kv-v" style="color:${s.revYoY>0?'var(--green2)':s.revYoY<0?'var(--red2)':'var(--text2)'}">${yoyTxt}</div></div>
+          <div class="kv"><div class="kv-l">較上月 MoM</div><div class="kv-v" style="color:${s.revMom>0?'var(--green2)':s.revMom<0?'var(--red2)':'var(--text2)'}">${momTxt}</div></div>
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--text3);line-height:1.6">📊 ${note}</div>
+    </div>`;
+  })()}
   <div class="ds" id="holders-section">
     <div class="dst">籌碼分析（集保持股分散）</div>
     <div id="holders-loading" style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--text3);font-size:11px;">

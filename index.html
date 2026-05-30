@@ -214,6 +214,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <div class="sb-item active" onclick="setSF('all',this)"><span>全部股票</span><span class="sb-cnt" id="c-all">—</span></div>
     <div class="sb-item" onclick="setSF('wl',this)"><span>⭐ 我的自選股</span><span class="sb-cnt" id="c-wl">0</span></div>
     <div class="sb-label">選股因子（回測驗證）</div>
+    <div class="sb-item" onclick="setSF('long_buy',this)" title="長線策略狀態：月營收高成長 ＋ 大盤站上季線（回測有效區）。大盤跌破季線時會自動排除（順勢因子空頭期反轉）"><span>🚀 長線布局</span><span class="sb-cnt" id="c-long_buy">—</span></div>
+    <div id="regimeBar" style="font-size:10px;color:var(--text3);padding:2px 14px 6px 28px;line-height:1.4">大盤趨勢：載入中…</div>
     <div class="sb-item" onclick="setSF('rev_hi',this)" title="月營收年增>20%：多頭/正常盤回測20日對大盤超額+1.3%、勝率61%（中小型股更強+1.7%）。⚠️順勢因子，2022空頭期回測會反轉失效，需配合大盤趨勢（指數站上月/季線才啟用）"><span>📈 營收高成長</span><span class="sb-cnt" id="c-rev_hi">—</span></div>
     <div class="sb-item" onclick="setSF('rev_dn',this)" title="月營收年增<0%：多頭/正常盤回測20日跑輸大盤-3.3%，避雷用。⚠️空頭期此族群反而易均值回歸反彈，避雷效果僅限正常盤"><span>📉 營收衰退（避雷）</span><span class="sb-cnt" id="c-rev_dn">—</span></div>
     <div class="sb-label">市場類型</div>
@@ -338,6 +340,39 @@ let liveData={}, liveCount=0, currentDetId=null;
 let perMap={}, yldMap={};
 let revMap={};  // 月營收 YoY map {code:{yoy,mom,tier}}（回測驗證的選股因子）
 let revMonth='';
+let mktRegime=null;  // 大盤趨勢濾網：'bull'(指數站上季線) / 'bear'(跌破季線) / null(未知)
+let mktMA60=0, mktLast=0;  // 加權指數季線值 / 最新收盤（供 tooltip）
+
+// ── 長線策略狀態（回測驗證：月營收 YoY 高成長 + 大盤季線濾網）──
+// 回測：高成長 20日超額 +1.3%（中小型 +1.7%），但 2022 空頭期會反轉 → 故加大盤濾網
+function longState(s){
+  if(!s.revTier) return null;
+  if(s.revTier==='衰退')
+    return {cls:'ls-weak', icon:'⚠️', lbl:'長線轉弱', reason:'月營收年增<0%，基本面轉弱（回測：跑輸大盤 -3.3%）'};
+  if(s.revTier==='高成長'){
+    if(mktRegime==='bear')
+      return {cls:'ls-hold', icon:'⏸️', lbl:'觀望', reason:'營收高成長，但大盤跌破季線；順勢因子空頭期會反轉，暫不布局'};
+    return {cls:'ls-strong', icon:'🚀', lbl:'長多布局', reason: mktRegime==='bull'
+      ? '營收高成長＋大盤站上季線（回測有效區，20日超額 +1.3%）'
+      : '營收高成長（大盤趨勢未知，建議確認指數站上季線）'};
+  }
+  return {cls:'ls-mid', icon:'•', lbl:'中性', reason:'月營收年增 0~20%，回測無明顯超額'};
+}
+
+// 載入大盤季線 regime（^TWII 近6月日K → MA60）
+async function loadMarketRegime(){
+  try{
+    const r=await fetch('/api/global?type=us_detail&symbol='+encodeURIComponent('^TWII')+'&range=6mo');
+    const j=await r.json();
+    const kd=(j.data?.kdata||j.kdata||[]);
+    const closes=kd.map(d=>parseFloat(d.close??d[4])).filter(Number.isFinite);
+    if(closes.length<60){ mktRegime=null; return; }
+    mktMA60=closes.slice(-60).reduce((a,b)=>a+b,0)/60;
+    mktLast=closes[closes.length-1];
+    mktRegime = mktLast>=mktMA60 ? 'bull' : 'bear';
+    updSB(); if(mkt!=='us'&&mkt!=='global'&&mkt!=='mktchart') renderTable();
+  }catch(e){ mktRegime=null; }
+}
 
 // ── 熱門族群定義（代號 Set）— 依產品性質/開發技術/國際新聞/供應鏈分類 ──
 const THEME_MAP = {
@@ -561,6 +596,7 @@ async function loadData(){
 
     updSum(); updSB(); renderTable();
     setLU(); schedRef();
+    loadMarketRegime();  // 大盤季線濾網（非阻塞，回來後刷新長線狀態）
     showToast(`✓ 全部載入完成：${stocks.length} 檔（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length}）`);
     startMisPolling();
   }catch(e){
@@ -666,6 +702,7 @@ function getFiltered(){
   else if(sf==='hv') l=l.filter(s=>s.vol>5000000);
   else if(sf==='lpe') l=l.filter(s=>s.peV&&s.peV>0&&s.peV<15);
   else if(sf==='hyld') l=l.filter(s=>s.yld&&s.yld>4);
+  else if(sf==='long_buy') l=l.filter(s=>{const ls=longState(s);return ls&&ls.cls==='ls-strong';});
   else if(sf==='rev_hi') l=l.filter(s=>s.revTier==='高成長');
   else if(sf==='rev_dn') l=l.filter(s=>s.revTier==='衰退');
   else if(sf.startsWith('s:')) l=l.filter(s=>s.sector===sf.slice(2));
@@ -752,10 +789,16 @@ function renderTable(){
       const v=s.revYoY!=null?(s.revYoY>=0?'+':'')+s.revYoY.toFixed(0)+'%':'—';
       revTag=`<span style="font-size:9px;font-family:var(--mono);padding:1px 5px;border-radius:4px;margin-left:5px;color:${c};background:${b}" title="月營收年增 YoY（${revMonth}）：${s.revTier}">營${v}</span>`;
     }
+    // 長線策略狀態徽章（緊湊，只顯示 icon，hover 看依據）
+    let lsTag='';
+    const ls=longState(s);
+    if(ls && (ls.cls==='ls-strong'||ls.cls==='ls-weak'||ls.cls==='ls-hold')){
+      lsTag=`<span style="font-size:10px;margin-left:4px;cursor:help" title="長線：${ls.lbl} — ${ls.reason}">${ls.icon}</span>`;
+    }
     return`<tr ${useAnim?`style="animation-delay:${Math.min(i*3,300)}ms"`:''} data-id="${s.id}" onclick="openDet('${s.id}')">
       <td onclick="event.stopPropagation()"><button class="star-btn ${wl.has(s.id)?'on':''}" onclick="togWL('${s.id}',this)">★</button></td>
       <td><span class="td-id">${s.id}</span>${s.isETF?'<span class="etf-tag">ETF</span>':''}${mktTag}${isLive?'<span style="font-size:9px;color:var(--red2);margin-left:3px">●</span>':''}</td>
-      <td><div class="td-name">${s.name}${revTag}</div>${!s.isETF?'<div class="td-sec">'+s.sector+'</div>':''}</td>
+      <td><div class="td-name">${s.name}${revTag}${lsTag}</div>${!s.isETF?'<div class="td-sec">'+s.sector+'</div>':''}</td>
       <td><span class="td-price live-price ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}">${s.close.toFixed(2)}</span></td>
       <td><span class="pill ${s.chgP>0?'pill-up':s.chgP<0?'pill-dn':'pill-neu'}">${s.chgP>=0?'+':''}${s.chgP.toFixed(2)}%</span></td>
       <td class="col-law"><span class="td-m">${s.peV?s.peV.toFixed(1):'—'}</span></td>
@@ -801,8 +844,16 @@ function updSB(){
   _sb('c-tpex',stocks.filter(s=>s.market==='tpex').length);
   _sb('c-etf',stocks.filter(s=>s.isETF).length);
   _sb('c-stk',stocks.filter(s=>!s.isETF).length);
+  _sb('c-long_buy',stocks.filter(s=>{const ls=longState(s);return ls&&ls.cls==='ls-strong';}).length);
   _sb('c-rev_hi',stocks.filter(s=>s.revTier==='高成長').length);
   _sb('c-rev_dn',stocks.filter(s=>s.revTier==='衰退').length);
+  // 大盤季線 regime 指示
+  const rb=document.getElementById('regimeBar');
+  if(rb){
+    if(mktRegime==='bull') rb.innerHTML=`<span style="color:var(--green2)">● 大盤站上季線</span>（${mktLast.toFixed(0)} ≥ MA60 ${mktMA60.toFixed(0)}）多頭可布局`;
+    else if(mktRegime==='bear') rb.innerHTML=`<span style="color:var(--red2)">● 大盤跌破季線</span>（${mktLast.toFixed(0)} ＜ MA60 ${mktMA60.toFixed(0)}）暫不布局`;
+    else rb.textContent='大盤趨勢：載入中…';
+  }
   _sb('c-buy',stocks.filter(s=>s.sig.cls==='sig-buy').length);
   _sb('c-sell',stocks.filter(s=>s.sig.cls==='sig-sell').length);
   _sb('c-hold',stocks.filter(s=>s.sig.cls==='sig-hold').length);
@@ -1229,6 +1280,36 @@ function buildDetHTML(s,live){
       </div>
       <div style="font-size:10px;color:var(--text3);line-height:1.6">📊 ${note}</div>
       <div style="font-size:10px;color:var(--amber2);line-height:1.6;margin-top:4px">${warn}</div>
+    </div>`;
+  })()}
+  ${(()=>{
+    const ls=longState(s);
+    if(!ls) return '';
+    const col=ls.cls==='ls-strong'?'var(--green2)':ls.cls==='ls-weak'?'var(--red2)':ls.cls==='ls-hold'?'var(--amber2)':'var(--text2)';
+    const bg =ls.cls==='ls-strong'?'rgba(126,231,135,.12)':ls.cls==='ls-weak'?'rgba(255,161,152,.12)':ls.cls==='ls-hold'?'rgba(227,179,65,.12)':'rgba(139,148,158,.1)';
+    // 大盤季線狀態
+    const mkTxt = mktRegime==='bull'?`<span style="color:var(--green2)">站上季線</span>`
+                : mktRegime==='bear'?`<span style="color:var(--red2)">跌破季線</span>`:'—';
+    // 個股自身季線（若已載入日K）
+    let stkMA='';
+    const kd=s._kdata||s._kdata2m||[];
+    if(kd.length>=60){
+      const closes=kd.map(d=>+(d.c??d.close)).filter(Number.isFinite);
+      if(closes.length>=60){
+        const ma60=closes.slice(-60).reduce((a,b)=>a+b,0)/60;
+        const above=s.close>=ma60;
+        stkMA=`<div class="kv"><div class="kv-l">個股季線 MA60</div><div class="kv-v" style="color:${above?'var(--green2)':'var(--red2)'}">${ma60.toFixed(2)} ${above?'↑站上':'↓跌破'}</div></div>`;
+      }
+    }
+    return `<div class="ds"><div class="dst">長線策略狀態 <span style="font-size:10px;color:var(--text3);font-weight:400">(營收因子 × 大盤趨勢)</span></div>
+      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
+        <span style="font-size:14px;font-weight:700;color:${col};background:${bg};border-radius:6px;padding:5px 12px">${ls.icon} ${ls.lbl}</span>
+        <div class="kv2" style="flex:1;margin:0">
+          <div class="kv"><div class="kv-l">大盤季線</div><div class="kv-v" style="font-size:11px">${mkTxt}</div></div>
+          ${stkMA||'<div class="kv"><div class="kv-l">個股季線</div><div class="kv-v" style="font-size:11px;color:var(--text3)">展開K線後計算</div></div>'}
+        </div>
+      </div>
+      <div style="font-size:10px;color:var(--text3);line-height:1.6">🎯 ${ls.reason}</div>
     </div>`;
   })()}
   <div class="ds" id="holders-section">

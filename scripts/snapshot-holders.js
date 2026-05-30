@@ -2,22 +2,26 @@
 /**
  * 集保戶股權分散 週快照（GitHub Action 每週五 22:00 台北時間執行）
  *
+ * TDCC OpenAPI 2026 改版後：
+ *   - 整包資料一次回傳（67k+ 筆 / ~4000 檔），不需 N 個請求
+ *   - 欄位改繁中：證券代號 / 持股分級 / 人數 / 股數 / 占集保庫存數比例% / ﻿資料日期
+ *   - StockNo 參數無效（不過濾）
+ *   - 代號帶尾隨空白 ("2330  ")
+ *
  * 流程：
- *  1. 從 TWSE / TPEx 取得所有上市櫃股票代號清單
- *  2. 對每檔股票呼叫 TDCC OpenAPI 1-5 端點，計算 5 個聚合指標：
- *     k1   = 千張大戶持股 % (>1000張)
- *     h400 = 400張以上持股 %
- *     h100 = 100張以上持股 %
- *     r20  = 散戶<20張持股 %
- *     n1k  = 千張大戶人數
- *  3. 把全部結果寫入 data/holders_history/<YYYY-WNN>.json
- *  4. 更新 data/holders_history/latest.json 與 index.json
+ *  1. 一次 fetch TDCC 全部資料（~5-10 MB）
+ *  2. groupBy 證券代號，計算每檔 5 個聚合指標：
+ *     k1   = 千張大戶持股 % (>1000張, 持股分級=16)
+ *     h400 = 400張以上持股 % (持股分級 13-16)
+ *     h100 = 100張以上持股 % (持股分級 11-16)
+ *     r20  = 散戶<20張持股 % (持股分級 1-5)
+ *     n1k  = 千張大戶人數 (持股分級=16)
+ *  3. 寫入 data/holders_history/<YYYY-WNN>.json
+ *  4. 更新 latest.json + index.json
  *  5. 刪除超過 52 週的舊快照
  *
- * 直接執行：node scripts/snapshot-holders.js
  * 環境變數：
- *   LIMIT=N        只跑前 N 檔（測試用）
- *   STOCK_LIST=... 自訂股票清單（逗號分隔），跳過 TWSE/TPEx 抓清單
+ *   LIMIT=N        只輸出前 N 檔（測試用，已照代號數字排序，會跳過 ETF）
  */
 
 const fs = require('fs').promises;
@@ -26,12 +30,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const DATA_DIR = path.join(ROOT, 'data', 'holders_history');
 const KEEP_WEEKS = 52;
-const CONCURRENCY = 10;          // 同時抓幾檔（TDCC 沒明確 rate limit，保守一點）
-const REQUEST_TIMEOUT_MS = 15000;
 
-// ───────────────────────────────────────────────────────
-// utils
-// ───────────────────────────────────────────────────────
 function isoWeek(d) {
   const date = new Date(Date.UTC(d.getFullYear(), d.getMonth(), d.getDate()));
   date.setUTCDate(date.getUTCDate() + 4 - (date.getUTCDay() || 7));
@@ -39,185 +38,116 @@ function isoWeek(d) {
   const weekNum = Math.ceil((((date - yearStart) / 86400000) + 1) / 7);
   return `${date.getUTCFullYear()}-W${String(weekNum).padStart(2, '0')}`;
 }
-function todayISO() {
-  return new Date().toISOString().slice(0, 10);
-}
-async function fetchWithTimeout(url, opts = {}, timeoutMs = REQUEST_TIMEOUT_MS) {
-  const ctrl = new AbortController();
-  const timer = setTimeout(() => ctrl.abort(), timeoutMs);
-  try {
-    return await fetch(url, { ...opts, signal: ctrl.signal });
-  } finally {
-    clearTimeout(timer);
-  }
-}
-async function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+function todayISO() { return new Date().toISOString().slice(0, 10); }
 
-// ───────────────────────────────────────────────────────
-// 取得全部上市櫃股票清單
-// ───────────────────────────────────────────────────────
-async function fetchStockList() {
-  if (process.env.STOCK_LIST) {
-    return process.env.STOCK_LIST.split(',').map(s => s.trim()).filter(Boolean);
-  }
-  const ids = new Set();
-
-  // TWSE 上市
-  try {
-    const r = await fetchWithTimeout(
-      'https://openapi.twse.com.tw/v1/exchangeReport/STOCK_DAY_ALL',
-      { headers: { 'Accept': 'application/json' } }
-    );
-    if (r.ok) {
-      const arr = await r.json();
-      for (const x of arr) {
-        if (x.Code && /^\d{4,6}$/.test(x.Code)) ids.add(x.Code);
-      }
-      console.log(`TWSE: ${ids.size} stocks`);
-    }
-  } catch (e) { console.warn('TWSE list failed:', e.message); }
-
-  // TPEx 上櫃
-  try {
-    const r = await fetchWithTimeout(
-      'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes',
-      { headers: { 'Accept': 'application/json' } }
-    );
-    if (r.ok) {
-      const arr = await r.json();
-      const before = ids.size;
-      for (const x of arr) {
-        if (x.SecuritiesCompanyCode && /^\d{4,6}$/.test(x.SecuritiesCompanyCode)) {
-          ids.add(x.SecuritiesCompanyCode);
-        }
-      }
-      console.log(`TPEx: +${ids.size - before} stocks`);
-    }
-  } catch (e) { console.warn('TPEx list failed:', e.message); }
-
-  return [...ids].sort();
-}
-
-// ───────────────────────────────────────────────────────
-// TDCC 抓單檔股權分散 + 聚合
-// ───────────────────────────────────────────────────────
-async function fetchHolders(stockId) {
-  const url = `https://openapi.tdcc.com.tw/v1/opendata/1-5?StockNo=${stockId}`;
-  const r = await fetchWithTimeout(url, {
-    headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
-  });
-  if (!r.ok) return null;
-  const data = await r.json();
-  if (!Array.isArray(data) || data.length === 0) return null;
-
-  // 用 HolderNum 直接歸組
-  const ratioByLevel = {};
-  const peopleByLevel = {};
-  for (const d of data) {
-    if (d.HolderNum === '17') continue; // 跳過合計
-    const lv = parseInt(d.HolderNum) || 0;
-    const ratio = parseFloat(d.Percent) || 0;
-    const people = parseInt((d.People || '0').replace(/,/g, '')) || 0;
-    ratioByLevel[lv]  = (ratioByLevel[lv]  || 0) + ratio;
-    peopleByLevel[lv] = (peopleByLevel[lv] || 0) + people;
-  }
-  const sumR = (...lvs) => lvs.reduce((s, lv) => s + (ratioByLevel[lv] || 0), 0);
-
-  return {
-    scaDate: data[0]?.ScaDate || '',
-    k1:   +sumR(16).toFixed(2),                  // 千張大戶
-    h400: +sumR(13,14,15,16).toFixed(2),         // 400張+
-    h100: +sumR(11,12,13,14,15,16).toFixed(2),   // 100張+ (嚴格)
-    r20:  +sumR(1,2,3,4,5).toFixed(2),           // 散戶<20張
-    n1k:  peopleByLevel[16] || 0,                // 千張大戶人數
-  };
-}
-
-// ───────────────────────────────────────────────────────
-// 並行控制
-// ───────────────────────────────────────────────────────
-async function mapPool(items, fn, concurrency) {
-  const results = new Array(items.length);
-  let idx = 0;
-  const workers = Array.from({ length: concurrency }, async () => {
-    while (true) {
-      const i = idx++;
-      if (i >= items.length) return;
-      try {
-        results[i] = await fn(items[i], i);
-      } catch (e) {
-        results[i] = null;
-      }
-    }
-  });
-  await Promise.all(workers);
-  return results;
-}
-
-// ───────────────────────────────────────────────────────
-// Main
-// ───────────────────────────────────────────────────────
 (async () => {
   await fs.mkdir(DATA_DIR, { recursive: true });
 
-  const stocks = await fetchStockList();
-  const limit = parseInt(process.env.LIMIT) || stocks.length;
-  const target = stocks.slice(0, limit);
-  console.log(`Snapshot target: ${target.length} stocks, concurrency=${CONCURRENCY}`);
-
-  let okCount = 0, failCount = 0;
-  const stocksMap = {};
-  let scaDate = '';
-
+  console.log('Fetching TDCC bulk dataset...');
   const t0 = Date.now();
-  await mapPool(target, async (id, i) => {
-    if (i > 0 && i % 200 === 0) {
-      console.log(`Progress: ${i}/${target.length} (ok=${okCount}, fail=${failCount}) — ${((Date.now()-t0)/1000).toFixed(0)}s`);
+  const r = await fetch('https://openapi.tdcc.com.tw/v1/opendata/1-5', {
+    headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
+  });
+  if (!r.ok) throw new Error(`TDCC HTTP ${r.status}`);
+  const all = await r.json();
+  console.log(`Got ${all.length} records in ${((Date.now()-t0)/1000).toFixed(1)}s`);
+
+  if (!Array.isArray(all) || all.length === 0) {
+    throw new Error('TDCC returned empty dataset');
+  }
+
+  // 依股票代號分組
+  const groups = new Map();
+  let scaDate = '';
+  for (const rec of all) {
+    const code = (rec['證券代號'] || '').trim();
+    if (!code) continue;
+    if (!groups.has(code)) groups.set(code, []);
+    groups.get(code).push(rec);
+    if (!scaDate) {
+      // 欄位名稱有 BOM 字元（U+FEFF）
+      scaDate = rec['﻿資料日期'] || rec['資料日期'] || '';
     }
-    const h = await fetchHolders(id);
-    if (h) {
-      stocksMap[id] = { k1: h.k1, h400: h.h400, h100: h.h100, r20: h.r20, n1k: h.n1k };
-      if (!scaDate && h.scaDate) scaDate = h.scaDate;
-      okCount++;
-    } else {
-      failCount++;
+  }
+  console.log(`Grouped into ${groups.size} unique stocks. ScaDate: ${scaDate}`);
+
+  // 聚合每檔
+  const stocksMap = {};
+  for (const [code, recs] of groups) {
+    const ratio = {};     // {level: ratio}
+    const people = {};    // {level: people}
+    for (const rec of recs) {
+      const lv = parseInt(rec['持股分級']) || 0;
+      if (lv === 17 || lv === 0) continue; // 跳過合計
+      const p  = parseFloat(rec['占集保庫存數比例%']) || 0;
+      const ppl= parseInt((rec['人數']||'0').replace(/,/g,'')) || 0;
+      ratio[lv]  = (ratio[lv]  || 0) + p;
+      people[lv] = (people[lv] || 0) + ppl;
     }
-  }, CONCURRENCY);
+    // TDCC 持股分級：15=1,000,001股以上(千張大戶)、16=差異數調整、17=合計
+    //   12=400,001-600,000 / 13=600,001-800,000 / 14=800,001-1,000,000
+    //   10=100,001-200,000 / 11=200,001-400,000 / 1-5=1~20,000股(散戶<20張)
+    const sumR = (...lvs) => lvs.reduce((s,lv) => s + (ratio[lv]||0), 0);
+    const k1   = +sumR(15).toFixed(2);                  // 千張大戶 (>1000張)
+    const h400 = +sumR(12,13,14,15).toFixed(2);         // 400張以上
+    const h100 = +sumR(10,11,12,13,14,15).toFixed(2);   // 100張以上
+    const r20  = +sumR(1,2,3,4,5).toFixed(2);           // 散戶<20張
+    const n1k  = people[15] || 0;                       // 千張大戶人數
+    // 全 0 的紀錄（沒有實際持股資料）跳過，避免污染快照
+    if (k1 === 0 && h400 === 0 && h100 === 0 && r20 === 0 && n1k === 0) continue;
+    stocksMap[code] = { k1, h400, h100, r20, n1k };
+  }
+  console.log(`Aggregated ${Object.keys(stocksMap).length} stocks with real data`);
+
+  // LIMIT（依代號排序後取前 N，跳過 ETF "00" 開頭）
+  let finalMap = stocksMap;
+  const limit = parseInt(process.env.LIMIT) || 0;
+  if (limit > 0) {
+    const sortedCodes = Object.keys(stocksMap)
+      .filter(c => !c.startsWith('00'))   // 跳過 ETF
+      .filter(c => /^\d{4,6}$/.test(c))   // 只要 4-6 位數字（正股）
+      .sort();
+    finalMap = {};
+    for (const c of sortedCodes.slice(0, limit)) finalMap[c] = stocksMap[c];
+    console.log(`LIMIT=${limit} applied → ${Object.keys(finalMap).length} stocks`);
+  }
 
   const week = isoWeek(new Date());
   const snapshot = {
     week,
     captured: todayISO(),
     scaDate,
-    count: okCount,
-    stocks: stocksMap
+    count: Object.keys(finalMap).length,
+    stocks: finalMap
   };
 
-  const weekFile = path.join(DATA_DIR, `${week}.json`);
-  await fs.writeFile(weekFile, JSON.stringify(snapshot));
+  await fs.writeFile(path.join(DATA_DIR, `${week}.json`), JSON.stringify(snapshot));
   await fs.writeFile(path.join(DATA_DIR, 'latest.json'), JSON.stringify(snapshot));
 
   // 更新 index.json
   const files = (await fs.readdir(DATA_DIR))
     .filter(f => /^\d{4}-W\d{2}\.json$/.test(f))
     .sort();
-  const indexJson = {
-    weeks: files.map(f => f.replace('.json', '')),
-    updated: todayISO()
-  };
-  await fs.writeFile(path.join(DATA_DIR, 'index.json'), JSON.stringify(indexJson, null, 2));
+  await fs.writeFile(
+    path.join(DATA_DIR, 'index.json'),
+    JSON.stringify({ weeks: files.map(f => f.replace('.json','')), updated: todayISO() }, null, 2)
+  );
 
-  // 刪除超過 KEEP_WEEKS 的舊快照
+  // 刪舊週
   if (files.length > KEEP_WEEKS) {
-    const toDelete = files.slice(0, files.length - KEEP_WEEKS);
-    for (const f of toDelete) {
+    for (const f of files.slice(0, files.length - KEEP_WEEKS)) {
       await fs.unlink(path.join(DATA_DIR, f));
-      console.log(`Deleted old snapshot: ${f}`);
+      console.log(`Deleted old: ${f}`);
     }
   }
 
   const elapsed = ((Date.now() - t0) / 1000).toFixed(1);
-  console.log(`\n✓ Snapshot ${week} written — ok=${okCount}, fail=${failCount}, ${elapsed}s`);
+  console.log(`\n✓ Snapshot ${week} written — ${snapshot.count} stocks, scaDate=${scaDate}, ${elapsed}s`);
+
+  // 顯示樣本
+  console.log('\nSample (台積電 2330):', JSON.stringify(stocksMap['2330'] || 'NOT FOUND'));
+  console.log('Sample (鴻海 2317):', JSON.stringify(stocksMap['2317'] || 'NOT FOUND'));
+  console.log('Sample (國巨 2327):', JSON.stringify(stocksMap['2327'] || 'NOT FOUND'));
 })().catch(e => {
   console.error('FATAL:', e);
   process.exit(1);

@@ -77,14 +77,28 @@ export default async function handler(req, res) {
       if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
 
       // ── 策略 A：TDCC OpenAPI (openapi.tdcc.com.tw/v1/opendata/1-5) ──
+      // 2026 改版後：欄位改繁中、StockNo 參數不再過濾（整包回傳）、代號有尾隨空白
       try {
         const url = `https://openapi.tdcc.com.tw/v1/opendata/1-5?StockNo=${stock_id}`;
         const r = await fetch(url, {
           headers: { 'Accept': 'application/json', 'User-Agent': 'Mozilla/5.0' }
         });
         if (r.ok) {
-          const data = await r.json();
-          if (Array.isArray(data) && data.length > 0) {
+          let all = await r.json();
+          // 在伺服器端自行 filter（StockNo 參數無效）
+          if (Array.isArray(all)) {
+            all = all.filter(d => (d['證券代號']||d.StockNo||'').trim() === stock_id);
+          }
+          // 統一翻譯成英文欄位（向後相容下方既有邏輯）
+          const data = (Array.isArray(all) ? all : []).map(d => ({
+            StockNo:   (d['證券代號']||d.StockNo||'').trim(),
+            HolderNum: (d['持股分級']||d.HolderNum||'').toString().trim(),
+            People:    (d['人數']||d.People||'0').toString().trim(),
+            Shares:    (d['股數']||d.Shares||'0').toString().trim(),
+            Percent:   (d['占集保庫存數比例%']||d.Percent||'0').toString().trim(),
+            ScaDate:   (d['﻿資料日期']||d['資料日期']||d.ScaDate||'').toString().trim(),
+          }));
+          if (data.length > 0) {
             // 實際欄位：ScaDate, StockNo, StockName, HolderNum(分級代號),
             //           People(人數), Shares(股數), Percent(%)
             // HolderNum: 1=1-999股, 2=1,000-5,000, ... 17=超過 (每個等級對應股數範圍)
@@ -137,14 +151,14 @@ export default async function handler(req, res) {
             const sumP = (...lvs) => lvs.reduce((s,lv)=>s+(peopleByLevel[lv]||0), 0);
 
             // 5 個聚合指標（百分比 0~100）
-            const k1   = sumR(16);                      // 千張大戶 (>1000張)
-            const h400 = sumR(13,14,15,16);             // 400張以上
-            const h100 = sumR(10,11,12,13,14,15,16);    // 100張以上（含 50-100張的近似）
-            // 修正：100張以上應該不含 50-100張，但 TDCC 10=50,001-100,000股=50-100張
-            // 嚴格 100張+ 應該從 HolderNum=11 起算
-            const h100strict = sumR(11,12,13,14,15,16);
-            const r20  = sumR(1,2,3,4,5);               // 散戶<20張 (HolderNum 1-5)
-            const n1k  = sumP(16);                      // 千張大戶人數
+            // TDCC 持股分級：15=1,000,001股以上(千張大戶)、16=差異數調整、17=合計
+            //   12=400,001-600,000 / 13=600,001-800,000 / 14=800,001-1,000,000
+            //   10=100,001-200,000 / 11=200,001-400,000 / 1-5=1~20,000股(散戶<20張)
+            const k1   = sumR(15);                      // 千張大戶 (>1000張)
+            const h400 = sumR(12,13,14,15);             // 400張以上
+            const h100strict = sumR(10,11,12,13,14,15); // 100張以上
+            const r20  = sumR(1,2,3,4,5);               // 散戶<20張
+            const n1k  = sumP(15);                      // 千張大戶人數
 
             // 大/散戶（既有定義：1000張）
             let bigRatio=0, smallRatio=0, bigPeople=0, smallPeople=0;

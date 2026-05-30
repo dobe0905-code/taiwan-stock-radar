@@ -103,28 +103,29 @@ export default async function handler(req, res) {
             //           People(人數), Shares(股數), Percent(%)
             // HolderNum: 1=1-999股, 2=1,000-5,000, ... 17=超過 (每個等級對應股數範圍)
             // TDCC 等級代號對應張數範圍（1張=1000股）
+            // TDCC OpenAPI 1-5 正確分級（1張=1000股）
             const levelMap = {
-              '1':  { label:'1-999股(未滿1張)',    lots:0 },
-              '2':  { label:'1-999張',             lots:1 },    // 1,000-999,000股 = 1-999張
-              '3':  { label:'1,000-5,000股',       lots:0 },    // 未滿1張
-              '4':  { label:'5,001-10,000股',      lots:5 },
-              '5':  { label:'10,001-15,000股',     lots:10 },
-              '6':  { label:'15,001-20,000股',     lots:15 },
-              '7':  { label:'20,001-30,000股',     lots:20 },
-              '8':  { label:'30,001-40,000股',     lots:30 },
-              '9':  { label:'40,001-50,000股',     lots:40 },
-              '10': { label:'50,001-100,000股',    lots:50 },
-              '11': { label:'100,001-200,000股',   lots:100 },
-              '12': { label:'200,001-400,000股',   lots:200 },
-              '13': { label:'400,001-600,000股',   lots:400 },
-              '14': { label:'600,001-800,000股',   lots:600 },
-              '15': { label:'800,001-1,000,000股', lots:800 },
-              '16': { label:'超過1,000,000股(1000張以上)', lots:1000 },
-              '17': { label:'合計',                lots:-1 }
+              '1':  { label:'1-999股(未滿1張)',       lots:0 },
+              '2':  { label:'1,000-5,000股(1-5張)',   lots:1 },
+              '3':  { label:'5,001-10,000股(5-10張)', lots:5 },
+              '4':  { label:'10,001-15,000股(10-15張)', lots:10 },
+              '5':  { label:'15,001-20,000股(15-20張)', lots:15 },
+              '6':  { label:'20,001-30,000股(20-30張)', lots:20 },
+              '7':  { label:'30,001-40,000股(30-40張)', lots:30 },
+              '8':  { label:'40,001-50,000股(40-50張)', lots:40 },
+              '9':  { label:'50,001-100,000股(50-100張)', lots:50 },
+              '10': { label:'100,001-200,000股(100-200張)', lots:100 },
+              '11': { label:'200,001-400,000股(200-400張)', lots:200 },
+              '12': { label:'400,001-600,000股(400-600張)', lots:400 },
+              '13': { label:'600,001-800,000股(600-800張)', lots:600 },
+              '14': { label:'800,001-1,000,000股(800-1000張)', lots:800 },
+              '15': { label:'1,000,001股以上(1000張以上)', lots:1000 },
+              '16': { label:'差異數調整',             lots:-1 },
+              '17': { label:'合計',                   lots:-1 }
             };
 
             const rows = data
-              .filter(d => d.HolderNum !== '17') // 排除合計列
+              .filter(d => d.HolderNum !== '17' && d.HolderNum !== '16') // 排除合計列與差異數調整
               .map(d => {
                 const info = levelMap[d.HolderNum] || { label: d.HolderNum, lots: 0 };
                 return {
@@ -159,6 +160,7 @@ export default async function handler(req, res) {
             const h100strict = sumR(10,11,12,13,14,15); // 100張以上
             const r20  = sumR(1,2,3,4,5);               // 散戶<20張
             const n1k  = sumP(15);                      // 千張大戶人數
+            const r20People = sumP(1,2,3,4,5);          // 散戶<20張 人數
 
             // 大/散戶（既有定義：1000張）
             let bigRatio=0, smallRatio=0, bigPeople=0, smallPeople=0;
@@ -178,8 +180,9 @@ export default async function handler(req, res) {
                 // 既有（向後相容）
                 bigHolder:   parseFloat(bigRatio.toFixed(2)),
                 smallHolder: parseFloat(smallRatio.toFixed(2)),
-                bigPeople, smallPeople,
-                totalPeople: bigPeople + smallPeople,
+                bigPeople,
+                smallPeople: r20People,            // 散戶<20張 人數（前端用）
+                totalPeople: bigPeople + smallPeople, // 真實總人數
                 // 新聚合
                 k1:   parseFloat(k1.toFixed(2)),         // 千張大戶 %
                 h400: parseFloat(h400.toFixed(2)),       // 400張+ %

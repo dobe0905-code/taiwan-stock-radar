@@ -193,7 +193,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 <div id="header">
   <div class="search-wrap">
     <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
-    <input id="searchInput" type="text" placeholder="個股或ETF代號/名稱查詢..." oninput="clearTimeout(window._searchT);window._searchT=setTimeout(renderTable,180)">
+    <input id="searchInput" type="text" placeholder="個股或ETF代號/名稱查詢..." oninput="clearTimeout(window._searchT);window._searchT=setTimeout(onSearch,180)">
   </div>
   <div class="header-right">
     <div class="api-badge api-off" id="twseBadge">
@@ -678,6 +678,20 @@ function getFiltered(){
   };
   l.sort((a,b)=>(getV(a)-getV(b))*dir);
   return l;
+}
+
+// 搜尋處理：不論目前在哪個頁籤（全球指數/美股/大盤K線），
+// 一旦輸入個股代號/名稱就切回台股表格，才看得到跨全部股票的搜尋結果
+function onSearch(){
+  const q=(document.getElementById('searchInput')?.value||'').trim();
+  if(q && (mkt==='global'||mkt==='us')){
+    mkt='all';
+    document.querySelectorAll('.mkt-tab').forEach(e=>e.classList.remove('active'));
+    const allTab=document.querySelector('.mkt-tab');
+    if(allTab) allTab.classList.add('active');
+    showTWTbl();
+  }
+  renderTable();
 }
 
 // 表頭排序狀態（預設：漲跌幅 由大到小）
@@ -2109,6 +2123,8 @@ function setMkt(m,el){
 function showTWTbl(){
   const glTbl=document.getElementById('global-panel');
   if(glTbl) glTbl.style.display='none';
+  const usTbl=document.getElementById('us-panel');
+  if(usTbl) usTbl.style.display='none';
   document.querySelector('.tbl-wrap').style.display='';
   document.querySelector('.filter-bar').style.display='';
 }

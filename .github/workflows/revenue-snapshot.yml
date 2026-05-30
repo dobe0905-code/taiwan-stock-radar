@@ -1,0 +1,38 @@
+name: Revenue Monthly Snapshot
+
+on:
+  schedule:
+    # 每月 11 號 14:00 UTC = 22:00 台北。台股月營收法定最晚每月10號公布，11號抓最穩
+    - cron: '0 14 11 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run revenue snapshot
+        run: node scripts/snapshot-revenue.js
+
+      - name: Commit & push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/revenue/
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          MONTH=$(date -u -d 'now' +'%Y-%m')
+          git commit -m "chore(revenue): monthly snapshot ${MONTH}"
+          git push

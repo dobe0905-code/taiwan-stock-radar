@@ -70,6 +70,32 @@ export default async function handler(req, res) {
     }
 
     // ══════════════════════════════════════════════════
+    // 月營收 YoY（GitHub Action 每月快照，回測驗證的選股因子）
+    //   type=revenue&stock_id=2330 → 單檔
+    //   type=revenue               → 全市場 map（主表格標籤用）
+    // ══════════════════════════════════════════════════
+    if (type === 'revenue') {
+      try {
+        const file = path.join(process.cwd(), 'data', 'revenue', 'latest.json');
+        const snap = JSON.parse(await fs.readFile(file, 'utf8'));
+        res.setHeader('Cache-Control', 's-maxage=21600, stale-while-revalidate');
+        if (stock_id) {
+          const s = snap.stocks?.[stock_id] || null;
+          return res.status(200).json({ stock_id, month: snap.month, data: s, source: 'mops_openapi' });
+        }
+        // 全市場：精簡欄位降低體積
+        const map = {};
+        for (const c in snap.stocks) {
+          const x = snap.stocks[c];
+          map[c] = { yoy: x.yoy, mom: x.mom, tier: x.tier };
+        }
+        return res.status(200).json({ month: snap.month, updated: snap.updated, count: snap.count, dist: snap.dist, stocks: map, source: 'mops_openapi' });
+      } catch (e) {
+        return res.status(200).json({ stock_id: stock_id || null, data: null, stocks: {}, error: e.message });
+      }
+    }
+
+    // ══════════════════════════════════════════════════
     // 1. 集保持股分散（大戶/散戶）
     //    策略：TDCC OpenAPI → TDCC 政府開放平台 → TDCC 網頁POST（備援）
     // ══════════════════════════════════════════════════

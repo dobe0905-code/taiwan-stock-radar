@@ -1201,7 +1201,6 @@ function buildDetHTML(s,live){
   </div>`:''}
   <div class="ds" id="tech-analysis-section" style="margin-bottom:14px">
     <div class="dst">技術分析狀態</div>
-    <div id="swing-state-bar" style="margin-bottom:8px"></div>
     <div id="tech-status-row" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px">
       <div style="background:var(--bg3);border-radius:7px;padding:9px 11px;border:1px solid var(--border)">
         <div style="font-size:9px;color:var(--text3);margin-bottom:4px">狀態</div>
@@ -1285,32 +1284,26 @@ function buildDetHTML(s,live){
   })()}
   ${(()=>{
     const ls=longState(s);
-    if(!ls) return '';
-    const col=ls.cls==='ls-strong'?'var(--green2)':ls.cls==='ls-weak'?'var(--red2)':ls.cls==='ls-hold'?'var(--amber2)':'var(--text2)';
-    const bg =ls.cls==='ls-strong'?'rgba(126,231,135,.12)':ls.cls==='ls-weak'?'rgba(255,161,152,.12)':ls.cls==='ls-hold'?'rgba(227,179,65,.12)':'rgba(139,148,158,.1)';
-    // 大盤季線狀態
+    const col=ls?(ls.cls==='ls-strong'?'var(--green2)':ls.cls==='ls-weak'?'var(--red2)':ls.cls==='ls-hold'?'var(--amber2)':'var(--text2)'):'var(--text2)';
+    const bg =ls?(ls.cls==='ls-strong'?'rgba(126,231,135,.12)':ls.cls==='ls-weak'?'rgba(255,161,152,.12)':ls.cls==='ls-hold'?'rgba(227,179,65,.12)':'rgba(139,148,158,.1)'):'rgba(139,148,158,.1)';
     const mkTxt = mktRegime==='bull'?`<span style="color:var(--green2)">站上季線</span>`
                 : mktRegime==='bear'?`<span style="color:var(--red2)">跌破季線</span>`:'—';
-    // 個股自身季線（若已載入日K）
-    let stkMA='';
-    const kd=s._kdata||s._kdata2m||[];
-    if(kd.length>=60){
-      const closes=kd.map(d=>+(d.c??d.close)).filter(Number.isFinite);
-      if(closes.length>=60){
-        const ma60=closes.slice(-60).reduce((a,b)=>a+b,0)/60;
-        const above=s.close>=ma60;
-        stkMA=`<div class="kv"><div class="kv-l">個股季線 MA60</div><div class="kv-v" style="color:${above?'var(--green2)':'var(--red2)'}">${ma60.toFixed(2)} ${above?'↑站上':'↓跌破'}</div></div>`;
-      }
-    }
-    return `<div class="ds"><div class="dst">長線策略狀態 <span style="font-size:10px;color:var(--text3);font-weight:400">(營收因子 × 大盤趨勢)</span></div>
-      <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
-        <span style="font-size:14px;font-weight:700;color:${col};background:${bg};border-radius:6px;padding:5px 12px">${ls.icon} ${ls.lbl}</span>
-        <div class="kv2" style="flex:1;margin:0">
-          <div class="kv"><div class="kv-l">大盤季線</div><div class="kv-v" style="font-size:11px">${mkTxt}</div></div>
-          ${stkMA||'<div class="kv"><div class="kv-l">個股季線</div><div class="kv-v" style="font-size:11px;color:var(--text3)">展開K線後計算</div></div>'}
-        </div>
+    const longRow = ls
+      ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:5px">
+           <span style="font-size:14px;font-weight:700;color:${col};background:${bg};border-radius:6px;padding:5px 12px">${ls.icon} ${ls.lbl}</span>
+           <span style="font-size:10px;color:var(--text2)">大盤季線：${mkTxt}</span>
+         </div>
+         <div style="font-size:10px;color:var(--text3);line-height:1.6">🎯 ${ls.reason}</div>`
+      : `<div style="font-size:11px;color:var(--text3)">無月營收資料，長線狀態無法判斷</div>`;
+    return `<div class="ds"><div class="dst">操作策略狀態 <span style="font-size:10px;color:var(--text3);font-weight:400">(長線選股 × 短線擇時)</span></div>
+      <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
+        <div style="font-size:10px;color:var(--accent2);margin-bottom:5px;font-weight:600">長線（選股）· 營收因子 × 大盤趨勢</div>
+        ${longRow}
       </div>
-      <div style="font-size:10px;color:var(--text3);line-height:1.6">🎯 ${ls.reason}</div>
+      <div>
+        <div style="font-size:10px;color:var(--accent2);margin-bottom:5px;font-weight:600">短線（擇時）· 均線排列 × 季線</div>
+        <div id="swing-inline" style="font-size:11px;color:var(--text3)">展開K線後計算…</div>
+      </div>
     </div>`;
   })()}
   <div class="ds" id="holders-section">
@@ -1582,9 +1575,9 @@ async function buildDetCharts(s){
   // 短線狀態：用回測中最一致的「均線排列 × 季線」規則
   // 回測(台灣50+中小型,2年)：強多 20日超額 +0.4%、強空 −2.5%；帶量突破20日高 +0.7%
   function renderSwingState(closes, vols, ma60){
-    const el=document.getElementById('swing-state-bar');
+    const el=document.getElementById('swing-inline');
     if(!el) return;
-    if(closes.length<60){ el.innerHTML='<div style="font-size:11px;color:var(--text3)">短線狀態：日K資料不足（需 60 筆以上）</div>'; return; }
+    if(closes.length<60){ el.innerHTML='<span style="font-size:11px;color:var(--text3)">日K資料不足（需 60 筆以上）</span>'; return; }
     const mean=(a,n)=>a.slice(-n).reduce((x,y)=>x+y,0)/n;
     const ma5=mean(closes,5), ma10=mean(closes,10), ma20=mean(closes,20);
     const cur=closes[closes.length-1];
@@ -1611,11 +1604,10 @@ async function buildDetCharts(s){
         brk=`<span style="font-size:10px;color:var(--accent2);background:rgba(56,139,253,.14);border-radius:4px;padding:2px 7px;margin-left:6px" title="收盤創20日新高且帶量（≥1.5倍20日均量）；回測20日超額 +0.7%，擇時參考">⚡帶量突破</span>`;
       }
     }
-    el.innerHTML=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap">
+    el.innerHTML=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
         <span style="font-size:14px;font-weight:700;color:${col};background:${bg};border-radius:6px;padding:5px 12px">${icon} ${lbl}</span>${brk}
-        <span style="font-size:9px;color:var(--text3)">短線操作狀態 · 回測驗證</span>
       </div>
-      <div style="font-size:10px;color:var(--text3);line-height:1.6;margin-top:5px">🎯 ${reason}</div>`;
+      <div style="font-size:10px;color:var(--text3);line-height:1.6">📊 ${reason}</div>`;
   }
 
   // ── MA 均線乖離率（季線公式：BIAS = (現價 - MA60) / MA60 × 100%）──

@@ -1332,7 +1332,7 @@ async function buildDetCharts(s){
 
   // ── K 線資料 → 技術分析 + MA 乖離 ──
   try{
-    const r=await fetch(`/api/quote?type=kline&stock_id=${s.id}`);
+    const r=await fetch(`/api/quote?type=kline&stock_id=${s.id}&market=${s.market||'twse'}`);
     const j=await r.json();
     const kdata=(j.data||[]);
     if(kdata.length>0){

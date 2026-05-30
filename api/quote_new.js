@@ -206,32 +206,76 @@ export default async function handler(req, res) {
     // ══════════════════════════════════════════════════
     if (type === 'kline') {
       if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
-      const today = new Date();
-      const results = [];
-      // 抓4個月，確保足夠計算 MA60（季線）
-      for (let m = 0; m < 4; m++) {
-        const d = new Date(today.getFullYear(), today.getMonth()-m, 1);
-        const ym = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}01`;
-        try {
-          const r = await fetch(
-            `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=${ym}&stockNo=${stock_id}&response=json`,
-            { headers:{'Accept':'application/json','Referer':'https://www.twse.com.tw/'} }
-          );
-          const j = await r.json();
-          if (j.data?.length > 0) {
-            results.unshift(...j.data.map(row => ({
-              date:  row[0].replace(/\//g,'-'),
-              open:  parseFloat(row[3]?.replace(/,/g,''))||0,
-              high:  parseFloat(row[4]?.replace(/,/g,''))||0,
-              low:   parseFloat(row[5]?.replace(/,/g,''))||0,
-              close: parseFloat(row[6]?.replace(/,/g,''))||0,
-              volume:Math.round((parseInt(row[1]?.replace(/,/g,''))||0)/1000), // 股→張
-            })));
-          }
-        } catch(e) { /* skip */ }
+      let results = [];
+      let source = 'EMPTY';
+
+      // ── 主要：Yahoo Finance v8 chart（雲端可用；www.twse 會封鎖 Vercel 機房 IP）──
+      //    上市後綴 .TW、上櫃後綴 .TWO；未指定 market 則兩者都試
+      async function yahooKline(symbol){
+        const r = await fetch(
+          `https://query1.finance.yahoo.com/v8/finance/chart/${symbol}?range=1y&interval=1d`,
+          { headers:{ 'Accept':'application/json', 'User-Agent':'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36' } }
+        );
+        if(!r.ok) return [];
+        const j = await r.json();
+        const res0 = j.chart?.result?.[0];
+        if(!res0) return [];
+        const ts = res0.timestamp||[];
+        const q  = res0.indicators?.quote?.[0]||{};
+        const out = [];
+        for(let i=0;i<ts.length;i++){
+          const c = q.close?.[i];
+          if(c==null) continue;
+          const d = new Date(ts[i]*1000);
+          const date = `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+          out.push({
+            date,
+            open:   +(q.open?.[i]  ?? c),
+            high:   +(q.high?.[i]  ?? c),
+            low:    +(q.low?.[i]   ?? c),
+            close:  +c,
+            volume: Math.round((q.volume?.[i]||0)/1000), // 股→張
+          });
+        }
+        return out;
       }
+
+      const mkt = req.query.market;
+      const suffixes = mkt==='tpex' ? ['TWO','TW'] : mkt==='twse' ? ['TW','TWO'] : ['TW','TWO'];
+      for(const suf of suffixes){
+        try { results = await yahooKline(`${stock_id}.${suf}`); } catch(e) { /* skip */ }
+        if(results.length>0){ source = `YAHOO_${suf}`; break; }
+      }
+
+      // ── 備援：TWSE 官網 STOCK_DAY（本機可用，Vercel 多被封，留作最後手段）──
+      if(results.length===0){
+        const today = new Date();
+        for (let m = 0; m < 4; m++) {
+          const d = new Date(today.getFullYear(), today.getMonth()-m, 1);
+          const ym = `${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}01`;
+          try {
+            const r = await fetch(
+              `https://www.twse.com.tw/rwd/zh/afterTrading/STOCK_DAY?date=${ym}&stockNo=${stock_id}&response=json`,
+              { headers:{'Accept':'application/json','Referer':'https://www.twse.com.tw/'} }
+            );
+            const j = await r.json();
+            if (j.data?.length > 0) {
+              results.unshift(...j.data.map(row => ({
+                date:  row[0].replace(/\//g,'-'),
+                open:  parseFloat(row[3]?.replace(/,/g,''))||0,
+                high:  parseFloat(row[4]?.replace(/,/g,''))||0,
+                low:   parseFloat(row[5]?.replace(/,/g,''))||0,
+                close: parseFloat(row[6]?.replace(/,/g,''))||0,
+                volume:Math.round((parseInt(row[1]?.replace(/,/g,''))||0)/1000), // 股→張
+              })));
+            }
+          } catch(e) { /* skip */ }
+        }
+        if(results.length>0) source = 'TWSE_KLINE';
+      }
+
       res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate');
-      return res.status(200).json({ data:results, stock_id, source:'TWSE_KLINE' });
+      return res.status(200).json({ data:results, stock_id, source });
     }
 
     // ══════════════════════════════════════════════════
@@ -355,6 +399,54 @@ export default async function handler(req, res) {
     // ══════════════════════════════════════════════════
     if (type === 'institution_detail') {
       if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+
+      // ── 主要：FinMind（免 token，雲端可用）──
+      //    TWSE 已自 openapi 移除 T86，且 www.twse 會封鎖 Vercel 機房 IP
+      try {
+        const end = new Date();
+        const start = new Date(end.getTime() - 10*86400000); // 近10天涵蓋最後交易日
+        const fmt = d => `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+        const fmUrl = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockInstitutionalInvestorsBuySell&data_id=${stock_id}&start_date=${fmt(start)}&end_date=${fmt(end)}`;
+        const fr = await fetch(fmUrl, { headers:{ 'Accept':'application/json' } });
+        const fj = await fr.json();
+        const rows = fj.data || [];
+        if (rows.length > 0) {
+          // 取最後交易日，依投資人類別彙總 buy/sell（單位：股）
+          const lastDate = rows.reduce((mx,x)=> x.date>mx ? x.date : mx, rows[0].date);
+          const day = rows.filter(x => x.date === lastDate);
+          const agg = {};
+          for (const x of day) {
+            if (!agg[x.name]) agg[x.name] = { buy:0, sell:0 };
+            agg[x.name].buy  += x.buy  || 0;
+            agg[x.name].sell += x.sell || 0;
+          }
+          const g = k => agg[k] || { buy:0, sell:0 };
+          const lots = n => Math.round((n||0) / 1000); // 股→張
+          const fi = g('Foreign_Investor'), fds = g('Foreign_Dealer_Self'); // 外資 + 外資自營
+          const it = g('Investment_Trust');                                  // 投信
+          const ds = g('Dealer_self'),     dh  = g('Dealer_Hedging');        // 自營(自行+避險)
+          const foreignBuy  = lots(fi.buy + fds.buy);
+          const foreignSell = lots(fi.sell + fds.sell);
+          const foreignNet  = lots((fi.buy + fds.buy) - (fi.sell + fds.sell));
+          const trustBuy    = lots(it.buy);
+          const trustSell   = lots(it.sell);
+          const trustNet    = lots(it.buy - it.sell);
+          const dealerNet   = lots((ds.buy + dh.buy) - (ds.sell + dh.sell));
+          const totalNet    = lots(
+            (fi.buy + fds.buy + it.buy + ds.buy + dh.buy)
+          - (fi.sell + fds.sell + it.sell + ds.sell + dh.sell)
+          );
+          res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate');
+          return res.status(200).json({
+            stock_id,
+            data: { foreignBuy, foreignSell, foreignNet, trustBuy, trustSell, trustNet, dealerNet, totalNet },
+            source: 'FINMIND',
+            date: lastDate.replace(/-/g,'')
+          });
+        }
+      } catch(e) { /* fall through to TWSE */ }
+
+      // ── 備援：TWSE 官網 T86（Vercel 多被封；本機/偶爾可用）──
       try {
         const today = new Date();
         const yyyymmdd = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;

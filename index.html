@@ -214,8 +214,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <div class="sb-item active" onclick="setSF('all',this)"><span>全部股票</span><span class="sb-cnt" id="c-all">—</span></div>
     <div class="sb-item" onclick="setSF('wl',this)"><span>⭐ 我的自選股</span><span class="sb-cnt" id="c-wl">0</span></div>
     <div class="sb-label">選股因子（回測驗證）</div>
-    <div class="sb-item" onclick="setSF('rev_hi',this)" title="月營收年增>20%：回測20日對大盤超額+1.3%、勝率61%"><span>📈 營收高成長</span><span class="sb-cnt" id="c-rev_hi">—</span></div>
-    <div class="sb-item" onclick="setSF('rev_dn',this)" title="月營收年增<0%：回測20日跑輸大盤-3.3%，避雷用"><span>📉 營收衰退（避雷）</span><span class="sb-cnt" id="c-rev_dn">—</span></div>
+    <div class="sb-item" onclick="setSF('rev_hi',this)" title="月營收年增>20%：多頭/正常盤回測20日對大盤超額+1.3%、勝率61%（中小型股更強+1.7%）。⚠️順勢因子，2022空頭期回測會反轉失效，需配合大盤趨勢（指數站上月/季線才啟用）"><span>📈 營收高成長</span><span class="sb-cnt" id="c-rev_hi">—</span></div>
+    <div class="sb-item" onclick="setSF('rev_dn',this)" title="月營收年增<0%：多頭/正常盤回測20日跑輸大盤-3.3%，避雷用。⚠️空頭期此族群反而易均值回歸反彈，避雷效果僅限正常盤"><span>📉 營收衰退（避雷）</span><span class="sb-cnt" id="c-rev_dn">—</span></div>
     <div class="sb-label">市場類型</div>
     <div class="sb-item" onclick="setSF('twse',this)"><span>🏛 上市 TWSE</span><span class="sb-cnt" id="c-twse">—</span></div>
     <div class="sb-item" onclick="setSF('tpex',this)"><span>🏪 上櫃 TPEx</span><span class="sb-cnt" id="c-tpex">—</span></div>
@@ -1215,9 +1215,10 @@ function buildDetHTML(s,live){
     const tBg =tier==='高成長'?'rgba(126,231,135,.12)':tier==='衰退'?'rgba(255,161,152,.12)':'rgba(227,179,65,.12)';
     const yoyTxt=s.revYoY!=null?(s.revYoY>=0?'+':'')+s.revYoY.toFixed(1)+'%':'—';
     const momTxt=s.revMom!=null?(s.revMom>=0?'+':'')+s.revMom.toFixed(1)+'%':'—';
-    const note=tier==='高成長'?'回測：營收年增>20% → 20日對大盤超額 +1.3%、勝率 61%'
+    const note=tier==='高成長'?'回測：營收年增>20% → 20日對大盤超額 +1.3%、勝率 61%（中小型股更強 +1.7%）'
               :tier==='衰退'?'回測：營收年增<0% → 20日跑輸大盤 -3.3%，留意基本面轉弱'
               :'回測：營收年增 0~20% 區間對大盤無明顯超額';
+    const warn='⚠️ 順勢因子：2022 空頭期回測單調性反轉（高成長轉弱、衰退反彈），須配合大盤趨勢（指數站上月/季線）使用';
     return `<div class="ds"><div class="dst">月營收動能 ${revMonth?`<span style="font-size:10px;color:var(--text3);font-weight:400">(${revMonth} 公布)</span>`:''}</div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
         <span style="font-size:13px;font-weight:700;color:${tCol};background:${tBg};border-radius:6px;padding:4px 10px">${tier}</span>
@@ -1227,6 +1228,7 @@ function buildDetHTML(s,live){
         </div>
       </div>
       <div style="font-size:10px;color:var(--text3);line-height:1.6">📊 ${note}</div>
+      <div style="font-size:10px;color:var(--amber2);line-height:1.6;margin-top:4px">${warn}</div>
     </div>`;
   })()}
   <div class="ds" id="holders-section">

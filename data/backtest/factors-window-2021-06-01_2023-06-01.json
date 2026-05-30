@@ -1,0 +1,359 @@
+{
+  "generated": "2026-05-30T14:02:19.496Z",
+  "config": {
+    "universe": "台灣50",
+    "pool": "tw50",
+    "count": 50,
+    "window": {
+      "start": "2021-06-01",
+      "end": "2023-06-01"
+    },
+    "years": null,
+    "horizons": [
+      5,
+      10,
+      20
+    ],
+    "benchmark": "^TWII"
+  },
+  "baseline": {
+    "5": {
+      "n": 20450,
+      "winRate": 50.49,
+      "avg": 0.07,
+      "median": 0.143
+    },
+    "10": {
+      "n": 20450,
+      "winRate": 51.96,
+      "avg": 0.153,
+      "median": 0.308
+    },
+    "20": {
+      "n": 20450,
+      "winRate": 52.72,
+      "avg": 0.431,
+      "median": 0.476
+    }
+  },
+  "signals": {
+    "inst": {
+      "連買≥5": {
+        "5": {
+          "n": 2110,
+          "winRate": 51.18,
+          "avg": 0.278,
+          "median": 0.176,
+          "excessWinRate": 51.14,
+          "excessAvg": 0.182
+        },
+        "10": {
+          "n": 2110,
+          "winRate": 52.99,
+          "avg": 0.378,
+          "median": 0.351,
+          "excessWinRate": 54.12,
+          "excessAvg": 0.496
+        },
+        "20": {
+          "n": 2110,
+          "winRate": 52.8,
+          "avg": 0.336,
+          "median": 0.403,
+          "excessWinRate": 52.65,
+          "excessAvg": 0.554
+        }
+      },
+      "連買3-4": {
+        "5": {
+          "n": 2047,
+          "winRate": 47,
+          "avg": -0.041,
+          "median": 0,
+          "excessWinRate": 48.71,
+          "excessAvg": -0.003
+        },
+        "10": {
+          "n": 2047,
+          "winRate": 48.8,
+          "avg": -0.008,
+          "median": 0,
+          "excessWinRate": 52.22,
+          "excessAvg": 0.186
+        },
+        "20": {
+          "n": 2047,
+          "winRate": 52.03,
+          "avg": 0.5,
+          "median": 0.397,
+          "excessWinRate": 52.96,
+          "excessAvg": 0.51
+        }
+      },
+      "連買1-2": {
+        "5": {
+          "n": 6234,
+          "winRate": 49.78,
+          "avg": 0.027,
+          "median": 0,
+          "excessWinRate": 51.38,
+          "excessAvg": 0.126
+        },
+        "10": {
+          "n": 6234,
+          "winRate": 50.99,
+          "avg": 0.159,
+          "median": 0.203,
+          "excessWinRate": 51.89,
+          "excessAvg": 0.285
+        },
+        "20": {
+          "n": 6234,
+          "winRate": 52.21,
+          "avg": 0.476,
+          "median": 0.445,
+          "excessWinRate": 52.42,
+          "excessAvg": 0.565
+        }
+      },
+      "其他": {
+        "5": {
+          "n": 6194,
+          "winRate": 51.24,
+          "avg": 0.118,
+          "median": 0.19,
+          "excessWinRate": 53.05,
+          "excessAvg": 0.252
+        },
+        "10": {
+          "n": 6194,
+          "winRate": 52.37,
+          "avg": 0.222,
+          "median": 0.359,
+          "excessWinRate": 54.12,
+          "excessAvg": 0.405
+        },
+        "20": {
+          "n": 6194,
+          "winRate": 53.23,
+          "avg": 0.553,
+          "median": 0.585,
+          "excessWinRate": 53.63,
+          "excessAvg": 0.695
+        }
+      },
+      "連賣≥3": {
+        "5": {
+          "n": 3865,
+          "winRate": 51.93,
+          "avg": 0.007,
+          "median": 0.214,
+          "excessWinRate": 54.08,
+          "excessAvg": 0.132
+        },
+        "10": {
+          "n": 3865,
+          "winRate": 53.95,
+          "avg": -0.006,
+          "median": 0.481,
+          "excessWinRate": 54.2,
+          "excessAvg": 0.27
+        },
+        "20": {
+          "n": 3865,
+          "winRate": 53.07,
+          "avg": 0.175,
+          "median": 0.547,
+          "excessWinRate": 54.36,
+          "excessAvg": 0.856
+        }
+      }
+    },
+    "rev": {
+      "高成長>20%": {
+        "5": {
+          "n": 6214,
+          "winRate": 48.15,
+          "avg": -0.124,
+          "median": 0,
+          "excessWinRate": 50.53,
+          "excessAvg": 0.06
+        },
+        "10": {
+          "n": 6214,
+          "winRate": 47.92,
+          "avg": -0.185,
+          "median": -0.132,
+          "excessWinRate": 50.87,
+          "excessAvg": 0.166
+        },
+        "20": {
+          "n": 6214,
+          "winRate": 46.46,
+          "avg": -0.191,
+          "median": -0.478,
+          "excessWinRate": 49.49,
+          "excessAvg": 0.387
+        }
+      },
+      "成長0~20%": {
+        "5": {
+          "n": 7194,
+          "winRate": 51.24,
+          "avg": 0.161,
+          "median": 0.178,
+          "excessWinRate": 53.36,
+          "excessAvg": 0.284
+        },
+        "10": {
+          "n": 7194,
+          "winRate": 52.56,
+          "avg": 0.254,
+          "median": 0.317,
+          "excessWinRate": 55.23,
+          "excessAvg": 0.524
+        },
+        "20": {
+          "n": 7194,
+          "winRate": 53.29,
+          "avg": 0.426,
+          "median": 0.476,
+          "excessWinRate": 56.37,
+          "excessAvg": 0.926
+        }
+      },
+      "衰退<0%": {
+        "5": {
+          "n": 7042,
+          "winRate": 51.8,
+          "avg": 0.147,
+          "median": 0.214,
+          "excessWinRate": 52.2,
+          "excessAvg": 0.116
+        },
+        "10": {
+          "n": 7042,
+          "winRate": 54.9,
+          "avg": 0.348,
+          "median": 0.533,
+          "excessWinRate": 53.38,
+          "excessAvg": 0.278
+        },
+        "20": {
+          "n": 7042,
+          "winRate": 57.67,
+          "avg": 0.983,
+          "median": 1.099,
+          "excessWinRate": 53.34,
+          "excessAvg": 0.609
+        }
+      }
+    },
+    "combo": {
+      "連買≥3&營收增": {
+        "5": {
+          "n": 2671,
+          "winRate": 46.76,
+          "avg": -0.083,
+          "median": 0,
+          "excessWinRate": 49.16,
+          "excessAvg": 0.046
+        },
+        "10": {
+          "n": 2671,
+          "winRate": 47.1,
+          "avg": -0.203,
+          "median": -0.128,
+          "excessWinRate": 52.04,
+          "excessAvg": 0.228
+        },
+        "20": {
+          "n": 2671,
+          "winRate": 47.96,
+          "avg": -0.326,
+          "median": -0.14,
+          "excessWinRate": 50.54,
+          "excessAvg": 0.13
+        }
+      },
+      "連買≥3&營收減": {
+        "5": {
+          "n": 1486,
+          "winRate": 53.36,
+          "avg": 0.488,
+          "median": 0.357,
+          "excessWinRate": 51.35,
+          "excessAvg": 0.173
+        },
+        "10": {
+          "n": 1486,
+          "winRate": 57.81,
+          "avg": 0.89,
+          "median": 0.706,
+          "excessWinRate": 55.25,
+          "excessAvg": 0.552
+        },
+        "20": {
+          "n": 1486,
+          "winRate": 60.43,
+          "avg": 1.753,
+          "median": 1.399,
+          "excessWinRate": 56.86,
+          "excessAvg": 1.256
+        }
+      },
+      "無連買&營收增": {
+        "5": {
+          "n": 10737,
+          "winRate": 50.56,
+          "avg": 0.057,
+          "median": 0.147,
+          "excessWinRate": 52.77,
+          "excessAvg": 0.214
+        },
+        "10": {
+          "n": 10737,
+          "winRate": 51.23,
+          "avg": 0.113,
+          "median": 0.206,
+          "excessWinRate": 53.5,
+          "excessAvg": 0.39
+        },
+        "20": {
+          "n": 10737,
+          "winRate": 50.67,
+          "avg": 0.256,
+          "median": 0.214,
+          "excessWinRate": 53.83,
+          "excessAvg": 0.812
+        }
+      },
+      "其他": {
+        "5": {
+          "n": 5556,
+          "winRate": 51.39,
+          "avg": 0.056,
+          "median": 0.185,
+          "excessWinRate": 52.43,
+          "excessAvg": 0.101
+        },
+        "10": {
+          "n": 5556,
+          "winRate": 54.12,
+          "avg": 0.203,
+          "median": 0.488,
+          "excessWinRate": 52.88,
+          "excessAvg": 0.205
+        },
+        "20": {
+          "n": 5556,
+          "winRate": 56.93,
+          "avg": 0.778,
+          "median": 1.02,
+          "excessWinRate": 52.39,
+          "excessAvg": 0.435
+        }
+      }
+    }
+  }
+}

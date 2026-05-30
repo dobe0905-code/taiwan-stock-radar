@@ -31,7 +31,16 @@ const HORIZONS = [5, 10, 20];
 const YH_GAP = 180, FM_GAP = 350;
 const BENCHMARK = '^TWII';
 
-const UNIVERSE = [
+// ── 日期視窗（空頭期穩健性測試用）──
+// START/END 皆為 'YYYY-MM-DD'。若設定則用 Yahoo period1/period2 取代 range
+const START = process.env.START || '';
+const END = process.env.END || '';
+const useWindow = !!(START && END);
+
+// ── 股票池：POOL=tw50（預設）| midsmall ──
+const POOL = (process.env.POOL || 'tw50').toLowerCase();
+
+const TW50 = [
   '2330','2317','2454','2308','2382','2412','2881','2882','2891','2303',
   '3711','2886','2884','2357','2885','3034','2892','2880','5880','2890',
   '2883','2002','2207','1303','1301','2603','3231','2379','3008','2327',
@@ -39,11 +48,31 @@ const UNIVERSE = [
   '5871','2395','3045','4904','6669','3661','3017','2376','2353','1326'
 ];
 
+// 中小型股池（混合上市/上櫃，市值約數十億~數百億，自動 .TW/.TWO 後綴回退）
+const MIDSMALL = [
+  '2059','2049','3596','9921','4551','6206','2231','1817','3293','5274',
+  '4966','3443','3529','3533','3653','6196','9802','6603','8114','6188',
+  '6412','8016','4935','6271','3105','6488','5483','8255','2360','3035',
+  '1773','4736','8341','6285','3691','6491','6781','2492','6182','3217',
+  '8021','5269','6770','6643','1565'
+];
+
+const POOLS = { tw50: TW50, midsmall: MIDSMALL };
+
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 // ── Yahoo v8 日 K ──
+// range 為 '2y' 等；若全域 useWindow=true 則改用 period1/period2 取明確日期區間
 async function fetchYahoo(symbol, range) {
-  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${range}&interval=1d`;
+  let qs;
+  if (useWindow) {
+    const p1 = Math.floor(new Date(START + 'T00:00:00Z').getTime() / 1000);
+    const p2 = Math.floor(new Date(END + 'T23:59:59Z').getTime() / 1000);
+    qs = `period1=${p1}&period2=${p2}&interval=1d`;
+  } else {
+    qs = `range=${range}&interval=1d`;
+  }
+  const url = `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?${qs}`;
   const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
   if (!r.ok) throw new Error(`HTTP ${r.status}`);
   const j = await r.json();
@@ -58,6 +87,16 @@ async function fetchYahoo(symbol, range) {
     out.push({ date: new Date(ts[i] * 1000).toISOString().slice(0, 10), close: c });
   }
   return out;
+}
+
+// 自動後綴回退：先試 .TW（上市），K 線不足再試 .TWO（上櫃）
+async function fetchYahooAuto(code, range) {
+  let k = [];
+  try { k = await fetchYahoo(`${code}.TW`, range); } catch (e) { k = []; }
+  if (k.length >= 80) return k;
+  await sleep(YH_GAP);
+  try { const k2 = await fetchYahoo(`${code}.TWO`, range); if (k2.length > k.length) k = k2; } catch (e) {}
+  return k;
 }
 
 // ── FinMind ──
@@ -138,11 +177,16 @@ function statsExcess(arr) {
   await fs.mkdir(OUT_DIR, { recursive: true });
   const range = `${YEARS}y`;
   const limit = parseInt(process.env.LIMIT) || 0;
-  const codes = limit > 0 ? UNIVERSE.slice(0, limit) : UNIVERSE;
-  const instStart = `${new Date().getFullYear() - YEARS}-01-01`;
-  const revStart = `${new Date().getFullYear() - YEARS - 1}-01-01`; // YoY 需多一年基期
+  const universe = POOLS[POOL] || TW50;
+  const codes = limit > 0 ? universe.slice(0, limit) : universe;
+  const poolLabel = POOL === 'midsmall' ? '中小型股' : '台灣50';
+  // FinMind 起始日：有日期視窗時取視窗起點往前推一年（營收 YoY 需基期），否則用 YEARS
+  const windowStartYear = useWindow ? parseInt(START.slice(0, 4)) : new Date().getFullYear() - YEARS;
+  const instStart = useWindow ? START : `${windowStartYear}-01-01`;
+  const revStart = `${windowStartYear - 1}-01-01`; // YoY 需多一年基期
 
-  console.log(`因子回測 v1 — 台灣50 (${codes.length} 檔), ${YEARS} 年, 持有 ${HORIZONS.join('/')} 交易日`);
+  const periodLabel = useWindow ? `${START} ~ ${END}` : `近 ${YEARS} 年`;
+  console.log(`因子回測 v1 — ${poolLabel} (${codes.length} 檔), ${periodLabel}, 持有 ${HORIZONS.join('/')} 交易日`);
   console.log('='.repeat(74));
 
   // 大盤
@@ -160,7 +204,7 @@ function statsExcess(arr) {
   for (const code of codes) {
     const rec = {};
     try {
-      rec.k = await fetchYahoo(`${code}.TW`, range);
+      rec.k = await fetchYahooAuto(code, range);
       if (rec.k.length < 80) { fail++; continue; }
     } catch (e) { fail++; continue; }
     await sleep(YH_GAP);
@@ -286,11 +330,15 @@ function statsExcess(arr) {
   };
   const baseJSON = {};
   for (const h of HORIZONS) { const s = stats(baseline[h].ret); baseJSON[h] = { n: s.n, winRate: +s.winRate.toFixed(2), avg: +s.avg.toFixed(3), median: +s.median.toFixed(3) }; }
-  await fs.writeFile(path.join(OUT_DIR, 'factors-latest.json'), JSON.stringify({
+  // 輸出檔名：預設 factors-latest.json；中小型/視窗情境另存以免互相覆蓋
+  let outName = 'factors-latest.json';
+  if (POOL === 'midsmall') outName = 'factors-midsmall.json';
+  if (useWindow) outName = `factors-window-${START}_${END}.json`;
+  await fs.writeFile(path.join(OUT_DIR, outName), JSON.stringify({
     generated: new Date().toISOString(),
-    config: { universe: '台灣50', count: ok, years: YEARS, horizons: HORIZONS, benchmark: BENCHMARK },
+    config: { universe: poolLabel, pool: POOL, count: ok, window: useWindow ? { start: START, end: END } : null, years: useWindow ? null : YEARS, horizons: HORIZONS, benchmark: BENCHMARK },
     baseline: baseJSON,
     signals: { inst: toJSON('inst'), rev: toJSON('rev'), combo: toJSON('combo') }
   }, null, 2));
-  console.log('\n✓ 已寫入 data/backtest/factors-latest.json');
+  console.log(`\n✓ 已寫入 data/backtest/${outName}`);
 })().catch(e => { console.error('FATAL:', e); process.exit(1); });

@@ -1,0 +1,248 @@
+{
+  "generated": "2026-05-30T07:47:29.656Z",
+  "config": {
+    "universe": "台灣50",
+    "count": 50,
+    "years": 2,
+    "horizons": [
+      5,
+      10,
+      20
+    ],
+    "benchmark": "^TWII"
+  },
+  "baseline": {
+    "5": {
+      "n": 20200,
+      "winRate": 51.03,
+      "avg": 0.499,
+      "median": 0.189
+    },
+    "10": {
+      "n": 20200,
+      "winRate": 52.42,
+      "avg": 1.058,
+      "median": 0.373
+    },
+    "20": {
+      "n": 20200,
+      "winRate": 54.68,
+      "avg": 2.297,
+      "median": 0.871
+    }
+  },
+  "signals": {
+    "calcSig": {
+      "買進": {
+        "5": {
+          "n": 3071,
+          "winRate": 49.33,
+          "avg": 0.605,
+          "median": 0,
+          "excessWinRate": 41.84,
+          "excessAvg": -0.252
+        },
+        "10": {
+          "n": 3071,
+          "winRate": 51.71,
+          "avg": 1.405,
+          "median": 0.373,
+          "excessWinRate": 42.36,
+          "excessAvg": -0.328
+        },
+        "20": {
+          "n": 3071,
+          "winRate": 56.11,
+          "avg": 3.544,
+          "median": 1.375,
+          "excessWinRate": 42.82,
+          "excessAvg": -0.248
+        }
+      },
+      "偏多": {
+        "5": {
+          "n": 6145,
+          "winRate": 50.07,
+          "avg": 0.427,
+          "median": 0.108,
+          "excessWinRate": 43.89,
+          "excessAvg": -0.348
+        },
+        "10": {
+          "n": 6145,
+          "winRate": 51.11,
+          "avg": 0.793,
+          "median": 0.219,
+          "excessWinRate": 41.5,
+          "excessAvg": -0.748
+        },
+        "20": {
+          "n": 6145,
+          "winRate": 53.34,
+          "avg": 1.814,
+          "median": 0.613,
+          "excessWinRate": 40.26,
+          "excessAvg": -1.433
+        }
+      },
+      "觀察": {
+        "5": {
+          "n": 1562,
+          "winRate": 49.3,
+          "avg": 0.307,
+          "median": 0,
+          "excessWinRate": 44.56,
+          "excessAvg": -0.322
+        },
+        "10": {
+          "n": 1562,
+          "winRate": 49.81,
+          "avg": 0.507,
+          "median": 0,
+          "excessWinRate": 39.69,
+          "excessAvg": -0.843
+        },
+        "20": {
+          "n": 1562,
+          "winRate": 51.54,
+          "avg": 1.369,
+          "median": 0.389,
+          "excessWinRate": 37.9,
+          "excessAvg": -1.615
+        }
+      },
+      "偏空": {
+        "5": {
+          "n": 6045,
+          "winRate": 51.71,
+          "avg": 0.345,
+          "median": 0.219,
+          "excessWinRate": 43.47,
+          "excessAvg": -0.443
+        },
+        "10": {
+          "n": 6045,
+          "winRate": 52.9,
+          "avg": 0.805,
+          "median": 0.369,
+          "excessWinRate": 41.34,
+          "excessAvg": -0.883
+        },
+        "20": {
+          "n": 6045,
+          "winRate": 54.81,
+          "avg": 1.785,
+          "median": 0.786,
+          "excessWinRate": 38.36,
+          "excessAvg": -1.697
+        }
+      },
+      "賣出": {
+        "5": {
+          "n": 3377,
+          "winRate": 53.92,
+          "avg": 0.894,
+          "median": 0.518,
+          "excessWinRate": 45.9,
+          "excessAvg": -0.109
+        },
+        "10": {
+          "n": 3377,
+          "winRate": 55.79,
+          "avg": 1.934,
+          "median": 0.912,
+          "excessWinRate": 44.15,
+          "excessAvg": -0.125
+        },
+        "20": {
+          "n": 3377,
+          "winRate": 57.06,
+          "avg": 3.387,
+          "median": 1.6,
+          "excessWinRate": 41.96,
+          "excessAvg": -0.622
+        }
+      }
+    },
+    "momentum": {
+      "強動能": {
+        "5": {
+          "n": 5284,
+          "winRate": 50.45,
+          "avg": 0.668,
+          "median": 0.151,
+          "excessWinRate": 45.89,
+          "excessAvg": -0.021
+        },
+        "10": {
+          "n": 5284,
+          "winRate": 52.02,
+          "avg": 1.443,
+          "median": 0.375,
+          "excessWinRate": 45.36,
+          "excessAvg": 0.028
+        },
+        "20": {
+          "n": 5284,
+          "winRate": 53.05,
+          "avg": 3.13,
+          "median": 0.704,
+          "excessWinRate": 45.91,
+          "excessAvg": 0.175
+        }
+      },
+      "中性": {
+        "5": {
+          "n": 5876,
+          "winRate": 50.56,
+          "avg": 0.523,
+          "median": 0.146,
+          "excessWinRate": 44.5,
+          "excessAvg": -0.308
+        },
+        "10": {
+          "n": 5876,
+          "winRate": 51.34,
+          "avg": 0.952,
+          "median": 0.196,
+          "excessWinRate": 42.67,
+          "excessAvg": -0.699
+        },
+        "20": {
+          "n": 5876,
+          "winRate": 53.83,
+          "avg": 1.939,
+          "median": 0.707,
+          "excessWinRate": 40.66,
+          "excessAvg": -1.483
+        }
+      },
+      "弱動能": {
+        "5": {
+          "n": 9040,
+          "winRate": 51.68,
+          "avg": 0.384,
+          "median": 0.222,
+          "excessWinRate": 42.21,
+          "excessAvg": -0.503
+        },
+        "10": {
+          "n": 9040,
+          "winRate": 53.35,
+          "avg": 0.903,
+          "median": 0.444,
+          "excessWinRate": 39.35,
+          "excessAvg": -0.965
+        },
+        "20": {
+          "n": 9040,
+          "winRate": 56.19,
+          "avg": 2.043,
+          "median": 1.07,
+          "excessWinRate": 36.53,
+          "excessAvg": -1.842
+        }
+      }
+    }
+  }
+}

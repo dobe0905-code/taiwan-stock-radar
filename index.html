@@ -744,10 +744,18 @@ function renderTable(){
   const makeRow=(s,i)=>{
     const isLive=!!liveData[s.id];
     const mktTag=s.market==='tpex'?'<span style="font-size:9px;color:var(--amber2);margin-left:3px">櫃</span>':'';
+    // 月營收 YoY 標籤（回測驗證因子）
+    let revTag='';
+    if(s.revTier){
+      const c=s.revTier==='高成長'?'var(--green2)':s.revTier==='衰退'?'var(--red2)':'var(--text2)';
+      const b=s.revTier==='高成長'?'rgba(126,231,135,.12)':s.revTier==='衰退'?'rgba(255,161,152,.12)':'rgba(139,148,158,.1)';
+      const v=s.revYoY!=null?(s.revYoY>=0?'+':'')+s.revYoY.toFixed(0)+'%':'—';
+      revTag=`<span style="font-size:9px;font-family:var(--mono);padding:1px 5px;border-radius:4px;margin-left:5px;color:${c};background:${b}" title="月營收年增 YoY（${revMonth}）：${s.revTier}">營${v}</span>`;
+    }
     return`<tr ${useAnim?`style="animation-delay:${Math.min(i*3,300)}ms"`:''} data-id="${s.id}" onclick="openDet('${s.id}')">
       <td onclick="event.stopPropagation()"><button class="star-btn ${wl.has(s.id)?'on':''}" onclick="togWL('${s.id}',this)">★</button></td>
       <td><span class="td-id">${s.id}</span>${s.isETF?'<span class="etf-tag">ETF</span>':''}${mktTag}${isLive?'<span style="font-size:9px;color:var(--red2);margin-left:3px">●</span>':''}</td>
-      <td><div class="td-name">${s.name}</div>${!s.isETF?'<div class="td-sec">'+s.sector+'</div>':''}</td>
+      <td><div class="td-name">${s.name}${revTag}</div>${!s.isETF?'<div class="td-sec">'+s.sector+'</div>':''}</td>
       <td><span class="td-price live-price ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}">${s.close.toFixed(2)}</span></td>
       <td><span class="pill ${s.chgP>0?'pill-up':s.chgP<0?'pill-dn':'pill-neu'}">${s.chgP>=0?'+':''}${s.chgP.toFixed(2)}%</span></td>
       <td class="col-law"><span class="td-m">${s.peV?s.peV.toFixed(1):'—'}</span></td>

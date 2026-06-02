@@ -821,7 +821,10 @@ function renderTable(){
     let lsTag='';
     const ls=longState(s);
     if(ls && (ls.cls==='ls-strong'||ls.cls==='ls-weak'||ls.cls==='ls-hold')){
-      lsTag=`<span style="font-size:10px;margin-left:4px;cursor:help" title="長線：${ls.lbl} — ${ls.reason}">${ls.icon}</span>`;
+      const lsShort={'ls-strong':'長多','ls-hold':'觀望','ls-weak':'轉弱'}[ls.cls];
+      const lsCol={'ls-strong':'var(--green2)','ls-hold':'var(--amber2)','ls-weak':'var(--red2)'}[ls.cls];
+      const lsBg={'ls-strong':'rgba(126,231,135,.12)','ls-hold':'rgba(227,179,65,.12)','ls-weak':'rgba(255,161,152,.12)'}[ls.cls];
+      lsTag=`<span style="font-size:9px;padding:1px 5px;border-radius:4px;margin-left:4px;cursor:help;color:${lsCol};background:${lsBg}" title="長線：${ls.lbl} — ${ls.reason}">${ls.icon}${lsShort}</span>`;
     }
     return`<tr ${useAnim?`style="animation-delay:${Math.min(i*3,300)}ms"`:''} data-id="${s.id}" onclick="openDet('${s.id}')">
       <td onclick="event.stopPropagation()"><button class="star-btn ${wl.has(s.id)?'on':''}" onclick="togWL('${s.id}',this)">★</button></td>
@@ -1117,6 +1120,9 @@ function closeDet(){
 // ── 單股即時行情輪詢（個股面板專用）──
 function startDetPoll(s){
   if(detPollTimer){clearInterval(detPollTimer);detPollTimer=null;}
+  // 當盤內外盤估算累計器（每次開啟面板重置；以 tick rule 從現在起累計）
+  let ioInner=0, ioOuter=0, lastV=null;
+  const sumLots=str=>(str||'').split('_').reduce((a,x)=>{const n=parseInt(x);return a+(Number.isFinite(n)?n:0);},0);
   async function pollOnce(){
     if(!currentDetId) return;
     try{
@@ -1146,9 +1152,19 @@ function startDetPoll(s){
       // 退回：用後端的 tradeValue + 即時 v（盤中 TradeValue 還沒同步時可能不準，但有總比沒有好）
       else if(s.tradeValue && v>0) avgPrice = (s.tradeValue/(v*1000)).toFixed(2);
 
-      // 內外盤：MIS ob=內盤量, oa=外盤量（字串，需解析）
-      const ob = parseInt(item.ob||'0') || 0;
-      const oa = parseInt(item.oa||'0') || 0;
+      // 五檔委買/委賣量（即時真實；MIS g=委買量, f=委賣量，底線分隔）
+      const bidLot = sumLots(item.g);
+      const askLot = sumLots(item.f);
+      const bestBid = parseFloat((item.b||'').split('_')[0]) || 0;
+      const bestAsk = parseFloat((item.a||'').split('_')[0]) || 0;
+      // 當盤內外盤估算（tick rule，自開啟面板起累計）
+      if(lastV!=null && v>lastV){
+        const dV = v - lastV;
+        if(bestAsk>0 && z>=bestAsk) ioOuter += dV;       // 以賣價成交 → 外盤（買盤主動）
+        else if(bestBid>0 && z<=bestBid) ioInner += dV;  // 以買價成交 → 內盤（賣壓主動）
+        else { ioInner += dV/2; ioOuter += dV/2; }       // 中間價 → 平分
+      }
+      if(v>0) lastV = v;
 
       // 更新頂部大標
       const pe=document.getElementById('d-price');
@@ -1168,8 +1184,24 @@ function startDetPoll(s){
       if(avgPrice!==null) upd('dq-avg', avgPrice);  // 均價：MIS 無資料時保留初始值
       upd('dq-vol',   fmV(v));                  // 成交量（張）
       upd('dq-amp',   amp);
-      upd('dq-ob',    ob>0?fmV(ob):'—');        // 內盤
-      upd('dq-oa',    oa>0?fmV(oa):'—');        // 外盤
+      upd('dq-bidlot', bidLot>0?fmV(bidLot):'—'); // 委買五檔總量
+      upd('dq-asklot', askLot>0?fmV(askLot):'—'); // 委賣五檔總量
+      const ioTot = ioInner + ioOuter;
+      upd('dq-ob', ioTot>0?fmV(Math.round(ioInner)):'—'); // 內盤估（當盤累計）
+      upd('dq-oa', ioTot>0?fmV(Math.round(ioOuter)):'—'); // 外盤估（當盤累計）
+      // 買賣力道條（委買 vs 委賣五檔量）
+      const powEl=document.getElementById('dq-power');
+      const totLot=bidLot+askLot;
+      if(powEl){
+        if(totLot>0){
+          const bidPct=Math.round(bidLot/totLot*100);
+          powEl.style.display='block';
+          upd('dq-bidpct', bidPct+'%');
+          upd('dq-askpct', (100-bidPct)+'%');
+          const bar=document.getElementById('dq-powerbar');
+          if(bar) bar.style.width=bidPct+'%';
+        } else { powEl.style.display='none'; }
+      }
       const chgEl=document.getElementById('dq-chg');
       if(chgEl){chgEl.textContent=(chg>=0?'+':'')+chg.toFixed(2);chgEl.className='kv-v '+(chg>0?'c-up':chg<0?'c-dn':'c-neu');}
       const chgpEl=document.getElementById('dq-chgp');
@@ -1209,8 +1241,14 @@ function buildDetHTML(s,live){
       <div class="kv"><div class="kv-l">振幅</div><div class="kv-v" id="dq-amp">${amp}</div></div>
       <div class="kv"><div class="kv-l">漲跌</div><div class="kv-v ${s.chg>0?'c-up':s.chg<0?'c-dn':'c-neu'}" id="dq-chg">${s.chg>0?'+':''}${s.chg.toFixed(2)}</div></div>
       <div class="kv"><div class="kv-l">漲跌幅</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}" id="dq-chgp">${s.chgP>=0?'+':''}${s.chgP.toFixed(2)}%</div></div>
-      <div class="kv" title="盤中即時資料來自證交所 MIS API（09:00–13:30），盤後無數據"><div class="kv-l">內盤(張) <span style="font-size:9px;color:var(--text3);font-weight:400">盤中</span></div><div class="kv-v c-dn" id="dq-ob">—</div></div>
-      <div class="kv" title="盤中即時資料來自證交所 MIS API（09:00–13:30），盤後無數據"><div class="kv-l">外盤(張) <span style="font-size:9px;color:var(--text3);font-weight:400">盤中</span></div><div class="kv-v c-up" id="dq-oa">—</div></div>
+      <div class="kv" title="即時五檔委買總量（MIS，盤中真實資料，09:00–13:30）"><div class="kv-l">委買(張) <span style="font-size:9px;color:var(--text3);font-weight:400">五檔</span></div><div class="kv-v c-up" id="dq-bidlot">—</div></div>
+      <div class="kv" title="即時五檔委賣總量（MIS，盤中真實資料，09:00–13:30）"><div class="kv-l">委賣(張) <span style="font-size:9px;color:var(--text3);font-weight:400">五檔</span></div><div class="kv-v c-dn" id="dq-asklot">—</div></div>
+      <div class="kv" title="當盤內外盤估算：以成交價對比委買/委賣價分類（tick rule，內盤=以買價成交的賣壓），自開啟此面板起累計，非整日數據。免費 MIS 源無整日內外盤"><div class="kv-l">內盤估 <span style="font-size:9px;color:var(--text3);font-weight:400">當盤</span></div><div class="kv-v c-dn" id="dq-ob">—</div></div>
+      <div class="kv" title="當盤內外盤估算：以成交價對比委買/委賣價分類（tick rule，外盤=以賣價成交的買盤），自開啟此面板起累計，非整日數據。免費 MIS 源無整日內外盤"><div class="kv-l">外盤估 <span style="font-size:9px;color:var(--text3);font-weight:400">當盤</span></div><div class="kv-v c-up" id="dq-oa">—</div></div>
+    </div>
+    <div id="dq-power" style="display:none;margin-top:8px">
+      <div style="display:flex;justify-content:space-between;font-size:11px;color:var(--text2);margin-bottom:3px"><span>委買力道 <span id="dq-bidpct" style="color:var(--green2);font-family:var(--mono)">—</span></span><span><span id="dq-askpct" style="color:var(--red2);font-family:var(--mono)">—</span> 委賣力道</span></div>
+      <div style="height:6px;border-radius:3px;overflow:hidden;background:var(--red2);display:flex"><div id="dq-powerbar" style="height:100%;width:50%;background:var(--green2);transition:width .3s"></div></div>
     </div>
   </div>
   <div class="ds" id="ma-section"><div class="dst">均線乖離率</div>

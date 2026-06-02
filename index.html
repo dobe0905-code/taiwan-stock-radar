@@ -14,7 +14,7 @@
   --accent:#388bfd;--accent2:#79b8ff;
   --green:#3fb950;--green2:#7ee787;--red:#f85149;--red2:#ffa198;
   --amber:#d29922;--amber2:#e3b341;--purple:#bc8cff;
-  --text:#e6edf3;--text2:#8b949e;--text3:#484f58;
+  --text:#f5f9fd;--text2:#aab4c0;--text3:#5b636e;
   --mono:'JetBrains Mono',monospace;--sans:'Noto Sans TC',sans-serif;
   --sidebar:240px;--header:52px;
 }
@@ -115,7 +115,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .f-btn:hover{border-color:var(--border2);color:var(--text);}
 .f-btn.active{border-color:var(--accent);color:var(--accent2);background:rgba(56,139,253,.08);}
 .f-sep{width:1px;height:16px;background:var(--border);flex-shrink:0;}
-.f-sort{padding:5px 12px;border-radius:6px;font-size:13px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;outline:none;}
+.f-sort{padding:7px 14px;border-radius:6px;font-size:16px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;outline:none;}
 .tbl-wrap{flex:1;overflow:auto;}
 .tbl{width:100%;border-collapse:collapse;}
 .tbl thead th{position:sticky;top:0;z-index:5;background:var(--bg3);padding:12px 13px;font-size:15px;font-weight:700;letter-spacing:.06em;color:var(--text3);text-transform:uppercase;white-space:nowrap;border-bottom:1px solid var(--border);text-align:left;}
@@ -192,7 +192,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .dst{font-size:13px;font-weight:700;letter-spacing:.08em;color:var(--text3);text-transform:uppercase;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);}
 .kv2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .kv{background:var(--bg3);border-radius:8px;padding:11px 14px;}
-.kv-l{font-size:12px;color:var(--text3);margin-bottom:4px;}
+.kv-l{font-size:16px;color:var(--text2);margin-bottom:4px;}
 .kv-v{font-size:18px;font-family:var(--mono);font-weight:600;}
 .bidask-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .ba-side{background:var(--bg3);border-radius:7px;padding:10px;}
@@ -940,14 +940,20 @@ async function loadData(){
 
     // 上市 + 上櫃 + 興櫃清單「並行」抓取，一起合併後「一次渲染」全部台股
     // （上櫃已於後端剔除權證，payload 大幅縮小，三清單幾乎同時返回）
+    const fetchJson = (t) => fetch(`${API}?type=${t}`).then(r=>r.json()).catch(()=>({data:[]}));
     const [twseRes, tpexRes, esbRes] = await Promise.all([
       fetch(`${API}?type=twse_list`).then(r=>r.json()),
-      fetch(`${API}?type=tpex_list`).then(r=>r.json()).catch(()=>({data:[]})),
-      fetch(`${API}?type=emerging_list`).then(r=>r.json()).catch(()=>({data:[]}))
+      fetchJson('tpex_list'),
+      fetchJson('emerging_list')
     ]);
     const twseStocks = processTWSE(twseRes.data||[]);
-    const tpexStocks = processTPEx(tpexRes.data||[]);
+    let tpexStocks = processTPEx(tpexRes.data||[]);
     const esbStocks  = processEmerging(esbRes.data||[]);
+    // 上櫃偶爾因冷啟動逾時回空 → 重試一次，避免上櫃股數掉成 0
+    if(tpexStocks.length===0){
+      const retry = await fetchJson('tpex_list');
+      tpexStocks = processTPEx(retry.data||[]);
+    }
     stocks = [...twseStocks, ...tpexStocks, ...esbStocks];
     if(stocks.length===0){ setLd('無資料，請稍後再試'); return; }
     document.getElementById('twseBadge').className='api-badge api-on';

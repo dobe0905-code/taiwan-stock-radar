@@ -187,7 +187,7 @@ export default async function handler(req, res) {
       };
       data = (data || []).filter(d => isRealStock(d.SecuritiesCompanyCode, d.CompanyName));
 
-      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
+      res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1200');
       return res.status(200).json({ data, source: 'TPEx', ts: new Date().toISOString() });
     }
 
@@ -221,7 +221,7 @@ export default async function handler(req, res) {
         }
       } catch (e) { console.log('emerging failed:', e.message); }
 
-      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
+      res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1200');
       return res.status(200).json({ data, source: 'TPEx_ESB', ts: new Date().toISOString() });
     }
 

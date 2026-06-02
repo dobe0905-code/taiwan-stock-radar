@@ -1154,13 +1154,7 @@ function buildDetHTML(s,live){
   const sn=Math.min(Math.max((g.sc+5)/10*100,5),95);
   const stars='★'.repeat(g.st)+'☆'.repeat(5-g.st);
   const amp=s.open>0?((s.high-s.low)/s.open*100).toFixed(2)+'%':'—';
-  // 進場/停損/目標 — 根據訊號強度動態計算
-  const slPctNum = g.cls==='sig-buy' ? 3 : g.cls==='sig-sell' ? 2 : 4;
-  const tpPctNum = g.cls==='sig-buy' ? 8 : g.cls==='sig-sell' ? 15 : 5;
-  const sl=(s.close*(1-slPctNum/100)).toFixed(2);
-  const tp=(s.close*(1+tpPctNum/100)).toFixed(2);
-  const sl2=(s.close*(0.998)).toFixed(2); // 進場價 ≈ 現價稍低
-  const slPct=slPctNum, tpPct=tpPctNum;
+  // 進出場價位已移至「操作策略總覽」卡片（依當沖/短線/長線各週期 + ATR 推算）
   const ba=live?.bidask;
   const prev = s.prev || (s.close - s.chg);  // 昨收
 
@@ -1282,30 +1276,9 @@ function buildDetHTML(s,live){
       <div style="font-size:10px;color:var(--amber2);line-height:1.6;margin-top:4px">${warn}</div>
     </div>`;
   })()}
-  ${(()=>{
-    const ls=longState(s);
-    const col=ls?(ls.cls==='ls-strong'?'var(--green2)':ls.cls==='ls-weak'?'var(--red2)':ls.cls==='ls-hold'?'var(--amber2)':'var(--text2)'):'var(--text2)';
-    const bg =ls?(ls.cls==='ls-strong'?'rgba(126,231,135,.12)':ls.cls==='ls-weak'?'rgba(255,161,152,.12)':ls.cls==='ls-hold'?'rgba(227,179,65,.12)':'rgba(139,148,158,.1)'):'rgba(139,148,158,.1)';
-    const mkTxt = mktRegime==='bull'?`<span style="color:var(--green2)">站上季線</span>`
-                : mktRegime==='bear'?`<span style="color:var(--red2)">跌破季線</span>`:'—';
-    const longRow = ls
-      ? `<div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap;margin-bottom:5px">
-           <span style="font-size:14px;font-weight:700;color:${col};background:${bg};border-radius:6px;padding:5px 12px">${ls.icon} ${ls.lbl}</span>
-           <span style="font-size:10px;color:var(--text2)">大盤季線：${mkTxt}</span>
-         </div>
-         <div style="font-size:10px;color:var(--text3);line-height:1.6">🎯 ${ls.reason}</div>`
-      : `<div style="font-size:11px;color:var(--text3)">無月營收資料，長線狀態無法判斷</div>`;
-    return `<div class="ds"><div class="dst">操作策略狀態 <span style="font-size:10px;color:var(--text3);font-weight:400">(長線選股 × 短線擇時)</span></div>
-      <div style="margin-bottom:10px;padding-bottom:10px;border-bottom:1px solid var(--border)">
-        <div style="font-size:10px;color:var(--accent2);margin-bottom:5px;font-weight:600">長線（選股）· 營收因子 × 大盤趨勢</div>
-        ${longRow}
-      </div>
-      <div>
-        <div style="font-size:10px;color:var(--accent2);margin-bottom:5px;font-weight:600">短線（擇時）· 均線排列 × 季線</div>
-        <div id="swing-inline" style="font-size:11px;color:var(--text3)">展開K線後計算…</div>
-      </div>
-    </div>`;
-  })()}
+  <div class="ds"><div class="dst">操作策略總覽 <span style="font-size:10px;color:var(--text3);font-weight:400">(當沖 · 短線 · 長線，各週期狀態與進出場)</span></div>
+    <div id="strategy-card" style="font-size:11px;color:var(--text3)">展開K線後計算…</div>
+  </div>
   <div class="ds" id="holders-section">
     <div class="dst">籌碼分析（集保持股分散）</div>
     <div id="holders-loading" style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--text3);font-size:11px;">
@@ -1405,7 +1378,7 @@ function buildDetHTML(s,live){
       </div>
     </div>
   </div>
-  <div class="ds"><div class="dst">AI 診斷</div>
+  <div class="ds"><div class="dst">今日盤面評分 <span style="font-size:10px;color:var(--text3);font-weight:400">(當日強弱＋技術明細，進出場價位見上方「操作策略總覽」)</span></div>
     <div class="ai-box ${ac}" style="margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
         <div class="ai-ttl" style="color:${sc};font-size:18px">${g.cls==='sig-buy'?'📈':g.cls==='sig-sell'?'📉':'⏸'} ${g.lbl}</div>
@@ -1415,23 +1388,6 @@ function buildDetHTML(s,live){
       <div class="ai-sr" style="font-size:12px"><span>偏空</span><span style="font-family:var(--mono)">綜合評分</span><span>偏多</span></div>
       <div class="ai-bar" style="height:6px;margin-bottom:14px"><div class="ai-fill" style="width:${sn}%;background:${sc}"></div></div>
       <div class="ai-pts" style="font-size:13px">${g.rs.length?g.rs.map(r=>`<div style="padding:3px 0;border-bottom:1px solid var(--border)">· ${r}</div>`).join(''):'<div>· 無明顯訊號，建議觀望</div>'}</div>
-    </div>
-    <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:14px">
-      <div style="background:var(--bg3);border-radius:8px;padding:14px;text-align:center;border:1px solid rgba(56,139,253,.2)">
-        <div style="font-size:12px;color:var(--text3);margin-bottom:6px">📍 建議進場</div>
-        <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--accent2)">${sl2}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:3px">參考MA20支撐</div>
-      </div>
-      <div style="background:var(--bg3);border-radius:8px;padding:14px;text-align:center;border:1px solid rgba(63,185,80,.2)">
-        <div style="font-size:12px;color:var(--text3);margin-bottom:6px">🎯 目標價位</div>
-        <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--green2)">${tp}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:3px">+${tpPct}% 潛在空間</div>
-      </div>
-      <div style="background:var(--bg3);border-radius:8px;padding:14px;text-align:center;border:1px solid rgba(248,81,73,.2)">
-        <div style="font-size:12px;color:var(--text3);margin-bottom:6px">🛡 停損點</div>
-        <div style="font-family:var(--mono);font-size:20px;font-weight:700;color:var(--red2)">${sl}</div>
-        <div style="font-size:11px;color:var(--text3);margin-top:3px">-${slPct}% 風險控制</div>
-      </div>
     </div>
     <div style="background:var(--bg3);border-radius:8px;padding:12px 14px;margin-bottom:10px">
       <div style="font-size:12px;font-weight:700;color:var(--text2);margin-bottom:8px">技術指標摘要</div>
@@ -1466,6 +1422,8 @@ async function buildDetCharts(s){
       calcAndShowMA(kdata);
       // 更新 AI 診斷技術摘要
       updateAITechDetail(kdata, s);
+      // 操作策略總覽（當沖／短線／長線 三週期）
+      renderStrategyCard(s, kdata);
     }
   }catch(e){console.warn('kline err:',e);}
 
@@ -1567,47 +1525,119 @@ async function buildDetCharts(s){
     _s('ta-status', statusTxt, statusCol);
     const sigEl=document.getElementById('ta-signals');
     if(sigEl) sigEl.innerHTML=signals.map(t=>`<span style="margin-right:10px">· ${t}</span>`).join('');
-
-    // ── 短線操作狀態（回測驗證：訊號B 排列＋季線；事件型 MACD/均線交叉已證實無 edge，故不採用）──
-    renderSwingState(closes, vols, ma60);
   }
 
-  // 短線狀態：用回測中最一致的「均線排列 × 季線」規則
-  // 回測(台灣50+中小型,2年)：強多 20日超額 +0.4%、強空 −2.5%；帶量突破20日高 +0.7%
-  function renderSwingState(closes, vols, ma60){
-    const el=document.getElementById('swing-inline');
-    if(!el) return;
-    if(closes.length<60){ el.innerHTML='<span style="font-size:11px;color:var(--text3)">日K資料不足（需 60 筆以上）</span>'; return; }
-    const mean=(a,n)=>a.slice(-n).reduce((x,y)=>x+y,0)/n;
-    const ma5=mean(closes,5), ma10=mean(closes,10), ma20=mean(closes,20);
-    const cur=closes[closes.length-1];
-    // 排列＋季線
-    let cls,icon,lbl,col,bg,reason;
-    if(ma5>ma10&&ma10>ma20&&cur>ma60){
-      cls='strong';icon='📈';lbl='短多';col='var(--green2)';bg='rgba(126,231,135,.12)';
-      reason='均線多頭排列(MA5>MA10>MA20)＋站上季線；回測20日超額 +0.4%（趨勢確認，弱正向）';
-    }else if(ma5<ma10&&ma10<ma20&&cur<ma60){
-      cls='weak';icon='📉';lbl='短空';col='var(--red2)';bg='rgba(255,161,152,.12)';
-      reason='均線空頭排列＋跌破季線；回測20日超額 −2.5%（可靠避開訊號，勿接刀）';
-    }else{
-      cls='mid';icon='⚖️';lbl='盤整';col='var(--amber2)';bg='rgba(227,179,65,.12)';
-      reason='均線糾結或未站穩季線，方向不明；回測無明顯超額';
+  // ── ATR(14)：真實日波動度，用於推算停損/目標距離 ──
+  function atr14(kd){
+    if(!kd||kd.length<15) return 0;
+    const trs=[];
+    for(let i=1;i<kd.length;i++){
+      const h=+kd[i].high,l=+kd[i].low,pcl=+kd[i-1].close;
+      if(!(h>0&&l>0&&pcl>0)) continue;
+      trs.push(Math.max(h-l,Math.abs(h-pcl),Math.abs(l-pcl)));
     }
-    // 帶量突破20日高（擇時加註）—— 用今日量 vs 20日均量
+    const last=trs.slice(-14);
+    return last.length? last.reduce((a,b)=>a+b,0)/last.length : 0;
+  }
+
+  // ── 操作策略總覽：當沖 / 短線 / 長線 三週期，各附狀態方向 + 進出場價位 ──
+  // 狀態方向皆來自回測；價位以真實均線(MA20/季線)與波動度(ATR)推算，為參考非保證。
+  // 回測(台灣50+中小型,2年)：短多 20日超額 +0.4%、短空 −2.5%、帶量突破20日高 +0.7%；長線營收因子 +1.3%
+  function renderStrategyCard(s, kdata){
+    const el=document.getElementById('strategy-card');
+    if(!el) return;
+    const closes=kdata.map(d=>d.close).filter(v=>v>0);
+    const vols=kdata.map(d=>+d.vol||+d.volume||0);
+    if(closes.length<60){ el.innerHTML='<span style="font-size:11px;color:var(--text3)">日K資料不足（需 60 筆），無法完整判斷</span>'; return; }
+    const mean=(a,n)=>a.slice(-n).reduce((x,y)=>x+y,0)/n;
+    const ma5=mean(closes,5), ma10=mean(closes,10), ma20=mean(closes,20), ma60=mean(closes,60);
+    const cur=s.close>0?s.close:closes[closes.length-1];
+    const atr=atr14(kdata), atrP=cur>0?atr/cur*100:0;
+    const f=v=>(v>0?v.toFixed(2):'—');
+    const pcd=(from,to)=>from>0?((to-from)/from*100):0;
+    const sgn=x=>(x>=0?'+':'')+x.toFixed(1)+'%';
+
+    // 三格價位
+    const levels=(entry,stop,target)=>`
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:7px">
+        <div style="background:var(--bg3);border-radius:6px;padding:7px 4px;text-align:center">
+          <div style="font-size:9px;color:var(--text3)">進場參考</div>
+          <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent2)">${f(entry)}</div></div>
+        <div style="background:var(--bg3);border-radius:6px;padding:7px 4px;text-align:center">
+          <div style="font-size:9px;color:var(--text3)">停損</div>
+          <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--red2)">${f(stop)}</div>
+          <div style="font-size:9px;color:var(--text3)">${sgn(pcd(entry,stop))}</div></div>
+        <div style="background:var(--bg3);border-radius:6px;padding:7px 4px;text-align:center">
+          <div style="font-size:9px;color:var(--text3)">目標</div>
+          <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--green2)">${f(target)}</div>
+          <div style="font-size:9px;color:var(--text3)">${sgn(pcd(entry,target))}</div></div>
+      </div>`;
+    const head=(title,horizon,lbl,col,bg)=>`
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
+        <span style="font-size:13px;font-weight:700;color:var(--text)">${title}</span>
+        <span style="font-size:9px;color:var(--text3)">${horizon}</span>
+        <span style="margin-left:auto;font-size:13px;font-weight:700;color:${col};background:${bg};border-radius:6px;padding:3px 11px">${lbl}</span>
+      </div>`;
+    const note=t=>`<div style="font-size:10px;color:var(--text3);line-height:1.6;margin-top:5px">${t}</div>`;
+    const divider='<div style="border-top:1px solid var(--border);margin:11px 0"></div>';
+
+    // ========== 當沖（當日／隔日）==========
+    const g=s.sig||{lbl:'—'};
+    const liquid=s.vol>=3000, volatile=atrP>=2.0, dtFit=liquid&&volatile;
+    const dtCol=dtFit?'var(--green2)':'var(--text2)';
+    const dtBg =dtFit?'rgba(126,231,135,.12)':'rgba(139,148,158,.1)';
+    const dayHi=s.high>0?s.high:cur, dayLo=s.low>0?s.low:cur;
+    const dt = head('⚡ 當沖','當日／隔日',dtFit?'具備當沖條件':'條件不足',dtCol,dtBg)
+      + `<div style="font-size:10px;color:var(--text2);line-height:1.7">
+          流動性：<b style="color:${liquid?'var(--green2)':'var(--text3)'}">${fmV(s.vol)}張${liquid?' ✓':' ✗(<3000)'}</b>
+          波動(ATR)：<b style="color:${volatile?'var(--green2)':'var(--text3)'}">${atrP.toFixed(1)}%${volatile?' ✓':' ✗(<2%)'}</b><br>
+          今日盤面：<b style="color:var(--text)">${g.lbl}</b>　當日區間 <b>${f(dayLo)} ~ ${f(dayHi)}</b></div>`
+      + note('⚠️ 當沖無回測進場 edge，本列僅判斷流動性與波動是否足夠；操作以當日高低與均價為界，當日沖銷不留倉。');
+
+    // ========== 短線（5–20 交易日）==========
+    let stLbl,stCol,stBg,stBody;
+    if(ma5>ma10&&ma10>ma20&&cur>ma60){
+      stLbl='📈 短多'; stCol='var(--green2)'; stBg='rgba(126,231,135,.12)';
+      const entry=Math.max(ma10,cur*0.985);
+      const stop =Math.min(ma20*0.985, cur-1.5*atr);
+      const target=cur+2.5*atr;
+      stBody=note('均線多頭排列(MA5&gt;MA10&gt;MA20)＋站上季線；回測20日超額 +0.4%（弱正向，趨勢確認）')+levels(entry,stop,target);
+    }else if(ma5<ma10&&ma10<ma20&&cur<ma60){
+      stLbl='📉 短空'; stCol='var(--red2)'; stBg='rgba(255,161,152,.12)';
+      stBody=note('均線空頭排列＋跌破季線；回測20日超額 −2.5%（可靠避開訊號，勿做多接刀）。反彈壓力參考 MA20 '+f(ma20));
+    }else{
+      stLbl='⚖️ 盤整'; stCol='var(--amber2)'; stBg='rgba(227,179,65,.12)';
+      stBody=note('均線糾結或未站穩季線，方向不明；回測無明顯超額，建議觀望等突破。MA20 '+f(ma20)+'／季線 '+f(ma60));
+    }
     let brk='';
     if(closes.length>=21){
-      const prior20=closes.slice(-21,-1); // 不含今日的前20日
-      const hi20=Math.max(...prior20);
-      const avg20v=vols.slice(-20).reduce((a,b)=>a+b,0)/20;
-      const todayV=vols[vols.length-1]||0;
-      if(cur>hi20 && avg20v>0 && todayV/avg20v>=1.5){
-        brk=`<span style="font-size:10px;color:var(--accent2);background:rgba(56,139,253,.14);border-radius:4px;padding:2px 7px;margin-left:6px" title="收盤創20日新高且帶量（≥1.5倍20日均量）；回測20日超額 +0.7%，擇時參考">⚡帶量突破</span>`;
-      }
+      const hi20=Math.max(...closes.slice(-21,-1));
+      const av20=vols.slice(-20).reduce((a,b)=>a+b,0)/20, tv=vols[vols.length-1]||0;
+      if(cur>hi20&&av20>0&&tv/av20>=1.5) brk=`　<span style="font-size:9px;color:var(--accent2);background:rgba(56,139,253,.14);border-radius:4px;padding:2px 6px" title="收盤創20日新高且帶量(≥1.5倍均量)，回測+0.7%">⚡帶量突破</span>`;
     }
-    el.innerHTML=`<div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;margin-bottom:5px">
-        <span style="font-size:14px;font-weight:700;color:${col};background:${bg};border-radius:6px;padding:5px 12px">${icon} ${lbl}</span>${brk}
-      </div>
-      <div style="font-size:10px;color:var(--text3);line-height:1.6">📊 ${reason}</div>`;
+    const st = head('📊 短線'+brk,'5–20 交易日',stLbl,stCol,stBg)+stBody;
+
+    // ========== 長線（數月，營收因子 × 大盤季線）==========
+    const ls=longState(s);
+    const mkTxt = mktRegime==='bull'?'<span style="color:var(--green2)">站上季線</span>':mktRegime==='bear'?'<span style="color:var(--red2)">跌破季線</span>':'未知';
+    let ltLbl,ltCol,ltBg,ltBody;
+    if(ls){
+      ltCol=ls.cls==='ls-strong'?'var(--green2)':ls.cls==='ls-weak'?'var(--red2)':ls.cls==='ls-hold'?'var(--amber2)':'var(--text2)';
+      ltBg =ls.cls==='ls-strong'?'rgba(126,231,135,.12)':ls.cls==='ls-weak'?'rgba(255,161,152,.12)':ls.cls==='ls-hold'?'rgba(227,179,65,.12)':'rgba(139,148,158,.1)';
+      ltLbl=`${ls.icon} ${ls.lbl}`;
+      ltBody=note('🎯 '+ls.reason+'　|　大盤季線：'+mkTxt);
+      if(ls.cls==='ls-strong'){
+        const entry=ma60, stop=ma60*0.92, target=cur+4*atr;
+        ltBody+=levels(entry,stop,target);
+      }
+    }else{
+      ltCol='var(--text2)'; ltBg='rgba(139,148,158,.1)'; ltLbl='無資料';
+      ltBody=note('無月營收資料，長線狀態無法判斷');
+    }
+    const lt = head('🚀 長線','數月（選股）',ltLbl,ltCol,ltBg)+ltBody;
+
+    el.innerHTML = dt + divider + st + divider + lt
+      + `<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向來自回測；進出場價位以真實均線(MA20／季線)與波動度(ATR ${f(atr)})推算，為參考非保證，請自行判斷。</div>`;
   }
 
   // ── MA 均線乖離率（季線公式：BIAS = (現價 - MA60) / MA60 × 100%）──

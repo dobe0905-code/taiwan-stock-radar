@@ -220,9 +220,10 @@ function statsExcess(arr) {
   const buckets = {}; // sig → lbl → h → {ret,excess,mfePct,maePct,mfeATR,maeATR}
   const baseline = {};
   // 門檻掃描：突破量比 / 強多RSI / 強多季線斜率 ；當沖切點分布
-  const sweep = { brkVol: {}, strongRSI: {}, strongSlope: {} };
+  const sweep = { brkVol: {}, strongRSI: {}, strongSlope: {}, strongMACD: {}, strongVol5: {} };
   const dtDist = { atrP: [], volLot: [] };
   const pushS = (grp, band, h, rec) => {
+    sweep[grp] = sweep[grp] || {};
     sweep[grp][band] = sweep[grp][band] || {};
     const b = sweep[grp][band][h] = sweep[grp][band][h] || { ret: [], excess: [] };
     b.ret.push(rec.ret);
@@ -318,6 +319,18 @@ function statsExcess(arr) {
           const rv = ind.rsi[i];
           if (rv != null) pushS('strongRSI', rv >= 70 ? 'RSI≥70(過熱)' : rv >= 50 ? 'RSI50-70' : 'RSI<50', h, rec);
           if (ma60[i - 5] != null) pushS('strongSlope', ma60[i] > ma60[i - 5] ? '季線上揚' : '季線走平/下彎', h, rec);
+          // MACD 柱狀（DIF-DEM）正負＋DIF 在零軸上下，疊在強多狀態看是否加分
+          if (dif[i] != null && dem[i] != null) {
+            const hist = dif[i] - dem[i];
+            pushS('strongMACD', (hist > 0 ? '柱>0(多)' : '柱<0(空)') + (dif[i] > 0 ? '·DIF>0' : '·DIF<0'), h, rec);
+          }
+          // 量比＝5日均量/20日均量（與底部評分一致），看放量是否在強多裡加分
+          if (i >= 19) {
+            let v5 = 0; for (let j = i - 4; j <= i; j++) v5 += vols[j]; v5 /= 5;
+            const vr5 = vol20[i] ? v5 / vol20[i] : 0;
+            const vband = vr5 >= 1.5 ? '量比≥1.5(爆量)' : vr5 >= 1.2 ? '量比1.2-1.5(偏高)' : vr5 >= 0.8 ? '量比0.8-1.2(正常)' : '量比<0.8(量縮)';
+            pushS('strongVol5', vband, h, rec);
+          }
         }
       }
     }
@@ -407,6 +420,8 @@ function statsExcess(arr) {
   printSweep('brkVol', '門檻 A：突破20日高 × 量比分桶（找最佳放量門檻）', ['量≥2.5', '量2.0-2.5', '量1.5-2.0', '量1.0-1.5', '量<1.0']);
   printSweep('strongRSI', '門檻 B：強多 × RSI 分桶（過熱是否該避開）', ['RSI≥70(過熱)', 'RSI50-70', 'RSI<50']);
   printSweep('strongSlope', '門檻 C：強多 × 季線斜率（季線上揚是否加分）', ['季線上揚', '季線走平/下彎']);
+  printSweep('strongMACD', '門檻 D：強多 × MACD 柱狀／DIF 零軸（是否加分）', ['柱>0(多)·DIF>0', '柱>0(多)·DIF<0', '柱<0(空)·DIF>0', '柱<0(空)·DIF<0']);
+  printSweep('strongVol5', '門檻 E：強多 × 量比(5/20日均量)（放量是否加分）', ['量比≥1.5(爆量)', '量比1.2-1.5(偏高)', '量比0.8-1.2(正常)', '量比<0.8(量縮)']);
 
   // ── 當沖切點校準：日線無法回測當沖 P&L，僅以全市場分布定義「流動性足/波動足」切點 ──
   const sortNum = a => [...a].sort((x, y) => x - y);

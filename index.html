@@ -1394,6 +1394,7 @@ function buildDetHTML(s,live){
       <div id="ai-tech-detail" style="font-size:13px;color:var(--text2);line-height:2">
         <span style="color:var(--text3)">計算中...</span>
       </div>
+      <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5">💡 這三個指標(RSI/MACD/量比)已以回測校準的「正確用法」納入上方「操作策略總覽」的方向判斷——例如強多中爆量為出貨警訊、RSI 過熱屬動能確認，而非 naive 金叉/爆量＝買。</div>
     </div>
     <div class="ai-disc" style="font-size:12px">⚠️ 以上分析基於技術面公式自動計算，僅供參考，不構成投資建議。買賣決策請自行判斷。</div>
   </div>`;
@@ -1563,6 +1564,49 @@ async function buildDetCharts(s){
     const pcd=(from,to)=>from>0?((to-from)/from*100):0;
     const sgn=x=>(x>=0?'+':'')+x.toFixed(1)+'%';
 
+    // ── 動能指標（RSI/MACD/量比），用回測校準的「正確用法」校準方向，非 naive 金叉/爆量=買 ──
+    let rsi14=null, dif=null, hist=null, vr5=null;
+    {
+      // RSI(14)
+      let g=0,l=0;
+      for(let i=closes.length-14;i<closes.length;i++){if(i<1)continue;const d=closes[i]-closes[i-1];if(d>0)g+=d;else l+=Math.abs(d);}
+      rsi14=l===0?100:+(100-100/(1+(g/14)/(l/14))).toFixed(1);
+      // MACD：DIF=EMA12-EMA26，DEM=EMA9(DIF)，hist=DIF-DEM
+      const emaArr=(arr,n)=>{const k=2/(n+1);let e=arr[0];const o=[e];for(let x=1;x<arr.length;x++){e=arr[x]*k+e*(1-k);o.push(e);}return o;};
+      const e12=emaArr(closes,12), e26=emaArr(closes,26);
+      const difArr=closes.map((_,i)=>e12[i]-e26[i]);
+      const demArr=emaArr(difArr,9);
+      dif=+difArr[difArr.length-1].toFixed(3);
+      hist=+(difArr[difArr.length-1]-demArr[demArr.length-1]).toFixed(3);
+      // 量比＝5日均量/20日均量
+      if(vols.length>=20){const v5=mean(vols,5), v20=mean(vols,20); vr5=v20>0?+(v5/v20).toFixed(2):null;}
+    }
+    // 回測校準的動能確認文字（共用於短多/長多）
+    const momLines=()=>{
+      const ln=[];
+      // MACD：柱翻紅(>0)非加碼理由；柱<0但DIF>0＝趨勢中拉回(回測60日超額+5.3%最佳)；DIF<0動能轉弱
+      if(dif!=null){
+        if(dif<0) ln.push('<b style="color:var(--red2)">MACD DIF&lt;0（'+dif+'）</b> 跌破零軸，動能轉弱（回測超額轉差）');
+        else if(hist<0) ln.push('<b style="color:var(--green2)">MACD 柱翻黑但 DIF&gt;0</b>＝趨勢中拉回，回測此型 60日超額 +5.3%（最佳買點）');
+        else ln.push('MACD 柱&gt;0、DIF&gt;0：多方續行（回測與強多基準相當，非額外加碼理由）');
+      }
+      // 量比：強多中爆量反為負超額（出貨/追高）；正常量最佳
+      if(vr5!=null){
+        if(vr5>=1.5) ln.push('<b style="color:var(--amber2)">量比 '+vr5+'x 爆量</b>：強多中爆量回測為負超額（疑出貨/追高），<b>不宜追加碼</b>');
+        else if(vr5>=1.2) ln.push('量比 '+vr5+'x 偏高（回測超額中性偏正）');
+        else if(vr5>=0.8) ln.push('<b style="color:var(--green2)">量比 '+vr5+'x 正常</b>：回測此區間超額最佳（健康量能）');
+        else ln.push('量比 '+vr5+'x 量縮：動能不足');
+      }
+      // RSI：強多中過熱反而最強，非賣訊
+      if(rsi14!=null){
+        if(rsi14>=70) ln.push('<b style="color:var(--green2)">RSI '+rsi14+' 過熱</b>：強多趨勢中屬動能確認（回測 60日超額 +5.6% 最強），<b>非賣訊</b>');
+        else ln.push('RSI '+rsi14);
+      }
+      return ln;
+    };
+    // 動能負面分數：DIF<0 或 爆量 屬警訊，用於把方向標籤降級
+    const momWarn=()=>((dif!=null&&dif<0)?1:0)+((vr5!=null&&vr5>=1.5)?1:0);
+
     // 三格價位
     const levels=(entry,stop,target)=>`
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:7px">
@@ -1604,13 +1648,19 @@ async function buildDetCharts(s){
     // ========== 短線（5–20 交易日）==========
     let stLbl,stCol,stBg,stBody;
     if(ma5>ma10&&ma10>ma20&&cur>ma60){
-      stLbl='📈 短多'; stCol='var(--green2)'; stBg='rgba(126,231,135,.12)';
+      // 方向＝MA排列(回測驗證的骨幹)；動能指標(MACD/量比)做品質降級：兩項警訊→轉弱
+      const w=momWarn();
+      if(w>=2){ stLbl='📈 短多（動能轉弱）'; stCol='var(--amber2)'; stBg='rgba(227,179,65,.12)'; }
+      else { stLbl='📈 短多'; stCol='var(--green2)'; stBg='rgba(126,231,135,.12)'; }
       // 價位＝實測校準：停損 2.0×ATR(中位MAE)、目標 2.4×ATR(中位MFE)，相對現價
       const entry=cur, stop=cur-2.0*atr, target=cur+2.4*atr;
       const slopeTxt=ma60Up
         ?'季線<b style="color:var(--green2)">上揚 ✓</b>（回測證實 edge 幾乎全來自季線上揚，20日超額 +0.7%）'
         :'季線<b style="color:var(--red2)">走平/下彎 ✗</b>（回測此情況 20日超額 −1.0%，排列雖多頭但動能不足，降低部位或等季線翻揚）';
-      stBody=note('均線多頭排列(MA5&gt;MA10&gt;MA20)＋站上季線。'+slopeTxt+'。短線edge偏弱，當趨勢確認用，真正報酬要持有約3個月見「長線」；停損/目標＝實測中位MAE/MFE，風報比約1.2。支撐 MA10 '+f(ma10)+'／MA20 '+f(ma20))+levels(entry,stop,target);
+      const mom=momLines().map(t=>'· '+t).join('<br>');
+      stBody=note('均線多頭排列(MA5&gt;MA10&gt;MA20)＋站上季線。'+slopeTxt+'。短線edge偏弱，當趨勢確認用，真正報酬要持有約3個月見「長線」；停損/目標＝實測中位MAE/MFE，風報比約1.2。支撐 MA10 '+f(ma10)+'／MA20 '+f(ma20))
+        +note('<b style="color:var(--text2)">動能確認（RSI/MACD/量比，回測校準）：</b><br>'+mom)
+        +levels(entry,stop,target);
     }else if(ma5<ma10&&ma10<ma20&&cur<ma60){
       stLbl='📉 短空'; stCol='var(--red2)'; stBg='rgba(255,161,152,.12)';
       stBody=note('均線空頭排列＋跌破季線；回測20日超額 −2.5%（可靠避開訊號，勿做多接刀）。反彈壓力參考 MA20 '+f(ma20));
@@ -1647,7 +1697,10 @@ async function buildDetCharts(s){
         const slopeNote=ma60Up
           ?'季線<b style="color:var(--green2)">上揚 ✓</b>，符合最佳進場條件（強多×季線上揚回測 60日勝率 57.8%、超額 +2.7%）。'
           :'⚠️ 季線<b style="color:var(--red2)">走平/下彎</b>，回測此情況 60日為負超額（−2.3%）——營收面雖強，技術動能未啟動，建議等季線翻揚再布局。';
-        ltBody+=note('價位以持有約3個月(60日)實測校準。'+slopeNote+'另：強多趨勢中 RSI≥70（過熱）回測反而最強（60日超額 +5.6%），屬動能確認，不必因超買急賣。理想拉回季線 MA60 '+f(ma60)+' 附近布局。')+levels(entry,stop,target);
+        const mom=momLines().map(t=>'· '+t).join('<br>');
+        ltBody+=note('價位以持有約3個月(60日)實測校準。'+slopeNote+'理想拉回季線 MA60 '+f(ma60)+' 附近布局。')
+          +note('<b style="color:var(--text2)">動能確認（RSI/MACD/量比，回測校準）：</b><br>'+mom)
+          +levels(entry,stop,target);
       }
     }else{
       ltCol='var(--text2)'; ltBg='rgba(139,148,158,.1)'; ltLbl='無資料';
@@ -1656,7 +1709,7 @@ async function buildDetCharts(s){
     const lt = head('🚀 長線','數月（選股）',ltLbl,ltCol,ltBg)+ltBody;
 
     el.innerHTML = dt + divider + st + divider + lt
-      + `<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆來自回測(95檔2年)：停損/目標＝實測 MFE/MAE（持有期內最大有利/不利波幅）校準的 ATR 倍數；季線斜率、突破量比門檻經全市場掃描驗證。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
+      + `<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆來自回測(95檔2年)：停損/目標＝實測 MFE/MAE 校準的 ATR 倍數；季線斜率、突破量比門檻經全市場掃描驗證。底部「今日盤面評分」的 RSI/MACD/量比 已以回測校準的「正確用法」納入上方方向判斷（非 naive 金叉/爆量＝買：強多中爆量為負超額、RSI 過熱反屬動能確認、趨勢中拉回為最佳買點）。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
   }
 
   // ── MA 均線乖離率（季線公式：BIAS = (現價 - MA60) / MA60 × 100%）──

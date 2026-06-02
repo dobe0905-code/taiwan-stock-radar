@@ -459,6 +459,19 @@ function isTradingNow(){
   return t>=9*60 && t<=13*60+30;
 }
 
+// MIS 現價推導：z(當盤成交價)盤中會間歇變"-"，此時改用最佳買賣價中點，
+// 都無才退回 0（呼叫端保留原值，避免顯示昨收+昨日漲跌的錯誤組合）
+function misPrice(item){
+  const z=parseFloat(item&&item.z);
+  if(Number.isFinite(z)&&z>0) return z;
+  const bid=parseFloat(((item&&item.b)||'').split('_')[0]);
+  const ask=parseFloat(((item&&item.a)||'').split('_')[0]);
+  if(bid>0&&ask>0) return Math.round((bid+ask)/2*100)/100;
+  if(bid>0) return bid;
+  if(ask>0) return ask;
+  return 0;
+}
+
 function buildMisBatches(){
   twseMisBatch = [];
   tpexMisBatch = [];
@@ -481,10 +494,9 @@ async function pollMisBatch(){
         const sid=item.c;
         if(!sid) continue;
         // z=成交價 y=昨收 o=開盤 h=最高 l=最低 v=成交量
-        const z=parseFloat(item.z)||0;
         const y=parseFloat(item.y)||0;
-        const price=z>0?z:y;
-        if(!price) continue;
+        const price=misPrice(item);          // z 無效時用買賣價中點，不退昨收
+        if(!price||!y) continue;
         const s=stocks.find(x=>x.id===sid);
         if(s){
           const prev=s.close;
@@ -493,8 +505,8 @@ async function pollMisBatch(){
           s.high=parseFloat(item.h)||s.high;
           s.low=parseFloat(item.l)||s.low;
           s.vol=parseFloat(item.v)||s.vol;
-          s.chg=z>0&&y>0?parseFloat((z-y).toFixed(2)):s.chg;
-          s.chgP=y>0&&z>0?parseFloat(((z-y)/y*100).toFixed(2)):s.chgP;
+          s.chg=parseFloat((price-y).toFixed(2));        // 漲跌據推導現價重算，與現價一致
+          s.chgP=parseFloat(((price-y)/y*100).toFixed(2));
           s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn});
           misCount++;
           if(prev!==s.close){
@@ -524,10 +536,9 @@ async function pollMisBatch(){
       for(const item of arr2){
         const sid=item.c;
         if(!sid) continue;
-        const z=parseFloat(item.z)||0;
         const y=parseFloat(item.y)||0;
-        const price=z>0?z:y;
-        if(!price) continue;
+        const price=misPrice(item);
+        if(!price||!y) continue;
         const s=stocks.find(x=>x.id===sid);
         if(s){
           s.close=price;
@@ -535,8 +546,8 @@ async function pollMisBatch(){
           s.high=parseFloat(item.h)||s.high;
           s.low=parseFloat(item.l)||s.low;
           s.vol=parseFloat(item.v)||s.vol;
-          s.chg=z>0&&y>0?parseFloat((z-y).toFixed(2)):s.chg;
-          s.chgP=y>0&&z>0?parseFloat(((z-y)/y*100).toFixed(2)):s.chgP;
+          s.chg=parseFloat((price-y).toFixed(2));
+          s.chgP=parseFloat(((price-y)/y*100).toFixed(2));
           s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn});
           misCount++;
         }
@@ -1130,14 +1141,14 @@ function startDetPoll(s){
       const arr = j.data||[];
       const item = arr.find(x=>x.c===s.id)||arr[0];
       if(!item) return;
-      const z=parseFloat(item.z)||0;   // 成交價
       const y=parseFloat(item.y)||0;   // 昨收
       const o=parseFloat(item.o)||0;   // 開盤
       const h=parseFloat(item.h)||0;   // 最高
       const l=parseFloat(item.l)||0;   // 最低
       const v=parseFloat(item.v)||0;   // 累積成交量（張）
-      if(!z||!y) return;
-      const price=z, chg=parseFloat((z-y).toFixed(2)), chgP=parseFloat(((z-y)/y*100).toFixed(2));
+      const price=misPrice(item);      // z 無效時用買賣價中點，不退昨收
+      if(!price||!y) return;
+      const chg=parseFloat((price-y).toFixed(2)), chgP=parseFloat(((price-y)/y*100).toFixed(2));
       const amp=o>0?((h-l)/o*100).toFixed(2)+'%':'—';
 
       // 均價：MIS pz = 加權均價，ov = 總成交金額(元)

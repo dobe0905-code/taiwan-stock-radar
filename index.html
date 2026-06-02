@@ -1836,7 +1836,48 @@ async function buildDetCharts(s){
     }
     const lt = head('🚀 長線','數月（選股）',ltLbl,ltCol,ltBg)+ltBody;
 
-    el.innerHTML = dt + divider + st + divider + lt
+    // ========== 🧭 市場情境濾網（大盤×產業×廣度；只影響該不該進+部位，不動價位）==========
+    // 全部用已載入的全市場資料即時計算，零新增 API。
+    const mc=(()=>{
+      let up=0,dn=0,sum=0,n=0;
+      for(const x of stocks){
+        if(x.isETF||typeof x.chgP!=='number') continue;
+        sum+=x.chgP; n++; if(x.chgP>0)up++; else if(x.chgP<0)dn++;
+      }
+      return {up,dn,breadth:dn>0?up/dn:(up>0?99:1),mktAvg:n>0?sum/n:0,n};
+    })();
+    const ss=(()=>{
+      if(s.isETF||!s.sector||s.sector==='ETF') return null;
+      let sum=0,n=0;
+      for(const x of stocks){ if(x.sector===s.sector&&!x.isETF&&typeof x.chgP==='number'){sum+=x.chgP;n++;} }
+      if(n<3) return null;            // 同業樣本太少不判斷
+      const avg=sum/n; return {avg,rel:avg-mc.mktAvg,n};
+    })();
+    let ctxScore=0; const ctxLines=[];
+    if(mktRegime==='bull'){ctxScore++; ctxLines.push('大盤 <b style="color:var(--green2)">站上季線</b>（順勢）');}
+    else if(mktRegime==='bear'){ctxScore--; ctxLines.push('大盤 <b style="color:var(--red2)">跌破季線</b>（逆勢）');}
+    else ctxLines.push('大盤季線 未知');
+    if(mc.breadth>=1.5){ctxScore++; ctxLines.push('市場廣度 <b style="color:var(--green2)">偏多</b>（漲 '+mc.up+' / 跌 '+mc.dn+'，'+mc.breadth.toFixed(2)+'x）');}
+    else if(mc.breadth<=0.67){ctxScore--; ctxLines.push('市場廣度 <b style="color:var(--red2)">偏空</b>（漲 '+mc.up+' / 跌 '+mc.dn+'，'+mc.breadth.toFixed(2)+'x）');}
+    else ctxLines.push('市場廣度 中性（漲 '+mc.up+' / 跌 '+mc.dn+'）');
+    if(ss){
+      if(ss.rel>=1){ctxScore++; ctxLines.push(s.sector+' <b style="color:var(--green2)">領漲 +'+ss.rel.toFixed(1)+'%</b>（強於大盤，'+ss.n+' 檔）');}
+      else if(ss.rel<=-1){ctxScore--; ctxLines.push(s.sector+' <b style="color:var(--red2)">落後 '+ss.rel.toFixed(1)+'%</b>（弱於大盤，'+ss.n+' 檔）');}
+      else ctxLines.push(s.sector+' 與大盤同步（'+(ss.rel>=0?'+':'')+ss.rel.toFixed(1)+'%）');
+    }
+    const ctxLbl=ctxScore>=2?'🟢 順勢':ctxScore===1?'🟢 偏多':ctxScore===0?'🟡 中性':ctxScore===-1?'🔴 偏空':'🔴 逆勢';
+    const ctxCol=ctxScore>=1?'var(--green2)':ctxScore===0?'var(--amber2)':'var(--red2)';
+    const ctxBg =ctxScore>=1?'rgba(126,231,135,.12)':ctxScore===0?'rgba(227,179,65,.12)':'rgba(255,161,152,.12)';
+    const ctxAct=ctxScore>=2?'環境順勢，做多訊號可採正常部位。'
+      :ctxScore===1?'環境偏多，可參與但留意單一因子轉弱。'
+      :ctxScore===0?'環境中性，建議降低部位或等明確方向。'
+      :ctxScore===-1?'環境偏空，做多訊號降部位、嚴設停損。'
+      :'環境逆勢，做多勝率下降，觀望為宜（或僅留意放空）。';
+    const ctx = head('🧭 市場情境','大盤×產業×廣度',ctxLbl,ctxCol,ctxBg)
+      + note(ctxLines.map(t=>'· '+t).join('<br>'))
+      + note('<b style="color:var(--text2)">'+ctxAct+'</b><br>※ 情境僅影響「該不該進、部位大小」，<b>不改變</b>下方 ATR 校準的進場/停損/目標價位。');
+
+    el.innerHTML = ctx + divider + dt + divider + st + divider + lt
       + `<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆來自回測(95檔2年)：停損/目標＝實測 MFE/MAE 校準的 ATR 倍數；季線斜率、突破量比門檻經全市場掃描驗證。底部「今日盤面評分」的 RSI/MACD/量比 已以回測校準的「正確用法」納入上方方向判斷（非 naive 金叉/爆量＝買：強多中爆量為負超額、RSI 過熱反屬動能確認、趨勢中拉回為最佳買點）。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
   }
 

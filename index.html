@@ -797,14 +797,24 @@ function onSearch(){
     showTWTbl();
   }
   renderTable();
-  // 搜尋後立即抓一次即時報價，不必等下一輪 5 秒輪詢
-  if(q && isTradingNow()) pollVisibleNow();
+  // 搜尋中 → 立即抓一次，並啟動 3 秒專屬快輪詢（不依賴 5 秒背景輪詢）；
+  // 清空搜尋 → 停止快輪詢，回到一般背景輪詢
+  if(q){
+    if(isTradingNow()){
+      pollVisibleNow();
+      if(!searchPollTimer) searchPollTimer=setInterval(pollVisibleNow,3000);
+    }
+  }else if(searchPollTimer){
+    clearInterval(searchPollTimer); searchPollTimer=null;
+  }
 }
 
 // 立即更新目前畫面上可見列的即時報價（搜尋/篩選後秒級反應）
-let _visPollBusy=false;
+let _visPollBusy=false, _visPollPending=false, searchPollTimer=null;
 async function pollVisibleNow(){
-  if(_visPollBusy||!isTradingNow()) return;
+  if(!isTradingNow()) return;
+  // 進行中再被呼叫 → 記下待辦，結束後補跑一次（避免快速輸入時最後一次查詢被丟棄）
+  if(_visPollBusy){ _visPollPending=true; return; }
   _visPollBusy=true;
   try{
     const visIds=[...document.querySelectorAll('#tblBody tr[data-id]')].map(tr=>tr.dataset.id);
@@ -824,7 +834,10 @@ async function pollVisibleNow(){
     }
     updSum(); renderTable();
   }catch(e){ console.error('vis poll error:',e); }
-  finally{ _visPollBusy=false; }
+  finally{
+    _visPollBusy=false;
+    if(_visPollPending){ _visPollPending=false; pollVisibleNow(); }
+  }
 }
 
 // 表頭排序狀態（預設：漲跌幅 由大到小）
@@ -2541,6 +2554,7 @@ function setSF(f,el){
   sf=f;
   // 清除搜尋字串，否則 getFiltered 會以搜尋結果覆蓋側欄篩選（個股面板開啟時點側欄仍可正常切換）
   const si=document.getElementById('searchInput'); if(si) si.value='';
+  if(searchPollTimer){clearInterval(searchPollTimer);searchPollTimer=null;}
   // 若目前停在全球指數/美股頁籤（表格被隱藏），切回台股表格才看得到結果
   if(mkt==='global'||mkt==='us'){
     mkt='all';
@@ -2560,6 +2574,7 @@ function setMkt(m,el){
   mkt=m;
   // 點頁籤即清除搜尋字串，讓頁籤篩選生效（避免殘留搜尋結果蓋過）
   const si=document.getElementById('searchInput'); if(si) si.value='';
+  if(searchPollTimer){clearInterval(searchPollTimer);searchPollTimer=null;}
   document.querySelectorAll('.mkt-tab').forEach(e=>e.classList.remove('active'));
   if(el) el.classList.add('active');
   if(m==='global'){

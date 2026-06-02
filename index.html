@@ -190,6 +190,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .db{padding:16px 22px;}
 .ds{margin-bottom:20px;}
 .dst{font-size:13px;font-weight:700;letter-spacing:.08em;color:var(--text3);text-transform:uppercase;margin-bottom:12px;padding-bottom:8px;border-bottom:1px solid var(--border);}
+/* 個股面板分頁導覽（置於 .dh 內，隨標題列固定） */
+.det-tabs{display:flex;gap:5px;margin-top:14px;}
+.det-tab{flex:1;text-align:center;font-size:13px;font-weight:600;padding:7px 4px;border-radius:7px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;transition:background .15s,border-color .15s,color .15s;white-space:nowrap;}
+.det-tab:hover{color:var(--text);}
+.det-tab.active{background:rgba(56,139,253,.15);border-color:var(--accent);color:var(--accent2);}
 .kv2{display:grid;grid-template-columns:1fr 1fr;gap:8px;}
 .kv{background:var(--bg3);border-radius:8px;padding:11px 14px;}
 .kv-l{font-size:16px;color:var(--text2);margin-bottom:4px;}
@@ -450,6 +455,12 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
           <div class="pill" id="d-chg">—</div>
           <span id="d-lim"></span>
           <div class="d-live-tag" id="d-live-tag" style="display:none">● LIVE</div>
+        </div>
+        <div class="det-tabs" id="det-tabs">
+          <div class="det-tab active" data-dtab="quote" onclick="setDetTab('quote')">報價</div>
+          <div class="det-tab" data-dtab="tech" onclick="setDetTab('tech')">技術</div>
+          <div class="det-tab" data-dtab="chips" onclick="setDetTab('chips')">籌碼</div>
+          <div class="det-tab" data-dtab="fund" onclick="setDetTab('fund')">基本面</div>
         </div>
       </div>
       <div class="db" id="detBody"></div>
@@ -1391,6 +1402,8 @@ function openDet(id){
   if(_le) _le.innerHTML=limitTagHTML(s,!!live);
   document.getElementById('d-live-tag').style.display=live?'flex':'none';
   document.getElementById('detBody').innerHTML=buildDetHTML(s,live);
+  { const tb=document.getElementById('det-tabs'); if(tb) tb.style.display='flex'; }  // 台股顯示分頁列
+  setDetTab('quote');                       // 預設顯示「報價」分頁
   document.getElementById('det').classList.add('open');
   setTimeout(()=>buildDetCharts(s),100);
   // 開始單股即時輪詢
@@ -1668,6 +1681,20 @@ function startDetPoll(s){
   if(isTradingNow()) detPollTimer=setInterval(pollOnce,3000);
 }
 
+// 個股面板分頁切換：依 data-dtab 顯示/隱藏區塊，並讓圖表重新計算尺寸
+function setDetTab(tab){
+  document.querySelectorAll('#det-tabs .det-tab').forEach(t=>t.classList.toggle('active', t.dataset.dtab===tab));
+  const body=document.getElementById('detBody');
+  if(!body) return;
+  body.querySelectorAll('.ds[data-dtab]').forEach(sec=>{ sec.style.display = sec.dataset.dtab===tab ? '' : 'none'; });
+  // 隱藏時 canvas 尺寸為 0，切回時需重算；TradingView iframe 靠 window resize 自適應
+  setTimeout(()=>{
+    try{ Object.values(dCharts).forEach(c=>{ if(c&&typeof c.resize==='function') c.resize(); }); }catch(e){}
+    window.dispatchEvent(new Event('resize'));
+    const sc=document.getElementById('det-scroll'); if(sc) sc.scrollTop=0;
+  },40);
+}
+
 function buildDetHTML(s,live){
   const g=s.sig;
   const sc=g.cls==='sig-buy'?'var(--green2)':g.cls==='sig-sell'?'var(--red2)':'var(--amber2)';
@@ -1688,7 +1715,7 @@ function buildDetHTML(s,live){
   </div>`:'';
 
   return`${dispBlock}
-  <div class="ds"><div class="dst">即時報價</div>
+  <div class="ds" data-dtab="quote"><div class="dst">即時報價</div>
     <div class="kv2">
       <div class="kv"><div class="kv-l">開盤</div><div class="kv-v" id="dq-open">${s.open>0?s.open.toFixed(2):'—'}</div></div>
       <div class="kv"><div class="kv-l">現價</div><div class="kv-v ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}" id="dq-price">${s.close.toFixed(2)}</div></div>
@@ -1708,7 +1735,7 @@ function buildDetHTML(s,live){
       <div style="height:6px;border-radius:3px;overflow:hidden;background:var(--red2);display:flex"><div id="dq-powerbar" style="height:100%;width:50%;background:var(--green2);transition:width .3s"></div></div>
     </div>
   </div>
-  <div class="ds" id="ma-section"><div class="dst">均線乖離率</div>
+  <div class="ds" data-dtab="quote" id="ma-section"><div class="dst">均線乖離率</div>
     <div class="kv2" id="ma-content">
       <div class="kv"><div class="kv-l">5日均</div><div class="kv-v" id="ma5">載入中...</div></div>
       <div class="kv"><div class="kv-l">10日均</div><div class="kv-v" id="ma10">—</div></div>
@@ -1716,7 +1743,7 @@ function buildDetHTML(s,live){
       <div class="kv"><div class="kv-l">季線(60日)乖離</div><div class="kv-v" id="ma60-bias">—</div></div>
     </div>
   </div>
-  ${ba?`<div class="ds"><div class="dst">即時五檔</div>
+  ${ba?`<div class="ds" data-dtab="quote"><div class="dst">即時五檔</div>
     <div class="bidask-grid">
       <div class="ba-side ba-buy"><div class="ba-title">買方 Bid</div>
         ${ba.bid_prices.map((p,i)=>`<div class="ba-row"><span class="ba-price" id="bp-${i}">${p?.toFixed(2)||'—'}</span><span style="color:var(--text2);font-family:var(--mono);font-size:11px" id="bv-${i}">${fmV(ba.bid_volumes[i]||0)}</span></div>`).join('')}
@@ -1726,7 +1753,7 @@ function buildDetHTML(s,live){
       </div>
     </div>
   </div>`:''}
-  <div class="ds" id="tech-analysis-section" style="margin-bottom:14px">
+  <div class="ds" data-dtab="tech" id="tech-analysis-section" style="margin-bottom:14px">
     <div class="dst">技術分析狀態</div>
     <div id="tech-status-row" style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-bottom:6px">
       <div style="background:var(--bg3);border-radius:7px;padding:9px 11px;border:1px solid var(--border)">
@@ -1757,10 +1784,10 @@ function buildDetHTML(s,live){
     <div id="ta-synth" style="display:none;font-size:12px;line-height:1.7;padding:10px 12px;margin-bottom:6px;border-radius:7px;background:var(--bg4);border:1px solid var(--border)"></div>
     <div id="ta-signals" style="font-size:10px;color:var(--text3);line-height:1.8;min-height:16px"></div>
   </div>
-  <div class="ds" id="company-section"><div class="dst">公司概況</div>
+  <div class="ds" data-dtab="fund" id="company-section"><div class="dst">公司概況</div>
     <div id="company-body" style="font-size:13px;color:var(--text3);line-height:1.6">載入中…</div>
   </div>
-  <div class="ds" id="price-chart-section"><div class="dst">價格走勢</div>
+  <div class="ds" data-dtab="tech" id="price-chart-section"><div class="dst">價格走勢</div>
     <div id="tv-interval-row" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
       ${(()=>{
         // 權證（6位代號 or 名稱含購/售）不支援 TradingView 日K
@@ -1784,11 +1811,11 @@ function buildDetHTML(s,live){
     <div id="tv-stock-wrap" style="height:440px;border-radius:8px;overflow:hidden;background:var(--bg);position:relative">
     </div>
   </div>
-  <div class="ds" id="rev-annual-section"><div class="dst">近五年年營收</div>
+  <div class="ds" data-dtab="fund" id="rev-annual-section"><div class="dst">近五年年營收</div>
     <div style="height:180px;position:relative"><canvas id="c-rev-annual"></canvas></div>
     <div id="rev-annual-note" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5">載入中…</div>
   </div>
-  <div class="ds" id="financials-section"><div class="dst">季財報分析（近12季）</div>
+  <div class="ds" data-dtab="fund" id="financials-section"><div class="dst">季財報分析（近12季）</div>
     <div id="fin-note" style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5">載入中…</div>
     <div style="font-size:12px;color:var(--text2);margin:4px 0 4px">資產負債走勢（億元）</div>
     <div style="height:180px;position:relative"><canvas id="c-fin-bs"></canvas></div>
@@ -1798,7 +1825,7 @@ function buildDetHTML(s,live){
     <div style="height:180px;position:relative"><canvas id="c-fin-oper"></canvas></div>
     <div style="font-size:10px;color:var(--text3);margin-top:8px;line-height:1.5">※ 比率均依公開財報（FinMind）自行計算，僅供體質檢視，非買賣訊號。</div>
   </div>
-  <div class="ds"><div class="dst">估值指標</div>
+  <div class="ds" data-dtab="fund"><div class="dst">估值指標</div>
     <div class="kv2">
       <div class="kv"><div class="kv-l">本益比 PER</div><div class="kv-v ${s.peV&&s.peV<15?'c-up':s.peV&&s.peV>35?'c-dn':'c-neu'}">${s.peV?s.peV.toFixed(1):'—'}</div></div>
       <div class="kv"><div class="kv-l">股價淨值比</div><div class="kv-v">${s.pbV?s.pbV.toFixed(2):'—'}</div></div>
@@ -1817,7 +1844,7 @@ function buildDetHTML(s,live){
               :tier==='衰退'?'回測：營收年增<0% → 20日跑輸大盤 -3.3%，留意基本面轉弱'
               :'回測：營收年增 0~20% 區間對大盤無明顯超額';
     const warn='⚠️ 順勢因子：2022 空頭期回測單調性反轉（高成長轉弱、衰退反彈），須配合大盤趨勢（指數站上月/季線）使用';
-    return `<div class="ds"><div class="dst">月營收動能 ${revMonth?`<span style="font-size:10px;color:var(--text3);font-weight:400">(${revMonth} 公布)</span>`:''}</div>
+    return `<div class="ds" data-dtab="fund"><div class="dst">月營收動能 ${revMonth?`<span style="font-size:10px;color:var(--text3);font-weight:400">(${revMonth} 公布)</span>`:''}</div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
         <span style="font-size:13px;font-weight:700;color:${tCol};background:${tBg};border-radius:6px;padding:4px 10px">${tier}</span>
         <div class="kv2" style="flex:1;margin:0">
@@ -1829,10 +1856,10 @@ function buildDetHTML(s,live){
       <div style="font-size:10px;color:var(--amber2);line-height:1.6;margin-top:4px">${warn}</div>
     </div>`;
   })()}
-  <div class="ds"><div class="dst">操作策略總覽 <span style="font-size:10px;color:var(--text3);font-weight:400">(當沖 · 短線 · 長線，各週期狀態與進出場)</span></div>
+  <div class="ds" data-dtab="tech"><div class="dst">操作策略總覽 <span style="font-size:10px;color:var(--text3);font-weight:400">(當沖 · 短線 · 長線，各週期狀態與進出場)</span></div>
     <div id="strategy-card" style="font-size:11px;color:var(--text3)">展開K線後計算…</div>
   </div>
-  <div class="ds" id="holders-section">
+  <div class="ds" data-dtab="chips" id="holders-section">
     <div class="dst">籌碼分析（集保持股分散）</div>
     <div id="holders-loading" style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--text3);font-size:11px;">
       <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>載入籌碼資料...
@@ -1893,7 +1920,7 @@ function buildDetHTML(s,live){
       </div>
     </div>
   </div>
-  <div class="ds" id="margin-section">
+  <div class="ds" data-dtab="chips" id="margin-section">
     <div class="dst">融資融券（當日）</div>
     <div id="margin-loading" style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--text3);font-size:11px;">
       <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>載入融資融券...
@@ -1917,7 +1944,7 @@ function buildDetHTML(s,live){
       </div>
     </div>
   </div>
-  <div class="ds" id="institution-section">
+  <div class="ds" data-dtab="chips" id="institution-section">
     <div class="dst">三大法人（當日買賣超）</div>
     <div id="inst-loading" style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--text3);font-size:11px;">
       <div class="spinner" style="width:14px;height:14px;border-width:2px"></div>載入法人資料...
@@ -1931,7 +1958,7 @@ function buildDetHTML(s,live){
       </div>
     </div>
   </div>
-  <div class="ds"><div class="dst">當日強弱 <span style="font-size:10px;color:var(--text3);font-weight:400">(僅描述今天這根 K 棒的漲跌/量能，非買賣方向；中期趨勢看上方「技術分析狀態」，進出場價位見「操作策略總覽」)</span></div>
+  <div class="ds" data-dtab="quote"><div class="dst">當日強弱 <span style="font-size:10px;color:var(--text3);font-weight:400">(僅描述今天這根 K 棒的漲跌/量能，非買賣方向；中期趨勢看上方「技術分析狀態」，進出場價位見「操作策略總覽」)</span></div>
     <div class="ai-box ${ac}" style="margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
         <div class="ai-ttl" style="color:${sc};font-size:18px">${g.cls==='sig-buy'?'📈':g.cls==='sig-sell'?'📉':'⏸'} ${g.lbl}</div>
@@ -4052,6 +4079,7 @@ async function openUSDetail(symbol){
   document.getElementById('d-chg').textContent='—';
   document.getElementById('d-chg').className='pill pill-neu';
   document.getElementById('d-live-tag').style.display='none';
+  { const tb=document.getElementById('det-tabs'); if(tb) tb.style.display='none'; }  // 美股無分頁
   document.getElementById('detBody').innerHTML=`<div class="loading"><div class="spinner"></div><div>載入 ${symbol} 資料...</div></div>`;
   det.classList.add('open');
 
@@ -4136,6 +4164,7 @@ async function openGlobalDetail(symbol, name){
   document.getElementById('d-price').textContent='—';
   document.getElementById('d-chg').className='pill pill-neu';
   document.getElementById('d-live-tag').style.display='none';
+  { const tb=document.getElementById('det-tabs'); if(tb) tb.style.display='none'; }  // 全球指數無分頁
   document.getElementById('detBody').innerHTML=`<div class="loading"><div class="spinner"></div><div>載入 ${name} 資料...</div></div>`;
   det.classList.add('open');
 

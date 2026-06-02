@@ -398,8 +398,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
       <button class="f-btn" id="fb-pe" onclick="tqf('pe')">本益比&lt;15</button>
       <button class="f-btn" id="fb-yld" onclick="tqf('yld')">殖利率&gt;4%</button>
       <div class="f-sep"></div>
-      <select class="f-sort" id="sigFilter" onchange="renderTable()" title="依 AI 訊號分類篩選（對應表格 AI訊號 欄位）">
-        <option value="">全部訊號</option>
+      <select class="f-sort" id="sigFilter" onchange="renderTable()" title="依當日強弱分類篩選（對應表格「當日強弱」欄位）">
+        <option value="">全部強弱</option>
         <option value="買進">買進</option>
         <option value="賣出">賣出</option>
         <option value="觀察">觀察</option>
@@ -416,7 +416,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
           <th class="col-yld sortable" data-key="yld" onclick="setSort('yld')">殖利率<span class="sort-ind"></span></th>
           <th class="sortable" data-key="vol" onclick="setSort('vol')">成交量<span class="sort-ind"></span></th>
           <th class="sortable" data-key="chg" onclick="setSort('chg')">漲跌價<span class="sort-ind"></span></th>
-          <th class="sortable" data-key="sig" onclick="setSort('sig')">AI訊號<span class="sort-ind"></span></th>
+          <th class="sortable" data-key="sig" onclick="setSort('sig')" title="當日強弱：僅反映今天這根 K 棒的漲跌/量能，非買賣方向；與個股面板「當日強弱」相同">當日強弱<span class="sort-ind"></span></th>
         </tr></thead>
         <tbody id="tblBody">
           <tr><td colspan="10"><div class="loading"><div class="spinner"></div><div>正在從台灣證交所載入資料...</div></div></td></tr>

@@ -151,12 +151,15 @@ export default async function handler(req, res) {
     // ══════════════════════════════════════════════════
     if (type === 'us_detail') {
       if (!symbol) return res.status(400).json({ error: '缺少 symbol' });
-      const range = req.query.range || '4mo';   // 支援 1d/5d/1mo/3mo/4mo/6mo/1y/2y/5y
+      const interval = req.query.interval || '1d';            // 1d=日K；1m/5m/15m=盤中分時
+      const isIntraday = interval !== '1d';
+      // 盤中：range 預設 1d（當日）；日K：預設 4mo
+      const range = req.query.range || (isIntraday ? '1d' : '4mo');
       // Yahoo v7 quote 端點現在需要 crumb 認證會回 401，必須讓它失敗也不影響 chart
       const [quoteSettled, chartSettled] = await Promise.allSettled([
         yqQuote([symbol]),
         fetch(
-          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=1d`,
+          `https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(symbol)}?range=${encodeURIComponent(range)}&interval=${encodeURIComponent(interval)}`,
           { headers: YF_HEADERS }
         ).then(r => r.json()),
       ]);
@@ -164,17 +167,24 @@ export default async function handler(req, res) {
       const chart = chartSettled.status==='fulfilled' ? chartSettled.value?.chart?.result?.[0] : null;
       // chart.meta 有完整即時報價，當 v7 quote 401 時用它做 fallback
       const meta = chart?.meta || {};
+      const gmtoff = Number.isFinite(meta.gmtoffset) ? meta.gmtoffset : 28800; // 交易所本地時區（秒）
       const kdata = chart ? (() => {
         const ts = chart.timestamp || [];
         const ohlcv = chart.indicators?.quote?.[0] || {};
-        return ts.map((t, i) => ({
-          date:   new Date(t * 1000).toISOString().slice(0, 10),
-          open:   parseFloat((ohlcv.open?.[i] || 0).toFixed(2)),
-          high:   parseFloat((ohlcv.high?.[i] || 0).toFixed(2)),
-          low:    parseFloat((ohlcv.low?.[i] || 0).toFixed(2)),
-          close:  parseFloat((ohlcv.close?.[i] || 0).toFixed(2)),
-          volume: ohlcv.volume?.[i] || 0,
-        })).filter(d => d.close > 0);
+        return ts.map((t, i) => {
+          // 盤中：以交易所本地時間輸出 HH:MM；日K：輸出 YYYY-MM-DD
+          const local = new Date((t + gmtoff) * 1000);
+          const time = `${String(local.getUTCHours()).padStart(2,'0')}:${String(local.getUTCMinutes()).padStart(2,'0')}`;
+          return {
+            date:   new Date(t * 1000).toISOString().slice(0, 10),
+            time,
+            open:   parseFloat((ohlcv.open?.[i] || 0).toFixed(2)),
+            high:   parseFloat((ohlcv.high?.[i] || 0).toFixed(2)),
+            low:    parseFloat((ohlcv.low?.[i] || 0).toFixed(2)),
+            close:  parseFloat((ohlcv.close?.[i] || 0).toFixed(2)),
+            volume: ohlcv.volume?.[i] || 0,
+          };
+        }).filter(d => d.close > 0);
       })() : [];
       const lastClose = kdata.length ? kdata[kdata.length-1].close : 0;
       const prevClose = kdata.length>1 ? kdata[kdata.length-2].close : (meta.chartPreviousClose||lastClose);
@@ -206,6 +216,8 @@ export default async function handler(req, res) {
           state:     q.marketState || 'CLOSED',
         },
         kdata,
+        intraday: isIntraday,
+        prevClose: parseFloat((meta.chartPreviousClose ?? prevClose ?? 0).toFixed(2)),  // 昨收，盤中折線基準
         source: 'YAHOO_FINANCE',
         quoteSource: quoteSettled.status==='fulfilled' ? 'v7' : 'chart.meta(v7 401)',
         ts: new Date().toISOString()

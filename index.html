@@ -3365,21 +3365,40 @@ let mktChartCurSym=MKT_CHARTS[0].sym;
 async function showYahooLineChart(containerId, yahooSym, label){
   const c=document.getElementById(containerId);
   if(!c) return;
-  c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:13px">載入 ${label} 資料中…</div>`;
+  c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:13px">載入 ${label} 當日走勢中…</div>`;
   try{
-    const r=await fetch(`/api/global?type=us_detail&symbol=${encodeURIComponent(yahooSym)}`);
+    // 當日盤中分時（1 分 K，仿 Yahoo 折線圖）
+    const r=await fetch(`/api/global?type=us_detail&symbol=${encodeURIComponent(yahooSym)}&interval=1m&range=1d`);
     const j=await r.json();
-    const kdata=(j.data?.kdata||j.kdata||[]).slice(-60); // 近60日
-    if(!kdata.length){ c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3)">暫無資料</div>`; return; }
+    const kdata=(j.data?.kdata||j.kdata||[]);
+    const prevClose=j.data?.prevClose||j.prevClose||0;
+    if(!kdata.length){ c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--text3);font-size:13px;text-align:center;padding:0 20px">尚無當日盤中資料<br><span style="font-size:11px;color:var(--text3)">（該市場可能尚未開盤或為休市日）</span></div>`; return; }
     c.innerHTML=`<canvas id="yahoo-line-cv" style="width:100%;height:calc(100% - 8px)"></canvas>`;
     const cv=document.getElementById('yahoo-line-cv');
     if(!cv) return;
-    const labels=kdata.map(d=>d.date||d[0]||'');
-    const prices=kdata.map(d=>parseFloat(d.close||d[4]||d.adjclose||0));
-    const firstP=prices[0]||0;
+    const labels=kdata.map(d=>d.time||d.date||'');
+    const prices=kdata.map(d=>parseFloat(d.close||0));
     const lastP=prices[prices.length-1]||0;
-    const color=lastP>=firstP?'#7ee787':'#ffa198';
+    const base=prevClose>0?prevClose:(prices[0]||0);  // 昨收基準
+    const up=lastP>=base;
+    const color=up?'#22c55e':'#ef4444';               // 漲綠 / 跌紅（沿用平台慣例）
     if(window._yahooLineChart) { try{window._yahooLineChart.destroy();}catch(e){} }
+    // 昨收水平虛線
+    const baseLine={
+      id:'prevCloseLine',
+      afterDatasetsDraw(ch){
+        if(!(base>0)) return;
+        const y=ch.scales.y.getPixelForValue(base);
+        const {left,right}=ch.chartArea;
+        const ctx=ch.ctx; ctx.save();
+        ctx.strokeStyle='rgba(139,148,158,.55)'; ctx.lineWidth=1; ctx.setLineDash([4,4]);
+        ctx.beginPath(); ctx.moveTo(left,y); ctx.lineTo(right,y); ctx.stroke();
+        ctx.setLineDash([]);
+        ctx.fillStyle='#8b949e'; ctx.font='11px sans-serif'; ctx.textAlign='right';
+        ctx.fillText('昨收 '+base.toLocaleString(), right-4, y-4);
+        ctx.restore();
+      }
+    };
     window._yahooLineChart=new Chart(cv,{
       type:'line',
       data:{
@@ -3388,11 +3407,17 @@ async function showYahooLineChart(containerId, yahooSym, label){
           label,
           data:prices,
           borderColor:color,
-          backgroundColor:color.replace(')',', 0.08)').replace('rgb','rgba'),
-          borderWidth:2,
+          backgroundColor:ctx=>{
+            const {ctx:c2,chartArea}=ctx.chart; if(!chartArea) return 'transparent';
+            const g=c2.createLinearGradient(0,chartArea.top,0,chartArea.bottom);
+            g.addColorStop(0, up?'rgba(34,197,94,.16)':'rgba(239,68,68,.16)');
+            g.addColorStop(1, 'rgba(0,0,0,0)');
+            return g;
+          },
+          borderWidth:1.6,
           pointRadius:0,
           fill:true,
-          tension:0.3
+          tension:0.15
         }]
       },
       options:{
@@ -3402,14 +3427,24 @@ async function showYahooLineChart(containerId, yahooSym, label){
           legend:{display:false},
           tooltip:{
             backgroundColor:'rgba(12,18,32,.95)',
-            callbacks:{label:ctx=>`${label}: ${ctx.parsed.y?.toLocaleString()}`}
+            callbacks:{
+              title:items=>items[0]?.label||'',
+              label:ctx=>{
+                const v=ctx.parsed.y||0;
+                const diff=base>0?(v-base):0;
+                const pct=base>0?(diff/base*100):0;
+                const sign=diff>=0?'+':'';
+                return [`${label}: ${v.toLocaleString()}`, `較昨收 ${sign}${diff.toFixed(2)} (${sign}${pct.toFixed(2)}%)`];
+              }
+            }
           }
         },
         scales:{
-          x:{ticks:{color:'#8b949e',maxTicksLimit:8,font:{size:11}},grid:{color:'rgba(56,139,253,.06)'}},
-          y:{ticks:{color:'#8b949e',font:{size:11},callback:v=>v?.toLocaleString()},grid:{color:'rgba(56,139,253,.06)'}}
+          x:{ticks:{color:'#8b949e',maxTicksLimit:8,font:{size:11},autoSkip:true},grid:{display:false}},
+          y:{position:'right',ticks:{color:'#8b949e',font:{size:11},callback:v=>v?.toLocaleString()},grid:{color:'rgba(56,139,253,.06)'}}
         }
-      }
+      },
+      plugins:[baseLine]
     });
   }catch(e){
     c.innerHTML=`<div style="display:flex;align-items:center;justify-content:center;height:100%;color:var(--red2)">載入失敗：${e.message}</div>`;
@@ -3565,7 +3600,7 @@ function showGlobalTbl(){
   panel.innerHTML=`
   <div style="background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 16px 0;flex-shrink:0;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-      <div style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:.04em">📊 大盤K線圖 <span style="font-size:11px;color:var(--text3);font-weight:400">(近60日走勢)</span></div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:.04em">📊 大盤走勢圖 <span style="font-size:11px;color:var(--text3);font-weight:400">(當日盤中分時)</span></div>
     </div>
     <div id="global-chart-tabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
       ${GLOBAL_CHARTS.map((c,i)=>`<button data-sym="${c.sym}" style="${i===0?btAct:btBase}" onclick="showGlobalTV('${c.sym}',null)">${c.label}</button>`).join('')}

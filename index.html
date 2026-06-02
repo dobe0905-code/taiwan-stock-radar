@@ -238,6 +238,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <div class="sb-label">市場類型</div>
     <div class="sb-item" onclick="setSF('twse',this)"><span>🏛 上市 TWSE</span><span class="sb-cnt" id="c-twse">—</span></div>
     <div class="sb-item" onclick="setSF('tpex',this)"><span>🏪 上櫃 TPEx</span><span class="sb-cnt" id="c-tpex">—</span></div>
+    <div class="sb-item" onclick="setSF('esb',this)" title="興櫃：上市櫃前的議價市場，無漲跌幅限制、流動性低。回測 edge 建立於上市櫃資料，興櫃訊號僅供參考"><span>🌱 興櫃 ESB</span><span class="sb-cnt" id="c-esb">—</span></div>
     <div class="sb-item" onclick="setSF('etf',this)"><span>📦 ETF</span><span class="sb-cnt" id="c-etf">—</span></div>
     <div class="sb-item" onclick="toggleSub(this)"><span>個股產業</span><div style="display:flex;align-items:center;gap:5px;"><span class="sb-cnt" id="c-stk">—</span><span id="sub-arr" style="font-size:10px;color:var(--text3)">▶</span></div></div>
     <div id="sub-sectors" class="sb-sub"></div>
@@ -272,6 +273,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
       <div class="mkt-tab active" onclick="setMkt('all',this)">🇹🇼 全部台股</div>
       <div class="mkt-tab" onclick="setMkt('twse',this)">🏛 上市</div>
       <div class="mkt-tab" onclick="setMkt('tpex',this)">🏪 上櫃</div>
+      <div class="mkt-tab" onclick="setMkt('esb',this)">🌱 興櫃</div>
       <div class="mkt-tab" onclick="setMkt('etf',this)">📦 ETF</div>
       <div class="mkt-tab" onclick="setMkt('global',this)">🌐 全球指數</div>
     </div>
@@ -279,6 +281,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
       <div class="sum-card" title="點擊查看全部股票" onclick="sumCardClick('all')"><div class="sum-lbl">已載入</div><div class="sum-val c-neu" id="s-tot">—</div><div class="sum-sub">檔股票</div></div>
       <div class="sum-card" title="點擊切換上市頁籤" onclick="sumCardClick('twse')"><div class="sum-lbl">上市</div><div class="sum-val c-neu" id="s-twse">—</div><div class="sum-sub">TWSE →</div></div>
       <div class="sum-card" title="點擊切換上櫃頁籤" onclick="sumCardClick('tpex')"><div class="sum-lbl">上櫃</div><div class="sum-val c-neu" id="s-tpex">—</div><div class="sum-sub">TPEx →</div></div>
+      <div class="sum-card" title="點擊切換興櫃頁籤" onclick="sumCardClick('esb')"><div class="sum-lbl">興櫃</div><div class="sum-val c-neu" id="s-esb">—</div><div class="sum-sub">ESB →</div></div>
       <div class="sum-card" title="點擊篩選上漲股票" onclick="sumCardClick('up')"><div class="sum-lbl">上漲家數</div><div class="sum-val c-up" id="s-up">—</div><div class="sum-sub">漲幅&gt;0 →</div></div>
       <div class="sum-card" title="點擊篩選下跌股票" onclick="sumCardClick('dn')"><div class="sum-lbl">下跌家數</div><div class="sum-val c-dn" id="s-dn">—</div><div class="sum-sub">跌幅&gt;0 →</div></div>
       <div class="sum-card" title="點擊查看買進訊號股票" onclick="sumCardClick('buy')"><div class="sum-lbl">買進訊號</div><div class="sum-val c-up" id="s-by">—</div><div class="sum-sub">技術面 →</div></div>
@@ -496,6 +499,7 @@ function misPrice(item){
 function limitState(s){
   const c=s.close;
   if(!(c>0)) return null;
+  if(s.market==='esb') return null;  // 興櫃為議價市場，無漲跌幅限制
   if(s.limUp>0 && c>=s.limUp-0.005) return 'up';
   if(s.limDn>0 && c<=s.limDn+0.005) return 'down';
   if(s.chgP>=9.5 && s.high>0 && c>=s.high) return 'up';
@@ -608,22 +612,24 @@ async function loadData(){
     const pRev = fetch('/api/fundamental?type=revenue').then(r=>r.json()).catch(()=>({stocks:{}}));
     const pSt  = fetch(`${API}?type=shortterm`).then(r=>r.json()).catch(()=>({stocks:{}}));
 
-    // 上市 + 上櫃清單「並行」抓取，一起合併後「一次渲染」全部台股
-    // （上櫃已於後端剔除權證，payload 大幅縮小，兩清單幾乎同時返回）
-    const [twseRes, tpexRes] = await Promise.all([
+    // 上市 + 上櫃 + 興櫃清單「並行」抓取，一起合併後「一次渲染」全部台股
+    // （上櫃已於後端剔除權證，payload 大幅縮小，三清單幾乎同時返回）
+    const [twseRes, tpexRes, esbRes] = await Promise.all([
       fetch(`${API}?type=twse_list`).then(r=>r.json()),
-      fetch(`${API}?type=tpex_list`).then(r=>r.json()).catch(()=>({data:[]}))
+      fetch(`${API}?type=tpex_list`).then(r=>r.json()).catch(()=>({data:[]})),
+      fetch(`${API}?type=emerging_list`).then(r=>r.json()).catch(()=>({data:[]}))
     ]);
     const twseStocks = processTWSE(twseRes.data||[]);
     const tpexStocks = processTPEx(tpexRes.data||[]);
-    stocks = [...twseStocks, ...tpexStocks];
+    const esbStocks  = processEmerging(esbRes.data||[]);
+    stocks = [...twseStocks, ...tpexStocks, ...esbStocks];
     if(stocks.length===0){ setLd('無資料，請稍後再試'); return; }
     document.getElementById('twseBadge').className='api-badge api-on';
     document.getElementById('tpexBadge').className='api-badge api-on';
     updSum(); updSB(); renderTable();
     startMisPolling();   // batches 已含 TPEx，立即開始即時輪詢
     setLU(); schedRef();
-    showToast(`✓ 全部 ${stocks.length} 檔已載入（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length}），指標背景補上…`);
+    showToast(`✓ 全部 ${stocks.length} 檔已載入（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length} + 興櫃 ${esbStocks.length}），指標背景補上…`);
 
     // 第三階段：PER / 月營收 / 短線狀態 各自到位後就地補上欄位（不阻塞表格）
     pPer.then(perRes=>{
@@ -704,6 +710,27 @@ function processTPEx(data){
   });
 }
 
+// 興櫃（議價市場，無漲跌幅限制；無開盤價，現價用最新成交價、昨收用昨日均價近似）
+function processEmerging(data){
+  return data.filter(d=>d.SecuritiesCompanyCode&&d.Close&&d.Close!=='--'&&d.Close!=='0'&&d.Close!=='-').map(d=>{
+    const close=parseFloat(d.Close)||0;
+    const prev=parseFloat(d.PrevClose)||close;
+    const open=parseFloat(d.Open)||close;
+    const high=parseFloat(d.High)||close;
+    const low=parseFloat(d.Low)||close;
+    const chg=close-prev;
+    const chgP = prev>0 ? parseFloat((chg/prev*100).toFixed(2)) : 0;
+    const rawVol=parseInt((d.TradingShares||'0').replace(/,/g,''))||0;
+    const vol=Math.round(rawVol/1000);
+    return{id:d.SecuritiesCompanyCode, name:d.CompanyName||d.SecuritiesCompanyCode,
+      sector:'興櫃', isETF:false, market:'esb',
+      open, close, high, low, vol, chg, prev, tradeValue:0,
+      chgP: isNaN(chgP)?0:chgP,
+      peV:null, yld:null, pbV:null,
+      sig:calcSig({open,close,high,low,chgP,peV:null,turn:0,ff:0}), turn:0};
+  });
+}
+
 function detectETF(id, name){
   if(/^0\d{3}$/.test(id)||/^00\d{4}/.test(id)) return true;
   if(name&&(name.includes('ETF')||name.includes('指數'))) return true;
@@ -738,10 +765,12 @@ function getFiltered(){
   let l=[...stocks];
   if(mkt==='twse') l=l.filter(s=>s.market==='twse');
   else if(mkt==='tpex') l=l.filter(s=>s.market==='tpex');
+  else if(mkt==='esb') l=l.filter(s=>s.market==='esb');
   else if(mkt==='etf') l=l.filter(s=>s.isETF);
 
   if(sf==='twse') l=l.filter(s=>s.market==='twse');
   else if(sf==='tpex') l=l.filter(s=>s.market==='tpex');
+  else if(sf==='esb') l=l.filter(s=>s.market==='esb');
   else if(sf==='etf') l=l.filter(s=>s.isETF);
   else if(sf==='buy') l=l.filter(s=>s.sig.cls==='sig-buy');
   else if(sf==='sell') l=l.filter(s=>s.sig.cls==='sig-sell');
@@ -874,7 +903,7 @@ function renderTable(){
   const visible = (tblShowAll || l.length<=TBL_PAGE) ? l : l.slice(0,TBL_PAGE);
   const makeRow=(s,i)=>{
     const isLive=!!liveData[s.id];
-    const mktTag=s.market==='tpex'?'<span style="font-size:9px;color:var(--amber2);margin-left:3px">櫃</span>':'';
+    const mktTag=s.market==='tpex'?'<span style="font-size:9px;color:var(--amber2);margin-left:3px">櫃</span>':s.market==='esb'?'<span style="font-size:9px;color:var(--purple);margin-left:3px" title="興櫃">興</span>':'';
     // 月營收 YoY 標籤（回測驗證因子）
     let revTag='';
     if(s.revTier){
@@ -923,10 +952,12 @@ function fmN(v){if(Math.abs(v)>=1e4)return(v/1e4).toFixed(1)+'萬';return v.toLo
 function updSum(){
   const twse=stocks.filter(s=>s.market==='twse').length;
   const tpex=stocks.filter(s=>s.market==='tpex').length;
+  const esb=stocks.filter(s=>s.market==='esb').length;
   const _si=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
   _si('s-tot',stocks.length);
   _si('s-twse',twse);
   _si('s-tpex',tpex);
+  _si('s-esb',esb);
   _si('s-up',stocks.filter(s=>s.chgP>0).length);
   _si('s-dn',stocks.filter(s=>s.chgP<0).length);
   _si('s-by',stocks.filter(s=>s.sig.lbl==='買進'||s.sig.lbl==='偏多').length);
@@ -939,6 +970,7 @@ function updSB(){
   _sb('c-wl',wl.size);
   _sb('c-twse',stocks.filter(s=>s.market==='twse').length);
   _sb('c-tpex',stocks.filter(s=>s.market==='tpex').length);
+  _sb('c-esb',stocks.filter(s=>s.market==='esb').length);
   _sb('c-etf',stocks.filter(s=>s.isETF).length);
   _sb('c-stk',stocks.filter(s=>!s.isETF).length);
   _sb('c-long_buy',stocks.filter(s=>{const ls=longState(s);return ls&&ls.cls==='ls-strong';}).length);
@@ -991,7 +1023,7 @@ function openDet(id){
   const _d=(id,v)=>{const e=document.getElementById(id);if(e)e.textContent=v;};
   _d('d-id',s.id);
   _d('d-name',s.name);
-  _d('d-sec',(s.isETF?'ETF':s.sector)+' · '+(s.market==='twse'?'上市 TWSE':'上櫃 TPEx'));
+  _d('d-sec',(s.isETF?'ETF':s.sector)+' · '+(s.market==='twse'?'上市 TWSE':s.market==='esb'?'興櫃 ESB':'上櫃 TPEx'));
   _d('d-price',price.toFixed(2));
   const ce=document.getElementById('d-chg');
   ce.textContent=(chgP>=0?'+':'')+chgP.toFixed(2)+'%';
@@ -1384,7 +1416,7 @@ function buildDetHTML(s,live){
       <div class="kv"><div class="kv-l">本益比 PER</div><div class="kv-v ${s.peV&&s.peV<15?'c-up':s.peV&&s.peV>35?'c-dn':'c-neu'}">${s.peV?s.peV.toFixed(1):'—'}</div></div>
       <div class="kv"><div class="kv-l">股價淨值比</div><div class="kv-v">${s.pbV?s.pbV.toFixed(2):'—'}</div></div>
       <div class="kv"><div class="kv-l">殖利率</div><div class="kv-v ${s.yld&&s.yld>4?'c-up':''}">${s.yld?s.yld.toFixed(2)+'%':'—'}</div></div>
-      <div class="kv"><div class="kv-l">市場</div><div class="kv-v" style="font-size:11px">${s.market==='twse'?'上市 TWSE':'上櫃 TPEx'}</div></div>
+      <div class="kv"><div class="kv-l">市場</div><div class="kv-v" style="font-size:11px">${s.market==='twse'?'上市 TWSE':s.market==='esb'?'興櫃 ESB':'上櫃 TPEx'}</div></div>
     </div>
   </div>
   ${(()=>{
@@ -3562,6 +3594,10 @@ function sumCardClick(action){
   } else if(action==='tpex'){
     const tab=[...document.querySelectorAll('.mkt-tab')].find(e=>e.textContent.includes('上櫃'));
     setMkt('tpex', tab);
+    setSF('all', sbItem('全部股票'));
+  } else if(action==='esb'){
+    const tab=[...document.querySelectorAll('.mkt-tab')].find(e=>e.textContent.includes('興櫃'));
+    setMkt('esb', tab);
     setSF('all', sbItem('全部股票'));
   } else if(action==='up'){
     ensureTable();

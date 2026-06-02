@@ -189,6 +189,40 @@ export default async function handler(req, res) {
     }
 
     // ══════════════════════════════════════════════════
+    // 2b. 興櫃股票每日行情（TPEx openapi，議價市場無漲跌幅限制）
+    // ══════════════════════════════════════════════════
+    if (type === 'emerging_list') {
+      let data = [];
+      try {
+        const r = await fetch(
+          'https://www.tpex.org.tw/openapi/v1/tpex_esb_latest_statistics',
+          { headers: { 'Accept': 'application/json', 'Referer': 'https://www.tpex.org.tw/' } }
+        );
+        const j = await r.json();
+        if (Array.isArray(j)) {
+          // 議價市場：LatestPrice=最新成交價(現價)、PreviousAveragePrice=昨日均價(昨收近似)
+          // 無 Open；Highest/Lowest=當日高低；Average=均價；TransactionVolume=成交量(股)
+          data = j
+            .filter(d => d.SecuritiesCompanyCode && /^\d{4}$/.test(d.SecuritiesCompanyCode.trim()))
+            .map(d => ({
+              SecuritiesCompanyCode: d.SecuritiesCompanyCode.trim(),
+              CompanyName: (d.CompanyName || '').trim(),
+              Close: d.LatestPrice || d.Average || d.PreviousAveragePrice || '0',
+              PrevClose: d.PreviousAveragePrice || '0',
+              Open: d.Average || d.LatestPrice || '0',
+              High: d.Highest || '0',
+              Low: d.Lowest || '0',
+              Average: d.Average || '0',
+              TradingShares: d.TransactionVolume || '0',
+            }));
+        }
+      } catch (e) { console.log('emerging failed:', e.message); }
+
+      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
+      return res.status(200).json({ data, source: 'TPEx_ESB', ts: new Date().toISOString() });
+    }
+
+    // ══════════════════════════════════════════════════
     // 3. 盤中即時報價（MIS getStockInfo）
     // ══════════════════════════════════════════════════
     if (type === 'realtime' || type === 'twse_realtime' || type === 'tpex_realtime') {

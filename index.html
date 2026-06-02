@@ -1877,7 +1877,7 @@ function buildDetHTML(s,live){
         <div class="kv"><div class="kv-l">融券餘額</div><div id="s-total" class="kv-v">—</div></div>
         <div class="kv"><div class="kv-l">融資使用率</div><div id="m-usage" class="kv-v">—</div></div>
         <div class="kv"><div class="kv-l">融券使用率</div><div id="s-usage" class="kv-v">—</div></div>
-        <div class="kv"><div class="kv-l">融資限額</div><div id="m-limit" class="kv-v" style="font-size:10px">—</div></div>
+        <div class="kv"><div class="kv-l">融資限額</div><div id="m-limit" class="kv-v">—</div></div>
         <div class="kv"><div class="kv-l">券資比</div><div id="margin-ratio" class="kv-v">—</div></div>
       </div>
     </div>
@@ -2938,7 +2938,9 @@ async function loadMarginData(stockId){
     if(j.data && mc){
       mc.style.display='block';
       const d=j.data;
-      const upd=(id,v,cls)=>{const el=document.getElementById(id);if(el){el.textContent=fmV(v);if(cls)el.className='kv-v '+cls;}};
+      // 融資融券張數一律用千分位整數（避免「千」縮寫與全數字混用造成字體不一致）
+      const fmLot=v=>(v==null||isNaN(v))?'—':Math.round(v).toLocaleString();
+      const upd=(id,v,cls)=>{const el=document.getElementById(id);if(el){el.textContent=fmLot(v);if(cls)el.className='kv-v '+cls;}};
       upd('m-buy',   d.marginBuy,    'c-up');
       upd('m-sell',  d.marginSell,   'c-dn');
       upd('m-total', d.marginBalance,'');

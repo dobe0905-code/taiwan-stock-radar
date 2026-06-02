@@ -212,6 +212,106 @@ export default async function handler(req, res) {
     }
 
     // ══════════════════════════════════════════════════
+    // 季財報三圖：資產負債走勢 / 獲利能力 / 經營能力
+    //   type=financials&stock_id=2330
+    //   來源：FinMind（per-stock 免費）
+    //     TaiwanStockBalanceSheet        （資產負債：時點值）
+    //     TaiwanStockFinancialStatements （綜合損益：年度累計值 → 差分為單季）
+    //   所有比率皆由公開財報自行計算（前端標註「依公開財報計算」）
+    // ══════════════════════════════════════════════════
+    if (type === 'financials') {
+      if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+      try {
+        const startY = new Date().getFullYear() - 4;          // 約 16 季，足夠算 YoY
+        const enc = encodeURIComponent(stock_id);
+        const fetchDS = async (ds) => {
+          const url = `https://api.finmindtrade.com/api/v4/data?dataset=${ds}&data_id=${enc}&start_date=${startY}-01-01`;
+          const j = await (await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })).json();
+          return (j.status === 200 && Array.isArray(j.data)) ? j.data : [];
+        };
+        const [bsRows, isRows] = await Promise.all([
+          fetchDS('TaiwanStockBalanceSheet'),
+          fetchDS('TaiwanStockFinancialStatements')
+        ]);
+        if (!bsRows.length && !isRows.length) {
+          return res.status(200).json({ stock_id, quarters: [], error: 'no_data', source: 'finmind' });
+        }
+
+        // 整理成 date → {type: value}
+        const pivot = (rows) => {
+          const m = {};
+          for (const r of rows) {
+            const d = r.date; if (!d) continue;
+            (m[d] = m[d] || {});
+            // 同一 type 可能有 value 與 _per，只取主值（非 _per）
+            if (!String(r.type).endsWith('_per')) m[d][r.type] = Number(r.value);
+          }
+          return m;
+        };
+        const BS = pivot(bsRows);   // 時點值
+        const IS = pivot(isRows);   // 累計值
+
+        const qOf = (date) => {     // '2024-06-30' → {y:2024, q:2}
+          const [y, mo] = date.split('-').map(Number);
+          return { y, q: Math.round(mo / 3) };
+        };
+        // FinMind TaiwanStockFinancialStatements 已是「單季」值（非累計），直接取用
+        const singleQ = {};         // `${y}-${q}` → { date, rev, gross, op, net, cogs }
+        for (const d of Object.keys(IS).sort()) {
+          const { y, q } = qOf(d);
+          const v = IS[d];
+          const g = (f) => (Number.isFinite(v[f]) ? v[f] : null);
+          singleQ[`${y}-${q}`] = {
+            date: d, rev: g('Revenue'), gross: g('GrossProfit'),
+            op: g('OperatingIncome'), net: g('IncomeAfterTaxes'), cogs: g('CostOfGoodsSold')
+          };
+        }
+
+        const pct = (a, b) => (Number.isFinite(a) && Number.isFinite(b) && b !== 0) ? +((a / b) * 100).toFixed(2) : null;
+        const rat = (a, b) => (Number.isFinite(a) && Number.isFinite(b) && b !== 0) ? +(a / b).toFixed(3) : null;
+
+        // 以資產負債表的季別為主軸（時點值最完整），對齊損益單季
+        const out = [];
+        for (const d of Object.keys(BS).sort()) {
+          const { y, q } = qOf(d);
+          const key = `${y}-${q}`;
+          const bs = BS[d];
+          const sq = singleQ[key] || {};
+          const prevYearSq = singleQ[`${y - 1}-${q}`] || null;   // 去年同季單季營收
+          const assets = bs.TotalAssets, liab = bs.Liabilities, equity = bs.Equity;
+          out.push({
+            label: `${String(y).slice(2)}Q${q}`,
+            date: d,
+            // 資產負債（億元，前端再轉）
+            assets: Number.isFinite(assets) ? assets : null,
+            liabilities: Number.isFinite(liab) ? liab : null,
+            equity: Number.isFinite(equity) ? equity : null,
+            // 獲利能力（%）
+            grossMargin: pct(sq.gross, sq.rev),
+            opMargin: pct(sq.op, sq.rev),
+            netMargin: pct(sq.net, sq.rev),
+            roe: pct(sq.net, equity),
+            roa: pct(sq.net, assets),
+            // 經營能力
+            revYoY: (prevYearSq && Number.isFinite(sq.rev) && Number.isFinite(prevYearSq.rev) && prevYearSq.rev !== 0)
+              ? +(((sq.rev - prevYearSq.rev) / Math.abs(prevYearSq.rev)) * 100).toFixed(1) : null,
+            assetTurnover: rat(sq.rev, assets),                 // 次/季
+            invTurnover: rat(sq.cogs, bs.Inventories),          // 次/季
+            arTurnover: rat(sq.rev, bs.AccountsReceivableNet),  // 次/季
+            currentRatio: pct(bs.CurrentAssets, bs.CurrentLiabilities),
+            quickRatio: (Number.isFinite(bs.CurrentAssets) && Number.isFinite(bs.CurrentLiabilities) && bs.CurrentLiabilities !== 0)
+              ? +(((bs.CurrentAssets - (bs.Inventories || 0)) / bs.CurrentLiabilities) * 100).toFixed(2) : null
+          });
+        }
+        const quarters = out.slice(-12);   // 最近 12 季
+        res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=172800');
+        return res.status(200).json({ stock_id, quarters, source: 'finmind' });
+      } catch (e) {
+        return res.status(200).json({ stock_id, quarters: [], error: e.message, source: 'finmind' });
+      }
+    }
+
+    // ══════════════════════════════════════════════════
     // 1. 集保持股分散（大戶/散戶）
     //    策略：TDCC OpenAPI → TDCC 政府開放平台 → TDCC 網頁POST（備援）
     // ══════════════════════════════════════════════════

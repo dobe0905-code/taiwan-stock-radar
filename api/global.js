@@ -213,6 +213,44 @@ export default async function handler(req, res) {
     }
 
     // ══════════════════════════════════════════════════
+    // 5. 隔夜美股風向（費半/NASDAQ/S&P/VIX）— 用 v8 chart meta（免認證、穩定）
+    // ══════════════════════════════════════════════════
+    if (type === 'overnight') {
+      const WATCH = [
+        { sym: '^SOX',  name: '費城半導體' },
+        { sym: '^IXIC', name: 'NASDAQ' },
+        { sym: '^GSPC', name: 'S&P 500' },
+        { sym: '^VIX',  name: 'VIX 恐慌指數' },
+      ];
+      const settled = await Promise.allSettled(WATCH.map(w =>
+        fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(w.sym)}?range=5d&interval=1d`, { headers: YF_HEADERS })
+          .then(r => r.json())
+      ));
+      const data = WATCH.map((w, i) => {
+        const st = settled[i];
+        const chart = st.status === 'fulfilled' ? st.value?.chart?.result?.[0] : null;
+        const meta = chart?.meta || {};
+        const closeArr = (chart?.indicators?.quote?.[0]?.close || []).filter(v => v > 0);
+        const lastClose = closeArr.length ? closeArr[closeArr.length - 1] : (meta.regularMarketPrice || 0);
+        const price = meta.regularMarketPrice || lastClose;
+        // 優先用收盤陣列前一根（真正的「昨收」）；meta.previousClose 對 ^SOX 等指數常為 undefined，
+        // 而 chartPreviousClose 在 range=5d 時是 5 天前的錨點，會造成漲跌幅嚴重失真，故放在最後 fallback。
+        const prev = (closeArr.length > 1 ? closeArr[closeArr.length - 2] : 0) || meta.previousClose || meta.chartPreviousClose || 0;
+        const changeP = prev > 0 ? parseFloat(((price - prev) / prev * 100).toFixed(2)) : 0;
+        return {
+          symbol: w.sym, name: w.name,
+          price: parseFloat((price || 0).toFixed(2)),
+          prev: parseFloat((prev || 0).toFixed(2)),
+          changeP,
+          state: meta.marketState || '',
+          ok: !!price,
+        };
+      });
+      res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
+      return res.status(200).json({ data, source: 'YAHOO_FINANCE', ts: new Date().toISOString() });
+    }
+
+    // ══════════════════════════════════════════════════
     // 4. 美股搜尋
     // ══════════════════════════════════════════════════
     if (type === 'us_search') {

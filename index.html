@@ -372,6 +372,7 @@ function shortBadge(id){
 }
 let mktRegime=null;  // 大盤趨勢濾網：'bull'(指數站上季線) / 'bear'(跌破季線) / null(未知)
 let mktMA60=0, mktLast=0;  // 加權指數季線值 / 最新收盤（供 tooltip）
+let overnightData=null;    // 隔夜美股風向（費半/NASDAQ/S&P/VIX），供市場情境濾網用
 
 // ── 長線策略狀態（回測驗證：月營收 YoY 高成長 + 大盤季線濾網）──
 // 回測：高成長 20日超額 +1.3%（中小型 +1.7%），但 2022 空頭期會反轉 → 故加大盤濾網
@@ -402,6 +403,15 @@ async function loadMarketRegime(){
     mktRegime = mktLast>=mktMA60 ? 'bull' : 'bear';
     updSB(); if(mkt!=='us'&&mkt!=='global'&&mkt!=='mktchart') renderTable();
   }catch(e){ mktRegime=null; }
+}
+
+// 載入隔夜美股風向（費半/NASDAQ/S&P/VIX）— 供個股市場情境濾網
+async function loadOvernight(){
+  try{
+    const r=await fetch('/api/global?type=overnight');
+    const j=await r.json();
+    if(j&&Array.isArray(j.data)&&j.data.some(x=>x.ok)) overnightData=j.data;
+  }catch(e){ overnightData=null; }
 }
 
 // ── 熱門族群定義（代號 Set）— 依產品性質/開發技術/國際新聞/供應鏈分類 ──
@@ -641,6 +651,7 @@ async function loadData(){
       updSB(); renderTable();
     });
     loadMarketRegime();  // 大盤季線濾網（非阻塞，回來後刷新長線狀態）
+    loadOvernight();     // 隔夜美股風向（非阻塞，供市場情境濾網）
   }catch(e){
     setLd('載入失敗：'+e.message);
     console.error(e);
@@ -1864,6 +1875,23 @@ async function buildDetCharts(s){
       if(ss.rel>=1){ctxScore++; ctxLines.push(s.sector+' <b style="color:var(--green2)">領漲 +'+ss.rel.toFixed(1)+'%</b>（強於大盤，'+ss.n+' 檔）');}
       else if(ss.rel<=-1){ctxScore--; ctxLines.push(s.sector+' <b style="color:var(--red2)">落後 '+ss.rel.toFixed(1)+'%</b>（弱於大盤，'+ss.n+' 檔）');}
       else ctxLines.push(s.sector+' 與大盤同步（'+(ss.rel>=0?'+':'')+ss.rel.toFixed(1)+'%）');
+    }
+    // 隔夜美股風向（費半 SOX 為台股科技股最佳隔夜 proxy；NASDAQ 輔助）
+    if(overnightData){
+      const get=sym=>overnightData.find(x=>x.symbol===sym&&x.ok);
+      const sox=get('^SOX'), nas=get('^IXIC'), vix=get('^VIX');
+      const av=[]; if(sox)av.push(sox.changeP); if(nas)av.push(nas.changeP);
+      if(av.length){
+        const us=av.reduce((a,b)=>a+b,0)/av.length;
+        const sgn1=v=>(v>=0?'+':'')+v.toFixed(2)+'%';
+        const parts=[];
+        if(sox)parts.push('費半 '+sgn1(sox.changeP));
+        if(nas)parts.push('NASDAQ '+sgn1(nas.changeP));
+        if(vix)parts.push('VIX '+vix.price.toFixed(1));
+        if(us>=1){ctxScore++; ctxLines.push('隔夜美股 <b style="color:var(--green2)">偏多</b>（'+parts.join('／')+'）');}
+        else if(us<=-1){ctxScore--; ctxLines.push('隔夜美股 <b style="color:var(--red2)">偏空</b>（'+parts.join('／')+'）');}
+        else ctxLines.push('隔夜美股 中性（'+parts.join('／')+'）');
+      }
     }
     const ctxLbl=ctxScore>=2?'🟢 順勢':ctxScore===1?'🟢 偏多':ctxScore===0?'🟡 中性':ctxScore===-1?'🔴 偏空':'🔴 逆勢';
     const ctxCol=ctxScore>=1?'var(--green2)':ctxScore===0?'var(--amber2)':'var(--red2)';

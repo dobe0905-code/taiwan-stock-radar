@@ -1,5 +1,5 @@
 {
-  "generated": "2026-06-02T02:25:30.696Z",
+  "generated": "2026-06-02T02:44:20.256Z",
   "config": {
     "universe": "台灣50+中小型",
     "pool": "all",
@@ -36,7 +36,7 @@
     "60": {
       "n": 34485,
       "winRate": 51.93,
-      "avg": 6.676,
+      "avg": 6.677,
       "median": 0.752
     }
   },
@@ -91,12 +91,12 @@
         "60": {
           "n": 11884,
           "winRate": 55.27,
-          "avg": 10.231,
+          "avg": 10.233,
           "median": 2.346,
           "retP25": -7.66,
           "retP75": 17.93,
-          "excessWinRate": 39.57,
-          "excessAvg": 0.37,
+          "excessWinRate": 39.6,
+          "excessAvg": 0.371,
           "mfePctMed": 12.33,
           "maePctMed": 8.54,
           "mfeATRMed": 4.59,
@@ -153,11 +153,11 @@
         "60": {
           "n": 11477,
           "winRate": 51.55,
-          "avg": 5.845,
+          "avg": 5.846,
           "median": 0.601,
           "retP25": -8.82,
-          "retP75": 12.8,
-          "excessWinRate": 34.97,
+          "retP75": 12.82,
+          "excessWinRate": 34.96,
           "excessAvg": -3.276,
           "mfePctMed": 11.3,
           "maePctMed": 8.72,
@@ -215,12 +215,12 @@
         "60": {
           "n": 11124,
           "winRate": 48.76,
-          "avg": 3.736,
+          "avg": 3.737,
           "median": -0.271,
           "retP25": -9.23,
           "retP75": 10.04,
           "excessWinRate": 32.03,
-          "excessAvg": -5.391,
+          "excessAvg": -5.39,
           "mfePctMed": 10.07,
           "maePctMed": 9.53,
           "mfeATRMed": 3.71,
@@ -279,12 +279,12 @@
         "60": {
           "n": 9458,
           "winRate": 56.27,
-          "avg": 11.579,
+          "avg": 11.581,
           "median": 2.8,
           "retP25": -7.66,
           "retP75": 21.13,
-          "excessWinRate": 41.62,
-          "excessAvg": 1.622,
+          "excessWinRate": 41.64,
+          "excessAvg": 1.623,
           "mfePctMed": 13.01,
           "maePctMed": 8.62,
           "mfeATRMed": 4.86,
@@ -341,12 +341,12 @@
         "60": {
           "n": 15759,
           "winRate": 51.46,
-          "avg": 5.923,
+          "avg": 5.924,
           "median": 0.57,
           "retP25": -8.83,
-          "retP75": 12.76,
+          "retP75": 12.77,
           "excessWinRate": 34.6,
-          "excessAvg": -3.296,
+          "excessAvg": -3.295,
           "mfePctMed": 11.16,
           "maePctMed": 8.63,
           "mfeATRMed": 4.11,
@@ -403,12 +403,12 @@
         "60": {
           "n": 9268,
           "winRate": 48.31,
-          "avg": 2.953,
+          "avg": 2.955,
           "median": -0.412,
           "retP25": -8.88,
           "retP75": 9,
           "excessWinRate": 31.18,
-          "excessAvg": -6.105,
+          "excessAvg": -6.104,
           "mfePctMed": 9.9,
           "maePctMed": 9.67,
           "mfeATRMed": 3.64,
@@ -591,12 +591,12 @@
         "60": {
           "n": 30410,
           "winRate": 51.55,
-          "avg": 6.401,
+          "avg": 6.402,
           "median": 0.61,
           "retP25": -8.67,
           "retP75": 13.1,
-          "excessWinRate": 35.63,
-          "excessAvg": -2.773,
+          "excessWinRate": 35.64,
+          "excessAvg": -2.772,
           "mfePctMed": 10.99,
           "maePctMed": 8.8,
           "mfeATRMed": 4.1,
@@ -653,12 +653,12 @@
         "60": {
           "n": 2081,
           "winRate": 52.09,
-          "avg": 5.705,
+          "avg": 5.706,
           "median": 0.747,
           "retP25": -8.15,
           "retP75": 11.92,
           "excessWinRate": 31.96,
-          "excessAvg": -5.207,
+          "excessAvg": -5.206,
           "mfePctMed": 11.67,
           "maePctMed": 10,
           "mfeATRMed": 4.05,
@@ -779,12 +779,12 @@
         "60": {
           "n": 1144,
           "winRate": 52.53,
-          "avg": 6.396,
+          "avg": 6.4,
           "median": 0.825,
           "retP25": -8.12,
           "retP75": 13.02,
           "excessWinRate": 34.79,
-          "excessAvg": -2.961,
+          "excessAvg": -2.958,
           "mfePctMed": 11.39,
           "maePctMed": 8.57,
           "mfeATRMed": 4.22,
@@ -843,7 +843,7 @@
         "60": {
           "n": 1421,
           "winRate": 52.78,
-          "avg": 6.42,
+          "avg": 6.421,
           "median": 0.926,
           "retP25": -8.09,
           "retP75": 13.42,
@@ -905,12 +905,12 @@
         "60": {
           "n": 1472,
           "winRate": 52.38,
-          "avg": 7.328,
+          "avg": 7.332,
           "median": 0.894,
           "retP25": -8.65,
           "retP75": 14.32,
-          "excessWinRate": 36.01,
-          "excessAvg": -2.236,
+          "excessWinRate": 36.07,
+          "excessAvg": -2.234,
           "mfePctMed": 11.68,
           "maePctMed": 8.64,
           "mfeATRMed": 4.37,
@@ -918,6 +918,196 @@
           "maeATRp75": 6.13
         }
       }
+    }
+  },
+  "thresholdSweep": {
+    "brkVol": {
+      "量2.0-2.5": {
+        "20": {
+          "n": 246,
+          "winRate": 49.59,
+          "avg": 1.602,
+          "excessWinRate": 40.65,
+          "excessAvg": -0.518
+        },
+        "60": {
+          "n": 246,
+          "winRate": 56.91,
+          "avg": 13.634,
+          "excessWinRate": 39.84,
+          "excessAvg": 2.583
+        }
+      },
+      "量≥2.5": {
+        "20": {
+          "n": 507,
+          "winRate": 47.93,
+          "avg": 3.169,
+          "excessWinRate": 39.84,
+          "excessAvg": 0.218
+        },
+        "60": {
+          "n": 507,
+          "winRate": 49.11,
+          "avg": 9.857,
+          "excessWinRate": 32.35,
+          "excessAvg": -1.148
+        }
+      },
+      "量1.5-2.0": {
+        "20": {
+          "n": 387,
+          "winRate": 51.94,
+          "avg": 2.978,
+          "excessWinRate": 45.74,
+          "excessAvg": 0.936
+        },
+        "60": {
+          "n": 387,
+          "winRate": 59.17,
+          "avg": 12.256,
+          "excessWinRate": 43.93,
+          "excessAvg": 1.608
+        }
+      },
+      "量<1.0": {
+        "20": {
+          "n": 334,
+          "winRate": 54.49,
+          "avg": 2.041,
+          "excessWinRate": 44.01,
+          "excessAvg": -0.735
+        },
+        "60": {
+          "n": 334,
+          "winRate": 60.78,
+          "avg": 10.526,
+          "excessWinRate": 37.43,
+          "excessAvg": -0.454
+        }
+      },
+      "量1.0-1.5": {
+        "20": {
+          "n": 520,
+          "winRate": 53.65,
+          "avg": 2.534,
+          "excessWinRate": 46.54,
+          "excessAvg": 0.483
+        },
+        "60": {
+          "n": 520,
+          "winRate": 62.69,
+          "avg": 13.666,
+          "excessWinRate": 42.5,
+          "excessAvg": 2.834
+        }
+      }
+    },
+    "strongRSI": {
+      "RSI50-70": {
+        "20": {
+          "n": 7506,
+          "winRate": 49.79,
+          "avg": 2.044,
+          "excessWinRate": 45.28,
+          "excessAvg": 0.135
+        },
+        "60": {
+          "n": 7506,
+          "winRate": 55.06,
+          "avg": 9.951,
+          "excessWinRate": 41.14,
+          "excessAvg": 0.704
+        }
+      },
+      "RSI<50": {
+        "20": {
+          "n": 220,
+          "winRate": 48.18,
+          "avg": 1.021,
+          "excessWinRate": 42.27,
+          "excessAvg": -0.878
+        },
+        "60": {
+          "n": 220,
+          "winRate": 53.18,
+          "avg": 11.802,
+          "excessWinRate": 40.91,
+          "excessAvg": 1.57
+        }
+      },
+      "RSI≥70(過熱)": {
+        "20": {
+          "n": 1732,
+          "winRate": 53,
+          "avg": 4.214,
+          "excessWinRate": 45.96,
+          "excessAvg": 1.14
+        },
+        "60": {
+          "n": 1732,
+          "winRate": 61.89,
+          "avg": 18.617,
+          "excessWinRate": 43.88,
+          "excessAvg": 5.614
+        }
+      }
+    },
+    "strongSlope": {
+      "季線走平/下彎": {
+        "20": {
+          "n": 1975,
+          "winRate": 42.53,
+          "avg": 0.524,
+          "excessWinRate": 41.72,
+          "excessAvg": -1.03
+        },
+        "60": {
+          "n": 1975,
+          "winRate": 51.19,
+          "avg": 5.72,
+          "excessWinRate": 36.15,
+          "excessAvg": -2.284
+        }
+      },
+      "季線上揚": {
+        "20": {
+          "n": 7392,
+          "winRate": 52.3,
+          "avg": 2.957,
+          "excessWinRate": 46.17,
+          "excessAvg": 0.67
+        },
+        "60": {
+          "n": 7392,
+          "winRate": 57.75,
+          "avg": 13.318,
+          "excessWinRate": 43.15,
+          "excessAvg": 2.735
+        }
+      }
+    }
+  },
+  "daytradeDist": {
+    "p30": {
+      "atrP": 2.26,
+      "volLot": 1139
+    },
+    "p40": {
+      "atrP": 2.58,
+      "volLot": 1986
+    },
+    "p50": {
+      "atrP": 2.89,
+      "volLot": 3511
+    },
+    "p60": {
+      "atrP": 3.24,
+      "volLot": 6199
+    },
+    "p70": {
+      "atrP": 3.64,
+      "volLot": 10299
     }
   }
 }

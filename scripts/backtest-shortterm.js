@@ -219,6 +219,15 @@ function statsExcess(arr) {
   const maxH = Math.max(...HORIZONS);
   const buckets = {}; // sig → lbl → h → {ret,excess,mfePct,maePct,mfeATR,maeATR}
   const baseline = {};
+  // 門檻掃描：突破量比 / 強多RSI / 強多季線斜率 ；當沖切點分布
+  const sweep = { brkVol: {}, strongRSI: {}, strongSlope: {} };
+  const dtDist = { atrP: [], volLot: [] };
+  const pushS = (grp, band, h, rec) => {
+    sweep[grp][band] = sweep[grp][band] || {};
+    const b = sweep[grp][band][h] = sweep[grp][band][h] || { ret: [], excess: [] };
+    b.ret.push(rec.ret);
+    if (rec.excess != null) b.excess.push(rec.excess);
+  };
   const push = (sig, lbl, h, rec) => {
     buckets[sig] = buckets[sig] || {};
     buckets[sig][lbl] = buckets[sig][lbl] || {};
@@ -238,6 +247,8 @@ function statsExcess(arr) {
       const { ma5, ma10, ma20, ma60, vol20, high20, low20, vols, closes } = ind;
       if (ma60[i] == null) continue;
       const c = closes[i];
+      // 當沖切點校準：全樣本 ATR% 與 量(張) 分布（每根 bar 取一次）
+      if (atr[i]) { dtDist.atrP.push(atr[i] / c * 100); dtDist.volLot.push(vols[i] / 1000); }
 
       // A. 均線排列
       let aLbl;
@@ -296,6 +307,18 @@ function statsExcess(arr) {
         push('breakout', cLbl, h, rec);
         if (dLbl) push('cross', dLbl, h, rec);
         if (eLbl) push('macd', eLbl, h, rec);
+
+        // 門檻掃描
+        if (high20[i] != null && c > high20[i]) {
+          const vr = volRatio;
+          const band = vr >= 2.5 ? '量≥2.5' : vr >= 2.0 ? '量2.0-2.5' : vr >= 1.5 ? '量1.5-2.0' : vr >= 1.0 ? '量1.0-1.5' : '量<1.0';
+          pushS('brkVol', band, h, rec);
+        }
+        if (bLbl === '強多(排列+站季線)') {
+          const rv = ind.rsi[i];
+          if (rv != null) pushS('strongRSI', rv >= 70 ? 'RSI≥70(過熱)' : rv >= 50 ? 'RSI50-70' : 'RSI<50', h, rec);
+          if (ma60[i - 5] != null) pushS('strongSlope', ma60[i] > ma60[i - 5] ? '季線上揚' : '季線走平/下彎', h, rec);
+        }
       }
     }
   }
@@ -364,6 +387,36 @@ function statsExcess(arr) {
     }
   }
 
+  // ── 門檻掃描：找出每組訊號最佳的進場過濾門檻 ──
+  function printSweep(grp, title, bands) {
+    console.log(`\n■ ${title}`);
+    for (const h of [20, 60]) {
+      console.log(`  ── 持有 ${h} 交易日 ` + '─'.repeat(46));
+      console.log('     ' + pad('級距', 18) + padL('樣本', 7) + padL('勝率%', 8) + padL('平均%', 8) + padL('中位%', 8) + padL('超額勝率%', 11) + padL('超額平均%', 11));
+      for (const band of bands) {
+        const cell = sweep[grp]?.[band]?.[h];
+        if (!cell || !cell.ret.length) { console.log('     ' + pad(band, 18) + padL('—', 7)); continue; }
+        const s = stats(cell.ret), e = statsExcess(cell.excess);
+        console.log('     ' + pad(band, 18) + padL(s.n, 7) + padL(s.winRate.toFixed(1), 8) + padL(f1(s.avg), 8) + padL(f1(s.median), 8)
+          + padL(e.n ? e.winRate.toFixed(1) : '—', 11) + padL(e.n ? f1(e.avg) : '—', 11));
+      }
+    }
+  }
+  console.log('\n' + '='.repeat(78));
+  console.log('門檻掃描：在已知有 edge 的訊號上，分桶找最佳進場過濾條件。');
+  printSweep('brkVol', '門檻 A：突破20日高 × 量比分桶（找最佳放量門檻）', ['量≥2.5', '量2.0-2.5', '量1.5-2.0', '量1.0-1.5', '量<1.0']);
+  printSweep('strongRSI', '門檻 B：強多 × RSI 分桶（過熱是否該避開）', ['RSI≥70(過熱)', 'RSI50-70', 'RSI<50']);
+  printSweep('strongSlope', '門檻 C：強多 × 季線斜率（季線上揚是否加分）', ['季線上揚', '季線走平/下彎']);
+
+  // ── 當沖切點校準：日線無法回測當沖 P&L，僅以全市場分布定義「流動性足/波動足」切點 ──
+  const sortNum = a => [...a].sort((x, y) => x - y);
+  const atrPS = sortNum(dtDist.atrP), volS = sortNum(dtDist.volLot);
+  console.log('\n■ 當沖切點校準（全市場分布；日線無 P&L edge，僅供條件過濾）');
+  console.log('     ' + pad('百分位', 10) + padL('ATR%(波動)', 12) + padL('量(張)', 12));
+  for (const p of [0.3, 0.4, 0.5, 0.6, 0.7]) {
+    console.log('     ' + pad('p' + (p * 100), 10) + padL(pctile(atrPS, p).toFixed(2), 12) + padL(Math.round(pctile(volS, p)), 12));
+  }
+
   const toJSON = (sig) => {
     const o = {};
     for (const lbl of ORDER[sig]) {
@@ -389,6 +442,27 @@ function statsExcess(arr) {
   const baseJSON = {};
   for (const h of HORIZONS) { const s = stats(baseline[h].ret); baseJSON[h] = { n: s.n, winRate: +s.winRate.toFixed(2), avg: +s.avg.toFixed(3), median: +s.median.toFixed(3) }; }
 
+  const sweepJSON = {};
+  for (const grp of Object.keys(sweep)) {
+    sweepJSON[grp] = {};
+    for (const band of Object.keys(sweep[grp])) {
+      sweepJSON[grp][band] = {};
+      for (const h of [20, 60]) {
+        const cell = sweep[grp][band][h];
+        if (!cell || !cell.ret.length) continue;
+        const s = stats(cell.ret), e = statsExcess(cell.excess);
+        sweepJSON[grp][band][h] = {
+          n: s.n, winRate: +s.winRate.toFixed(2), avg: +s.avg.toFixed(3),
+          excessWinRate: e.n ? +e.winRate.toFixed(2) : null, excessAvg: e.n ? +e.avg.toFixed(3) : null
+        };
+      }
+    }
+  }
+  const dtJSON = {};
+  for (const p of [0.3, 0.4, 0.5, 0.6, 0.7]) {
+    dtJSON['p' + (p * 100)] = { atrP: +pctile(atrPS, p).toFixed(2), volLot: Math.round(pctile(volS, p)) };
+  }
+
   let outName = 'shortterm-latest.json';
   if (POOL !== 'tw50') outName = `shortterm-${POOL}.json`;
   if (useWindow) outName = `shortterm-window-${START}_${END}.json`;
@@ -396,7 +470,9 @@ function statsExcess(arr) {
     generated: new Date().toISOString(),
     config: { universe: poolLabel, pool: POOL, count: ok, window: useWindow ? { start: START, end: END } : null, years: useWindow ? null : YEARS, horizons: HORIZONS, benchmark: BENCHMARK },
     baseline: baseJSON,
-    signals: { ma_align: toJSON('ma_align'), trend: toJSON('trend'), breakout: toJSON('breakout'), cross: toJSON('cross'), macd: toJSON('macd') }
+    signals: { ma_align: toJSON('ma_align'), trend: toJSON('trend'), breakout: toJSON('breakout'), cross: toJSON('cross'), macd: toJSON('macd') },
+    thresholdSweep: sweepJSON,
+    daytradeDist: dtJSON
   }, null, 2));
   console.log(`\n✓ 已寫入 data/backtest/${outName}`);
 })().catch(e => { console.error('FATAL:', e); process.exit(1); });

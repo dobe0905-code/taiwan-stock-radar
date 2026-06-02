@@ -1554,6 +1554,9 @@ async function buildDetCharts(s){
     if(closes.length<60){ el.innerHTML='<span style="font-size:11px;color:var(--text3)">日K資料不足（需 60 筆），無法完整判斷</span>'; return; }
     const mean=(a,n)=>a.slice(-n).reduce((x,y)=>x+y,0)/n;
     const ma5=mean(closes,5), ma10=mean(closes,10), ma20=mean(closes,20), ma60=mean(closes,60);
+    // 季線斜率：回測證實「強多」edge 幾乎全來自季線上揚（60日超額 +2.7% vs 走平/下彎 −2.3%）
+    const ma60prev=closes.length>=65?closes.slice(-65,-5).reduce((x,y)=>x+y,0)/60:null;
+    const ma60Up=ma60prev!=null&&ma60>ma60prev;
     const cur=s.close>0?s.close:closes[closes.length-1];
     const atr=atr14(kdata), atrP=cur>0?atr/cur*100:0;
     const f=v=>(v>0?v.toFixed(2):'—');
@@ -1586,16 +1589,17 @@ async function buildDetCharts(s){
 
     // ========== 當沖（當日／隔日）==========
     const g=s.sig||{lbl:'—'};
-    const liquid=s.vol>=3000, volatile=atrP>=2.0, dtFit=liquid&&volatile;
+    // 切點＝全市場分布校準：量 3000≈中位、ATR% 2.6≈上半部波動（中位 2.89%）
+    const liquid=s.vol>=3000, volatile=atrP>=2.6, dtFit=liquid&&volatile;
     const dtCol=dtFit?'var(--green2)':'var(--text2)';
     const dtBg =dtFit?'rgba(126,231,135,.12)':'rgba(139,148,158,.1)';
     const dayHi=s.high>0?s.high:cur, dayLo=s.low>0?s.low:cur;
     const dt = head('⚡ 當沖','當日／隔日',dtFit?'具備當沖條件':'條件不足',dtCol,dtBg)
       + `<div style="font-size:10px;color:var(--text2);line-height:1.7">
-          流動性：<b style="color:${liquid?'var(--green2)':'var(--text3)'}">${fmV(s.vol)}張${liquid?' ✓':' ✗(<3000)'}</b>
-          波動(ATR)：<b style="color:${volatile?'var(--green2)':'var(--text3)'}">${atrP.toFixed(1)}%${volatile?' ✓':' ✗(<2%)'}</b><br>
+          流動性：<b style="color:${liquid?'var(--green2)':'var(--text3)'}">${fmV(s.vol)}張${liquid?' ✓':' ✗(<3000，市場中位)'}</b>
+          波動(ATR)：<b style="color:${volatile?'var(--green2)':'var(--text3)'}">${atrP.toFixed(1)}%${volatile?' ✓':' ✗(<2.6%，需高於市場中位)'}</b><br>
           今日盤面：<b style="color:var(--text)">${g.lbl}</b>　當日區間 <b>${f(dayLo)} ~ ${f(dayHi)}</b></div>`
-      + note('⚠️ 當沖無回測進場 edge，本列僅判斷流動性與波動是否足夠；操作以當日高低與均價為界，當日沖銷不留倉。');
+      + note('⚠️ 當沖無回測進場 edge（日線無盤中 P&L 資料）；切點以全市場分布校準（量≥中位、ATR%居上半部），僅判斷流動性與波動是否足夠。操作以當日高低與均價為界，當日沖銷不留倉。');
 
     // ========== 短線（5–20 交易日）==========
     let stLbl,stCol,stBg,stBody;
@@ -1603,7 +1607,10 @@ async function buildDetCharts(s){
       stLbl='📈 短多'; stCol='var(--green2)'; stBg='rgba(126,231,135,.12)';
       // 價位＝實測校準：停損 2.0×ATR(中位MAE)、目標 2.4×ATR(中位MFE)，相對現價
       const entry=cur, stop=cur-2.0*atr, target=cur+2.4*atr;
-      stBody=note('均線多頭排列(MA5&gt;MA10&gt;MA20)＋站上季線。回測20日超額僅 +0.3%（短線edge弱，當趨勢確認用，真正報酬要持有約3個月見「長線」）；停損/目標＝實測中位MAE/MFE，風報比約1.2。支撐 MA10 '+f(ma10)+'／MA20 '+f(ma20))+levels(entry,stop,target);
+      const slopeTxt=ma60Up
+        ?'季線<b style="color:var(--green2)">上揚 ✓</b>（回測證實 edge 幾乎全來自季線上揚，20日超額 +0.7%）'
+        :'季線<b style="color:var(--red2)">走平/下彎 ✗</b>（回測此情況 20日超額 −1.0%，排列雖多頭但動能不足，降低部位或等季線翻揚）';
+      stBody=note('均線多頭排列(MA5&gt;MA10&gt;MA20)＋站上季線。'+slopeTxt+'。短線edge偏弱，當趨勢確認用，真正報酬要持有約3個月見「長線」；停損/目標＝實測中位MAE/MFE，風報比約1.2。支撐 MA10 '+f(ma10)+'／MA20 '+f(ma20))+levels(entry,stop,target);
     }else if(ma5<ma10&&ma10<ma20&&cur<ma60){
       stLbl='📉 短空'; stCol='var(--red2)'; stBg='rgba(255,161,152,.12)';
       stBody=note('均線空頭排列＋跌破季線；回測20日超額 −2.5%（可靠避開訊號，勿做多接刀）。反彈壓力參考 MA20 '+f(ma20));
@@ -1614,8 +1621,13 @@ async function buildDetCharts(s){
     let brk='';
     if(closes.length>=21){
       const hi20=Math.max(...closes.slice(-21,-1));
-      const av20=vols.slice(-20).reduce((a,b)=>a+b,0)/20, tv=vols[vols.length-1]||0;
-      if(cur>hi20&&av20>0&&tv/av20>=1.5) brk=`　<span style="font-size:9px;color:var(--accent2);background:rgba(56,139,253,.14);border-radius:4px;padding:2px 6px" title="收盤創20日新高且帶量(≥1.5倍均量)，回測+0.7%">⚡帶量突破</span>`;
+      const av20=vols.slice(-20).reduce((a,b)=>a+b,0)/20, tv=vols[vols.length-1]||0, vr=av20>0?tv/av20:0;
+      // 回測：突破甜蜜點是溫和放量 1.0–2.0×（60日超額 +1.6~+2.8%）；爆量 ≥2.5× 反為追高陷阱（超額 −1.1%）
+      if(cur>hi20&&vr>=2.5){
+        brk=`　<span style="font-size:9px;color:var(--amber2);background:rgba(227,179,65,.14);border-radius:4px;padding:2px 6px" title="創20日新高但爆量(≥2.5倍均量)，回測60日超額 −1.1%，追高陷阱，宜等回測支撐">⚠️爆量追高</span>`;
+      }else if(cur>hi20&&vr>=1.0){
+        brk=`　<span style="font-size:9px;color:var(--accent2);background:rgba(56,139,253,.14);border-radius:4px;padding:2px 6px" title="創20日新高且溫和放量(1.0–2.0倍均量)，回測60日超額 +1.6~+2.8%（突破甜蜜點）">⚡帶量突破</span>`;
+      }
     }
     const st = head('📊 短線'+brk,'5–20 交易日',stLbl,stCol,stBg)+stBody;
 
@@ -1631,7 +1643,11 @@ async function buildDetCharts(s){
       if(ls.cls==='ls-strong'){
         // 價位＝持有≈3個月(60日)實測校準：停損 3.2×ATR(中位MAE)、目標 4.9×ATR(中位MFE)
         const entry=cur, stop=cur-3.2*atr, target=cur+4.9*atr;
-        ltBody+=note('價位以持有約3個月(60日)實測校準（強多分桶 56%勝率/超額+1.6%）；理想拉回季線 MA60 '+f(ma60)+' 附近布局，風報比更佳。')+levels(entry,stop,target);
+        // 回測：季線上揚是長線 edge 的關鍵過濾（60日超額 +2.7%，勝率 57.8%）；走平/下彎為負超額 −2.3%
+        const slopeNote=ma60Up
+          ?'季線<b style="color:var(--green2)">上揚 ✓</b>，符合最佳進場條件（強多×季線上揚回測 60日勝率 57.8%、超額 +2.7%）。'
+          :'⚠️ 季線<b style="color:var(--red2)">走平/下彎</b>，回測此情況 60日為負超額（−2.3%）——營收面雖強，技術動能未啟動，建議等季線翻揚再布局。';
+        ltBody+=note('價位以持有約3個月(60日)實測校準。'+slopeNote+'另：強多趨勢中 RSI≥70（過熱）回測反而最強（60日超額 +5.6%），屬動能確認，不必因超買急賣。理想拉回季線 MA60 '+f(ma60)+' 附近布局。')+levels(entry,stop,target);
       }
     }else{
       ltCol='var(--text2)'; ltBg='rgba(139,148,158,.1)'; ltLbl='無資料';
@@ -1640,7 +1656,7 @@ async function buildDetCharts(s){
     const lt = head('🚀 長線','數月（選股）',ltLbl,ltCol,ltBg)+ltBody;
 
     el.innerHTML = dt + divider + st + divider + lt
-      + `<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向與進出場價位皆來自回測(95檔2年)：停損/目標＝實測 MFE/MAE（持有期內最大有利/不利波幅）校準的 ATR 倍數，會隨個股波動自動調整。目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
+      + `<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆來自回測(95檔2年)：停損/目標＝實測 MFE/MAE（持有期內最大有利/不利波幅）校準的 ATR 倍數；季線斜率、突破量比門檻經全市場掃描驗證。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
   }
 
   // ── MA 均線乖離率（季線公式：BIAS = (現價 - MA60) / MA60 × 100%）──

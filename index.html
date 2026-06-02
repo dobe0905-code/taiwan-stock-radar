@@ -41,6 +41,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .st-badge.st-long{color:var(--green2);background:rgba(126,231,135,.12);}
 .st-badge.st-short{color:var(--red2);background:rgba(255,161,152,.12);}
 .st-badge.st-range{color:var(--amber2);background:rgba(227,179,65,.1);}
+.lim-tag{display:inline-block;font-size:9px;font-weight:800;padding:1px 5px;border-radius:4px;margin-right:5px;font-family:var(--mono);letter-spacing:.5px;}
+.lim-tag.lim-up{color:#06210b;background:var(--green2);}
+.lim-tag.lim-dn{color:#2b0a06;background:var(--red2);}
+@keyframes limpulse{0%,100%{opacity:1}50%{opacity:.55}}
+.lim-tag.live{animation:limpulse 1.1s infinite;}
 .live-dot{width:5px;height:5px;border-radius:50%;background:var(--red2);animation:blink 1s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
 .upd-info{font-size:11px;font-family:var(--mono);color:var(--text3);}
@@ -227,6 +232,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <div class="sb-item" onclick="setSF('st_long_up',this)" title="短多 ＋ 季線（MA60）上揚：回測勝率與超額報酬最強的子集"><span>📈 短多（季線上揚）</span><span class="sb-cnt" id="c-st_long_up">—</span></div>
     <div class="sb-item" onclick="setSF('st_short',this)" title="均線空頭排列（MA5<MA10<MA20）且跌破季線（MA60）：弱勢，避開或反向"><span>📉 短空</span><span class="sb-cnt" id="c-st_short">—</span></div>
     <div id="stDateBar" style="font-size:10px;color:var(--text3);padding:2px 14px 6px 28px;line-height:1.4">快照日期：載入中…</div>
+    <div class="sb-label">盤中即時訊號</div>
+    <div class="sb-item" onclick="setSF('lim_up',this)" title="現價觸及漲停價（MIS 即時 u 欄），或漲幅≥9.5%且收於當日最高。盤中即時更新"><span>▲ 漲停</span><span class="sb-cnt" id="c-lim_up">—</span></div>
+    <div class="sb-item" onclick="setSF('lim_dn',this)" title="現價觸及跌停價（MIS 即時 w 欄），或跌幅≤-9.5%且收於當日最低。盤中即時更新"><span>▼ 跌停</span><span class="sb-cnt" id="c-lim_dn">—</span></div>
     <div class="sb-label">市場類型</div>
     <div class="sb-item" onclick="setSF('twse',this)"><span>🏛 上市 TWSE</span><span class="sb-cnt" id="c-twse">—</span></div>
     <div class="sb-item" onclick="setSF('tpex',this)"><span>🏪 上櫃 TPEx</span><span class="sb-cnt" id="c-tpex">—</span></div>
@@ -332,6 +340,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
         <div class="d-prow">
           <div class="d-price" id="d-price">—</div>
           <div class="pill" id="d-chg">—</div>
+          <span id="d-lim"></span>
           <div class="d-live-tag" id="d-live-tag" style="display:none">● LIVE</div>
         </div>
       </div>
@@ -472,6 +481,25 @@ function misPrice(item){
   return 0;
 }
 
+// 漲停/跌停偵測：優先用 MIS 漲跌停價(u/w)精準比對，盤後無 u/w 時用
+// ±9.5% 且收在最高/最低 的後備啟發式。回傳 'up'(漲停)/'down'(跌停)/null
+function limitState(s){
+  const c=s.close;
+  if(!(c>0)) return null;
+  if(s.limUp>0 && c>=s.limUp-0.005) return 'up';
+  if(s.limDn>0 && c<=s.limDn+0.005) return 'down';
+  if(s.chgP>=9.5 && s.high>0 && c>=s.high) return 'up';
+  if(s.chgP<=-9.5 && s.low>0 && c<=s.low) return 'down';
+  return null;
+}
+function limitTagHTML(s,live){
+  const lim=limitState(s);
+  if(!lim) return '';
+  const lc=live?' live':'';
+  if(lim==='up')   return `<span class="lim-tag lim-up${lc}" title="漲停（現價 ${s.close.toFixed(2)}${s.limUp>0?'＝漲停價 '+s.limUp.toFixed(2):''}）">▲漲停</span>`;
+  return `<span class="lim-tag lim-dn${lc}" title="跌停（現價 ${s.close.toFixed(2)}${s.limDn>0?'＝跌停價 '+s.limDn.toFixed(2):''}）">▼跌停</span>`;
+}
+
 function buildMisBatches(){
   twseMisBatch = [];
   tpexMisBatch = [];
@@ -495,6 +523,8 @@ function applyMisItem(item){
   s.high=parseFloat(item.h)||s.high;
   s.low=parseFloat(item.l)||s.low;
   s.vol=parseFloat(item.v)||s.vol;
+  s.limUp=parseFloat(item.u)||s.limUp;           // 漲停價（MIS）
+  s.limDn=parseFloat(item.w)||s.limDn;           // 跌停價（MIS）
   s.chg=parseFloat((price-y).toFixed(2));        // 漲跌據推導現價重算，與現價一致
   s.chgP=parseFloat(((price-y)/y*100).toFixed(2));
   s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn});
@@ -725,6 +755,8 @@ function getFiltered(){
   else if(sf==='st_long') l=l.filter(s=>stMap[s.id]?.st==='long');
   else if(sf==='st_long_up') l=l.filter(s=>{const x=stMap[s.id];return x?.st==='long'&&x.up;});
   else if(sf==='st_short') l=l.filter(s=>stMap[s.id]?.st==='short');
+  else if(sf==='lim_up') l=l.filter(s=>limitState(s)==='up');
+  else if(sf==='lim_dn') l=l.filter(s=>limitState(s)==='down');
   else if(sf.startsWith('s:')) l=l.filter(s=>s.sector===sf.slice(2));
   else if(sf.startsWith('g:')) l=l.filter(s=>THEME_MAP[sf.slice(2)]?.has(s.id));
 
@@ -821,7 +853,7 @@ function renderTable(){
     return`<tr ${useAnim?`style="animation-delay:${Math.min(i*3,300)}ms"`:''} data-id="${s.id}" onclick="openDet('${s.id}')">
       <td onclick="event.stopPropagation()"><button class="star-btn ${wl.has(s.id)?'on':''}" onclick="togWL('${s.id}',this)">★</button></td>
       <td><span class="td-id">${s.id}</span>${s.isETF?'<span class="etf-tag">ETF</span>':''}${mktTag}${isLive?'<span style="font-size:9px;color:var(--red2);margin-left:3px">●</span>':''}</td>
-      <td><div class="td-name">${s.name}${revTag}${lsTag}${shortBadge(s.id)}</div>${!s.isETF?'<div class="td-sec">'+s.sector+'</div>':''}</td>
+      <td><div class="td-name">${limitTagHTML(s,isLive)}${s.name}${revTag}${lsTag}${shortBadge(s.id)}</div>${!s.isETF?'<div class="td-sec">'+s.sector+'</div>':''}</td>
       <td><span class="td-price live-price ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}">${s.close.toFixed(2)}</span></td>
       <td><span class="pill ${s.chgP>0?'pill-up':s.chgP<0?'pill-dn':'pill-neu'}">${s.chgP>=0?'+':''}${s.chgP.toFixed(2)}%</span></td>
       <td class="col-law"><span class="td-m">${s.peV?s.peV.toFixed(1):'—'}</span></td>
@@ -874,6 +906,8 @@ function updSB(){
   _sb('c-st_long',stocks.filter(s=>stMap[s.id]?.st==='long').length);
   _sb('c-st_long_up',stocks.filter(s=>{const x=stMap[s.id];return x?.st==='long'&&x.up;}).length);
   _sb('c-st_short',stocks.filter(s=>stMap[s.id]?.st==='short').length);
+  _sb('c-lim_up',stocks.filter(s=>limitState(s)==='up').length);
+  _sb('c-lim_dn',stocks.filter(s=>limitState(s)==='down').length);
   // 快照日期指示
   const sdb=document.getElementById('stDateBar');
   if(sdb){
@@ -920,6 +954,8 @@ function openDet(id){
   const ce=document.getElementById('d-chg');
   ce.textContent=(chgP>=0?'+':'')+chgP.toFixed(2)+'%';
   ce.className='pill '+(chgP>0?'pill-up':chgP<0?'pill-dn':'pill-neu');
+  const _le=document.getElementById('d-lim');
+  if(_le) _le.innerHTML=limitTagHTML(s,!!live);
   document.getElementById('d-live-tag').style.display=live?'flex':'none';
   document.getElementById('detBody').innerHTML=buildDetHTML(s,live);
   document.getElementById('det').classList.add('open');
@@ -1185,9 +1221,14 @@ function startDetPoll(s){
       if(chgpEl){chgpEl.textContent=(chgP>=0?'+':'')+chgP.toFixed(2)+'%';chgpEl.className='kv-v '+(chgP>0?'c-up':chgP<0?'c-dn':'c-neu');}
       const priceEl=document.getElementById('dq-price');
       if(priceEl){priceEl.className='kv-v '+(chgP>0?'c-up':chgP<0?'c-dn':'c-neu');}
+      // 漲停/跌停價（MIS u/w）
+      const limUp=parseFloat(item.u)||0, limDn=parseFloat(item.w)||0;
       // 更新 stocks 陣列
       const st=stocks.find(x=>x.id===s.id);
-      if(st){st.close=price;st.open=o||st.open;st.high=h||st.high;st.low=l||st.low;st.vol=v||st.vol;st.chg=chg;st.chgP=chgP;st.prev=y;}
+      if(st){st.close=price;st.open=o||st.open;st.high=h||st.high;st.low=l||st.low;st.vol=v||st.vol;st.chg=chg;st.chgP=chgP;st.prev=y;if(limUp)st.limUp=limUp;if(limDn)st.limDn=limDn;}
+      // 漲停/跌停徽章（面板標題）
+      const limEl=document.getElementById('d-lim');
+      if(limEl) limEl.innerHTML=limitTagHTML(st||s,true);
     }catch(e){console.warn('detPoll err:',e);}
   }
   pollOnce(); // 開盤/收盤都執行一次以填充均價/內外盤

@@ -441,39 +441,61 @@ export default async function handler(req, res) {
     // ══════════════════════════════════════════════════
     if (type === 'margin_detail') {
       if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
-      const today = new Date();
-      const yyyymmdd = `${today.getFullYear()}${String(today.getMonth()+1).padStart(2,'0')}${String(today.getDate()).padStart(2,'0')}`;
       const pi = (v) => parseInt((v||'0').replace(/,/g,'')) || 0;
-      const pf = (v) => parseFloat((v||'0').replace(/,/g,'')) || 0;
+      // MI_MARGN 欄位（融資融券彙總-股票）：
+      //  0代號 1名稱 | 融資: 2買進 3賣出 4現金償還 5前日餘額 6今日餘額 7次一營業日限額
+      //             | 融券: 8買進 9賣出 10現券償還 11前日餘額 12今日餘額 13次一營業日限額
+      //             | 14資券互抵 15註記
+      // 注意：此端點不含「使用率%」欄位，使用率需自行計算＝今日餘額/限額×100
+      // 資料在 j.tables 內某張表（非 j.data），且當日盤後可能尚未公布 → 往前找最近交易日
+      const fmtDate = (dt) => `${dt.getFullYear()}${String(dt.getMonth()+1).padStart(2,'0')}${String(dt.getDate()).padStart(2,'0')}`;
+      const findItem = (j) => {
+        const tables = j.tables || [];
+        let table = tables.find(t => (t.data||[]).length > 50);
+        const rows = table?.data || j.data || [];
+        return { item: rows.find(row => (row[0]||'').trim() === stock_id), fields: table?.fields || j.fields || [] };
+      };
       try {
-        const r = await fetch(
-          `https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date=${yyyymmdd}&selectType=STOCK&response=json`,
-          { headers:{'Accept':'application/json','Referer':'https://www.twse.com.tw/zh/'} }
-        );
-        const j = await r.json();
-        const rows = j.data||[];
-        const fields = j.fields||[];
-        const item = rows.find(row => row[0]===stock_id);
+        let item = null, fields = [], usedDate = '';
+        const base = new Date();
+        for (let back = 0; back <= 5 && !item; back++) {
+          const dt = new Date(base); dt.setDate(base.getDate() - back);
+          const yyyymmdd = fmtDate(dt);
+          const r = await fetch(
+            `https://www.twse.com.tw/rwd/zh/marginTrading/MI_MARGN?date=${yyyymmdd}&selectType=STOCK&response=json`,
+            { headers:{'Accept':'application/json','Referer':'https://www.twse.com.tw/zh/'} }
+          );
+          if (!r.ok) continue;
+          const j = await r.json();
+          const found = findItem(j);
+          if (found.item) { item = found.item; fields = found.fields; usedDate = j.date || yyyymmdd; }
+        }
+        const marginBalance = item ? pi(item[6])  : 0;   // 融資今日餘額
+        const marginLimit   = item ? pi(item[7])  : 0;   // 融資次一營業日限額
+        const shortBalance  = item ? pi(item[12]) : 0;   // 融券今日餘額
+        const shortLimit    = item ? pi(item[13]) : 0;   // 融券次一營業日限額
         res.setHeader('Cache-Control','s-maxage=1800, stale-while-revalidate');
         return res.status(200).json({
           stock_id, fields,
           data: item ? {
-            marginBuy:     pi(item[2]),   // 融資買進（張）
-            marginSell:    pi(item[3]),   // 融資賣出（張）
-            marginRedeem:  pi(item[4]),   // 現金償還（張）
-            marginBalance: pi(item[5]),   // 融資餘額（張）
-            marginLimit:   pi(item[6]),   // 融資限額（張）
-            marginUsage:   pf(item[7]),   // 融資使用率（%）
-            shortSell:     pi(item[8]),   // 融券賣出（張）
-            shortBuy:      pi(item[9]),   // 融券買進（張）
-            shortReturn:   pi(item[10]),  // 現券償還（張）
-            shortBalance:  pi(item[11]),  // 融券餘額（張）
-            shortLimit:    pi(item[12]),  // 融券限額（張）
-            shortUsage:    pf(item[13]),  // 融券使用率（%）
-            offset:        pi(item[14]),  // 資券互抵（張）
+            marginBuy:     pi(item[2]),    // 融資買進（張）
+            marginSell:    pi(item[3]),    // 融資賣出（張）
+            marginRedeem:  pi(item[4]),    // 現金償還（張）
+            marginPrev:    pi(item[5]),    // 融資前日餘額（張）
+            marginBalance,                 // 融資今日餘額（張）
+            marginLimit,                   // 融資限額（張）
+            marginUsage:   marginLimit > 0 ? parseFloat((marginBalance / marginLimit * 100).toFixed(2)) : 0,
+            shortBuy:      pi(item[8]),    // 融券買進（張）
+            shortSell:     pi(item[9]),    // 融券賣出（張）
+            shortReturn:   pi(item[10]),   // 現券償還（張）
+            shortPrev:     pi(item[11]),   // 融券前日餘額（張）
+            shortBalance,                  // 融券今日餘額（張）
+            shortLimit,                    // 融券限額（張）
+            shortUsage:    shortLimit > 0 ? parseFloat((shortBalance / shortLimit * 100).toFixed(2)) : 0,
+            offset:        pi(item[14]),   // 資券互抵（張）
           } : null,
           source: 'TWSE_MI_MARGN',
-          date: yyyymmdd
+          date: usedDate
         });
       } catch(e) {
         return res.status(200).json({ stock_id, data: null, error: e.message });

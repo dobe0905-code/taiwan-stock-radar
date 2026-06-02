@@ -26,7 +26,7 @@ const path = require('path');
 const ROOT = path.resolve(__dirname, '..');
 const OUT_DIR = path.join(ROOT, 'data', 'backtest');
 const YEARS = parseInt(process.env.YEARS) || 2;
-const HORIZONS = [5, 10, 20];
+const HORIZONS = [5, 10, 20, 60]; // 60 ≈ 3 個月，用於長線價位校準
 const YH_GAP = 150;
 const BENCHMARK = '^TWII';
 const START = process.env.START || '';
@@ -119,6 +119,20 @@ function rsiSeries(closes, n = 14) {
   }
   return out;
 }
+// Wilder ATR（價格單位）：用於把停損/目標換算成「幾倍 ATR」
+function atrSeries(highs, lows, closes, n = 14) {
+  const out = new Array(closes.length).fill(null);
+  const tr = new Array(closes.length).fill(null);
+  for (let i = 1; i < closes.length; i++) {
+    tr[i] = Math.max(highs[i] - lows[i], Math.abs(highs[i] - closes[i - 1]), Math.abs(lows[i] - closes[i - 1]));
+  }
+  let sum = 0;
+  for (let i = 1; i < closes.length; i++) {
+    if (i <= n) { sum += tr[i]; if (i === n) out[i] = sum / n; }
+    else out[i] = (out[i - 1] * (n - 1) + tr[i]) / n;
+  }
+  return out;
+}
 // 滾動最高/最低（不含當日，prior n 日）
 function rollExtreme(arr, n, fn) {
   const out = new Array(arr.length).fill(null);
@@ -141,16 +155,27 @@ function buildIndicators(k) {
   const ema12 = emaSeries(closes, 12), ema26 = emaSeries(closes, 26);
   const dif = closes.map((_, i) => ema12[i] - ema26[i]);
   const dem = emaSeries(dif, 9); // 訊號線
-  return { closes, highs, lows, vols, ma5, ma10, ma20, ma60, vol20, high20, low20, rsi, dif, dem };
+  const atr = atrSeries(highs, lows, closes, 14);
+  return { closes, highs, lows, vols, ma5, ma10, ma20, ma60, vol20, high20, low20, rsi, dif, dem, atr };
 }
 
 // ── 統計 ──
+function pctile(sorted, p) {
+  if (!sorted.length) return null;
+  const idx = Math.min(sorted.length - 1, Math.max(0, Math.floor(p * (sorted.length - 1))));
+  return sorted[idx];
+}
+function median(arr) {
+  if (!arr.length) return null;
+  const s = [...arr].sort((a, b) => a - b);
+  return s[Math.floor(s.length / 2)];
+}
 function stats(arr) {
   if (!arr.length) return { n: 0 };
   const n = arr.length, wins = arr.filter(x => x > 0).length;
   const avg = arr.reduce((a, b) => a + b, 0) / n;
   const sorted = [...arr].sort((a, b) => a - b);
-  return { n, winRate: wins / n * 100, avg, median: sorted[Math.floor(n / 2)] };
+  return { n, winRate: wins / n * 100, avg, median: sorted[Math.floor(n / 2)], p25: pctile(sorted, 0.25), p75: pctile(sorted, 0.75) };
 }
 function statsExcess(arr) {
   if (!arr.length) return { n: 0 };
@@ -183,7 +208,7 @@ function statsExcess(arr) {
   for (const code of codes) {
     try {
       const k = await fetchYahooAuto(code, range);
-      if (k.length < 90) { fail++; await sleep(YH_GAP); continue; }
+      if (k.length < 150) { fail++; await sleep(YH_GAP); continue; } // 需 ≥150 根才有 60 日前瞻樣本
       data[code] = { k, ind: buildIndicators(k) };
       ok++;
     } catch (e) { fail++; }
@@ -192,18 +217,23 @@ function statsExcess(arr) {
   console.log(`抓取完成：${ok} 檔（失敗/不足 ${fail}）\n`);
 
   const maxH = Math.max(...HORIZONS);
-  const buckets = {}; // sig → lbl → h → {ret,excess}
+  const buckets = {}; // sig → lbl → h → {ret,excess,mfePct,maePct,mfeATR,maeATR}
   const baseline = {};
-  const push = (sig, lbl, h, ret, excess) => {
+  const push = (sig, lbl, h, rec) => {
     buckets[sig] = buckets[sig] || {};
     buckets[sig][lbl] = buckets[sig][lbl] || {};
-    buckets[sig][lbl][h] = buckets[sig][lbl][h] || { ret: [], excess: [] };
-    buckets[sig][lbl][h].ret.push(ret);
-    if (excess != null) buckets[sig][lbl][h].excess.push(excess);
+    const b = buckets[sig][lbl][h] = buckets[sig][lbl][h] || { ret: [], excess: [], mfePct: [], maePct: [], mfeATR: [], maeATR: [] };
+    b.ret.push(rec.ret);
+    if (rec.excess != null) b.excess.push(rec.excess);
+    if (rec.mfePct != null) b.mfePct.push(rec.mfePct);
+    if (rec.maePct != null) b.maePct.push(rec.maePct);
+    if (rec.mfeATR != null) b.mfeATR.push(rec.mfeATR);
+    if (rec.maeATR != null) b.maeATR.push(rec.maeATR);
   };
 
   for (const code of Object.keys(data)) {
     const { k, ind } = data[code];
+    const { highs, lows, atr } = ind;
     for (let i = 60; i < k.length - maxH; i++) {
       const { ma5, ma10, ma20, ma60, vol20, high20, low20, vols, closes } = ind;
       if (ma60[i] == null) continue;
@@ -245,18 +275,27 @@ function statsExcess(arr) {
         else if (prevD >= 0 && curD < 0) eLbl = 'DIF下穿(MACD死叉)';
       }
 
+      const atrAbs = atr[i]; // 進場日 ATR（價格單位）
       for (const h of HORIZONS) {
         const fwd = (closes[i + h] / c - 1) * 100;
         let excess = null;
         const m0 = benchMap[k[i].date], mH = benchMap[k[i + h].date];
         if (m0 != null && mH != null) excess = fwd - (mH / m0 - 1) * 100;
+        // MFE/MAE：持有期內 (T+1..T+h) 的最高/最低，量化「目標可達性」與「該設多寬停損」
+        let mx = -Infinity, mn = Infinity;
+        for (let j = i + 1; j <= i + h; j++) { if (highs[j] > mx) mx = highs[j]; if (lows[j] < mn) mn = lows[j]; }
+        const mfePct = (mx - c) / c * 100;        // 最大有利波幅（正）
+        const maePct = (c - mn) / c * 100;        // 最大不利波幅（正＝跌幅）
+        const mfeATR = atrAbs ? (mx - c) / atrAbs : null; // 換算成 ATR 倍數
+        const maeATR = atrAbs ? (c - mn) / atrAbs : null;
+        const rec = { ret: fwd, excess, mfePct, maePct, mfeATR, maeATR };
         baseline[h] = baseline[h] || { ret: [] };
         baseline[h].ret.push(fwd);
-        push('ma_align', aLbl, h, fwd, excess);
-        push('trend', bLbl, h, fwd, excess);
-        push('breakout', cLbl, h, fwd, excess);
-        if (dLbl) push('cross', dLbl, h, fwd, excess);
-        if (eLbl) push('macd', eLbl, h, fwd, excess);
+        push('ma_align', aLbl, h, rec);
+        push('trend', bLbl, h, rec);
+        push('breakout', cLbl, h, rec);
+        if (dLbl) push('cross', dLbl, h, rec);
+        if (eLbl) push('macd', eLbl, h, rec);
       }
     }
   }
@@ -298,6 +337,33 @@ function statsExcess(arr) {
   console.log('\n' + '='.repeat(78));
   console.log('判讀：級距「超額平均%」明顯為正且勝率贏過 [全樣本基準]，才代表該短線狀態有 edge。');
 
+  // ── 價位校準：用 MFE/MAE 把停損/目標換成實測倍數（取代拍腦袋 ATR 倍數）──
+  // 目標 ≈ 中位 MFE（持有期內一半時間能摸到的有利波幅）
+  // 停損 ≈ p75 MAE（覆蓋 75% 正常回檔，避免被雜訊掃出場）
+  const CAL = [
+    ['trend', '強多(排列+站季線)', '短多／長多 進場'],
+    ['breakout', '帶量突破20日高', '帶量突破 進場'],
+    ['ma_align', '多頭排列', '純多頭排列'],
+  ];
+  console.log('\n■ 價位校準（MFE/MAE 實測；倍數＝相對進場日 ATR）');
+  console.log('  目標建議＝中位 MFE｜停損建議＝p75 MAE（覆蓋多數正常回檔）');
+  for (const h of HORIZONS) {
+    console.log(`  ── 持有 ${h} 交易日 ` + '─'.repeat(46));
+    console.log('     ' + pad('級距', 22) + padL('樣本', 7) + padL('中MFE%', 9) + padL('中MAE%', 9) + padL('中MFE(ATR)', 11) + padL('p75MAE(ATR)', 12) + padL('報酬p25/p75%', 16));
+    for (const [sig, lbl] of CAL) {
+      const cell = buckets[sig]?.[lbl]?.[h];
+      if (!cell || !cell.ret.length) { console.log('     ' + pad(lbl, 22) + padL('—', 7)); continue; }
+      const mfeP = median(cell.mfePct), maeP = median(cell.maePct);
+      const mfeA = median(cell.mfeATR), maeA75 = pctile([...cell.maeATR].sort((a, b) => a - b), 0.75);
+      const rs = stats(cell.ret);
+      console.log('     ' + pad(lbl, 22) + padL(cell.ret.length, 7)
+        + padL(f1(mfeP), 9) + padL(f1(maeP), 9)
+        + padL((mfeA != null ? mfeA.toFixed(2) : '—'), 11)
+        + padL((maeA75 != null ? maeA75.toFixed(2) : '—'), 12)
+        + padL(`${f1(rs.p25)}/${f1(rs.p75)}`, 16));
+    }
+  }
+
   const toJSON = (sig) => {
     const o = {};
     for (const lbl of ORDER[sig]) {
@@ -306,7 +372,15 @@ function statsExcess(arr) {
         const cell = buckets[sig]?.[lbl]?.[h];
         if (!cell) continue;
         const s = stats(cell.ret), e = statsExcess(cell.excess);
-        obj[h] = { n: s.n, winRate: +s.winRate.toFixed(2), avg: +s.avg.toFixed(3), median: +s.median.toFixed(3), excessWinRate: e.n ? +e.winRate.toFixed(2) : null, excessAvg: e.n ? +e.avg.toFixed(3) : null };
+        const r2 = x => (x == null ? null : +x.toFixed(2));
+        const maeA = [...cell.maeATR].sort((a, b) => a - b);
+        obj[h] = {
+          n: s.n, winRate: +s.winRate.toFixed(2), avg: +s.avg.toFixed(3), median: +s.median.toFixed(3),
+          retP25: r2(s.p25), retP75: r2(s.p75),
+          excessWinRate: e.n ? +e.winRate.toFixed(2) : null, excessAvg: e.n ? +e.avg.toFixed(3) : null,
+          mfePctMed: r2(median(cell.mfePct)), maePctMed: r2(median(cell.maePct)),
+          mfeATRMed: r2(median(cell.mfeATR)), maeATRMed: r2(median(cell.maeATR)), maeATRp75: r2(pctile(maeA, 0.75)),
+        };
       }
       o[lbl] = obj;
     }

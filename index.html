@@ -1541,8 +1541,11 @@ async function buildDetCharts(s){
   }
 
   // ── 操作策略總覽：當沖 / 短線 / 長線 三週期，各附狀態方向 + 進出場價位 ──
-  // 狀態方向皆來自回測；價位以真實均線(MA20/季線)與波動度(ATR)推算，為參考非保證。
-  // 回測(台灣50+中小型,2年)：短多 20日超額 +0.4%、短空 −2.5%、帶量突破20日高 +0.7%；長線營收因子 +1.3%
+  // 狀態方向＋價位皆來自回測(95檔2年, scripts/backtest-shortterm.js)。
+  // 強多(排列+站季線)：20日超額僅+0.3%(弱)；60日勝率56.3%/超額+1.6%(真正edge在3個月)。
+  // 價位校準(實測 MFE/MAE，倍數=相對進場日ATR)：
+  //   20日 中位MFE 2.4×ATR、中位MAE 2.0×ATR  → 短線 目標2.4× / 停損2.0× (RR≈1.2)
+  //   60日 中位MFE 4.9×ATR、中位MAE 3.2×ATR  → 長線 目標4.9× / 停損3.2× (RR≈1.5)
   function renderStrategyCard(s, kdata){
     const el=document.getElementById('strategy-card');
     if(!el) return;
@@ -1598,10 +1601,9 @@ async function buildDetCharts(s){
     let stLbl,stCol,stBg,stBody;
     if(ma5>ma10&&ma10>ma20&&cur>ma60){
       stLbl='📈 短多'; stCol='var(--green2)'; stBg='rgba(126,231,135,.12)';
-      const entry=Math.max(ma10,cur*0.985);
-      const stop =Math.min(ma20*0.985, cur-1.5*atr);
-      const target=cur+2.5*atr;
-      stBody=note('均線多頭排列(MA5&gt;MA10&gt;MA20)＋站上季線；回測20日超額 +0.4%（弱正向，趨勢確認）')+levels(entry,stop,target);
+      // 價位＝實測校準：停損 2.0×ATR(中位MAE)、目標 2.4×ATR(中位MFE)，相對現價
+      const entry=cur, stop=cur-2.0*atr, target=cur+2.4*atr;
+      stBody=note('均線多頭排列(MA5&gt;MA10&gt;MA20)＋站上季線。回測20日超額僅 +0.3%（短線edge弱，當趨勢確認用，真正報酬要持有約3個月見「長線」）；停損/目標＝實測中位MAE/MFE，風報比約1.2。支撐 MA10 '+f(ma10)+'／MA20 '+f(ma20))+levels(entry,stop,target);
     }else if(ma5<ma10&&ma10<ma20&&cur<ma60){
       stLbl='📉 短空'; stCol='var(--red2)'; stBg='rgba(255,161,152,.12)';
       stBody=note('均線空頭排列＋跌破季線；回測20日超額 −2.5%（可靠避開訊號，勿做多接刀）。反彈壓力參考 MA20 '+f(ma20));
@@ -1627,8 +1629,9 @@ async function buildDetCharts(s){
       ltLbl=`${ls.icon} ${ls.lbl}`;
       ltBody=note('🎯 '+ls.reason+'　|　大盤季線：'+mkTxt);
       if(ls.cls==='ls-strong'){
-        const entry=ma60, stop=ma60*0.92, target=cur+4*atr;
-        ltBody+=levels(entry,stop,target);
+        // 價位＝持有≈3個月(60日)實測校準：停損 3.2×ATR(中位MAE)、目標 4.9×ATR(中位MFE)
+        const entry=cur, stop=cur-3.2*atr, target=cur+4.9*atr;
+        ltBody+=note('價位以持有約3個月(60日)實測校準（強多分桶 56%勝率/超額+1.6%）；理想拉回季線 MA60 '+f(ma60)+' 附近布局，風報比更佳。')+levels(entry,stop,target);
       }
     }else{
       ltCol='var(--text2)'; ltBg='rgba(139,148,158,.1)'; ltLbl='無資料';
@@ -1637,7 +1640,7 @@ async function buildDetCharts(s){
     const lt = head('🚀 長線','數月（選股）',ltLbl,ltCol,ltBg)+ltBody;
 
     el.innerHTML = dt + divider + st + divider + lt
-      + `<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向來自回測；進出場價位以真實均線(MA20／季線)與波動度(ATR ${f(atr)})推算，為參考非保證，請自行判斷。</div>`;
+      + `<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向與進出場價位皆來自回測(95檔2年)：停損/目標＝實測 MFE/MAE（持有期內最大有利/不利波幅）校準的 ATR 倍數，會隨個股波動自動調整。目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
   }
 
   // ── MA 均線乖離率（季線公式：BIAS = (現價 - MA60) / MA60 × 100%）──

@@ -37,6 +37,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .api-on .api-dot{background:var(--green);box-shadow:0 0 6px var(--green);}
 .api-off .api-dot{background:var(--text3);}
 .live-badge{display:flex;align-items:center;gap:5px;padding:3px 8px;border-radius:5px;font-size:10px;font-family:var(--mono);background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.25);color:var(--red2);}
+.st-badge{display:inline-block;font-size:9px;padding:1px 6px;border-radius:4px;margin-left:5px;cursor:help;white-space:nowrap;font-weight:600;}
+.st-badge.st-long{color:var(--green2);background:rgba(126,231,135,.12);}
+.st-badge.st-short{color:var(--red2);background:rgba(255,161,152,.12);}
+.st-badge.st-range{color:var(--amber2);background:rgba(227,179,65,.1);}
 .live-dot{width:5px;height:5px;border-radius:50%;background:var(--red2);animation:blink 1s infinite;}
 @keyframes blink{0%,100%{opacity:1}50%{opacity:.2}}
 .upd-info{font-size:11px;font-family:var(--mono);color:var(--text3);}
@@ -218,6 +222,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <div id="regimeBar" style="font-size:10px;color:var(--text3);padding:2px 14px 6px 28px;line-height:1.4">大盤趨勢：載入中…</div>
     <div class="sb-item" onclick="setSF('rev_hi',this)" title="月營收年增>20%：多頭/正常盤回測20日對大盤超額+1.3%、勝率61%（中小型股更強+1.7%）。⚠️順勢因子，2022空頭期回測會反轉失效，需配合大盤趨勢（指數站上月/季線才啟用）"><span>📈 營收高成長</span><span class="sb-cnt" id="c-rev_hi">—</span></div>
     <div class="sb-item" onclick="setSF('rev_dn',this)" title="月營收年增<0%：多頭/正常盤回測20日跑輸大盤-3.3%，避雷用。⚠️空頭期此族群反而易均值回歸反彈，避雷效果僅限正常盤"><span>📉 營收衰退（避雷）</span><span class="sb-cnt" id="c-rev_dn">—</span></div>
+    <div class="sb-label">短線狀態（全市場每日快照）</div>
+    <div class="sb-item" onclick="setSF('st_long',this)" title="均線多頭排列（MA5>MA10>MA20）且站上季線（MA60）。回測：趨勢中拉回為最佳買點，季線上揚時勝率更高"><span>📈 短多</span><span class="sb-cnt" id="c-st_long">—</span></div>
+    <div class="sb-item" onclick="setSF('st_long_up',this)" title="短多 ＋ 季線（MA60）上揚：回測勝率與超額報酬最強的子集"><span>📈 短多（季線上揚）</span><span class="sb-cnt" id="c-st_long_up">—</span></div>
+    <div class="sb-item" onclick="setSF('st_short',this)" title="均線空頭排列（MA5<MA10<MA20）且跌破季線（MA60）：弱勢，避開或反向"><span>📉 短空</span><span class="sb-cnt" id="c-st_short">—</span></div>
+    <div id="stDateBar" style="font-size:10px;color:var(--text3);padding:2px 14px 6px 28px;line-height:1.4">快照日期：載入中…</div>
     <div class="sb-label">市場類型</div>
     <div class="sb-item" onclick="setSF('twse',this)"><span>🏛 上市 TWSE</span><span class="sb-cnt" id="c-twse">—</span></div>
     <div class="sb-item" onclick="setSF('tpex',this)"><span>🏪 上櫃 TPEx</span><span class="sb-cnt" id="c-tpex">—</span></div>
@@ -340,6 +349,18 @@ let liveData={}, liveCount=0, currentDetId=null;
 let perMap={}, yldMap={};
 let revMap={};  // 月營收 YoY map {code:{yoy,mom,tier}}（回測驗證的選股因子）
 let revMonth='';
+let stMap={};   // 全市場短線狀態 map {code:{st,up,d,b60}}（GitHub Action 每交易日快照）
+let stDate='';
+
+// ── 短線狀態徽章（與個股面板「操作策略總覽」短線判斷一致：MA 排列 + 季線）──
+// st: long(短多)/short(短空)/range(盤整)/na(資料不足)；up: 季線上揚(回測 edge 關鍵)
+function shortBadge(id){
+  const s=stMap[id];
+  if(!s||s.st==='na') return '';
+  if(s.st==='long')  return `<span class="st-badge st-long" title="短多：均線多頭排列(MA5>MA10>MA20)＋站上季線${s.up?'，季線上揚（回測 edge 關鍵）':'，但季線走平/下彎(回測超額轉差)'}。季線乖離 ${s.b60}%">📈 短多${s.up?' ▲':''}</span>`;
+  if(s.st==='short') return `<span class="st-badge st-short" title="短空：均線空頭排列＋跌破季線（回測20日超額 −2.5%，避開）。季線乖離 ${s.b60}%">📉 短空</span>`;
+  return `<span class="st-badge st-range" title="盤整：均線糾結或未站穩季線，方向不明。季線乖離 ${s.b60}%">⚖️ 盤整</span>`;
+}
 let mktRegime=null;  // 大盤趨勢濾網：'bull'(指數站上季線) / 'bear'(跌破季線) / null(未知)
 let mktMA60=0, mktLast=0;  // 加權指數季線值 / 最新收盤（供 tooltip）
 
@@ -561,12 +582,16 @@ async function loadData(){
       showToast(`✓ 上市 ${twseStocks.length} 檔已載入，上櫃載入中...`);
     }
 
-    // 第二階段：背景載入 TPEx + PER + 月營收 YoY
-    const [tpexRes, perRes, revRes] = await Promise.all([
+    // 第二階段：背景載入 TPEx + PER + 月營收 YoY + 短線狀態
+    const [tpexRes, perRes, revRes, stRes] = await Promise.all([
       fetch(`${API}?type=tpex_list`).then(r=>r.json()),
       fetch(`${API}?type=twse_per`).then(r=>r.json()),
       fetch('/api/fundamental?type=revenue').then(r=>r.json()).catch(()=>({stocks:{}})),
+      fetch(`${API}?type=shortterm`).then(r=>r.json()).catch(()=>({stocks:{}})),
     ]);
+    // 全市場短線狀態 map
+    stMap = stRes?.stocks || {};
+    stDate = stRes?.date || '';
 
     // 建立本益比 map
     perMap={};
@@ -705,6 +730,9 @@ function getFiltered(){
   else if(sf==='long_buy') l=l.filter(s=>{const ls=longState(s);return ls&&ls.cls==='ls-strong';});
   else if(sf==='rev_hi') l=l.filter(s=>s.revTier==='高成長');
   else if(sf==='rev_dn') l=l.filter(s=>s.revTier==='衰退');
+  else if(sf==='st_long') l=l.filter(s=>stMap[s.id]?.st==='long');
+  else if(sf==='st_long_up') l=l.filter(s=>{const x=stMap[s.id];return x?.st==='long'&&x.up;});
+  else if(sf==='st_short') l=l.filter(s=>stMap[s.id]?.st==='short');
   else if(sf.startsWith('s:')) l=l.filter(s=>s.sector===sf.slice(2));
   else if(sf.startsWith('g:')) l=l.filter(s=>THEME_MAP[sf.slice(2)]?.has(s.id));
 
@@ -798,7 +826,7 @@ function renderTable(){
     return`<tr ${useAnim?`style="animation-delay:${Math.min(i*3,300)}ms"`:''} data-id="${s.id}" onclick="openDet('${s.id}')">
       <td onclick="event.stopPropagation()"><button class="star-btn ${wl.has(s.id)?'on':''}" onclick="togWL('${s.id}',this)">★</button></td>
       <td><span class="td-id">${s.id}</span>${s.isETF?'<span class="etf-tag">ETF</span>':''}${mktTag}${isLive?'<span style="font-size:9px;color:var(--red2);margin-left:3px">●</span>':''}</td>
-      <td><div class="td-name">${s.name}${revTag}${lsTag}</div>${!s.isETF?'<div class="td-sec">'+s.sector+'</div>':''}</td>
+      <td><div class="td-name">${s.name}${revTag}${lsTag}${shortBadge(s.id)}</div>${!s.isETF?'<div class="td-sec">'+s.sector+'</div>':''}</td>
       <td><span class="td-price live-price ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}">${s.close.toFixed(2)}</span></td>
       <td><span class="pill ${s.chgP>0?'pill-up':s.chgP<0?'pill-dn':'pill-neu'}">${s.chgP>=0?'+':''}${s.chgP.toFixed(2)}%</span></td>
       <td class="col-law"><span class="td-m">${s.peV?s.peV.toFixed(1):'—'}</span></td>
@@ -847,6 +875,16 @@ function updSB(){
   _sb('c-long_buy',stocks.filter(s=>{const ls=longState(s);return ls&&ls.cls==='ls-strong';}).length);
   _sb('c-rev_hi',stocks.filter(s=>s.revTier==='高成長').length);
   _sb('c-rev_dn',stocks.filter(s=>s.revTier==='衰退').length);
+  // 短線狀態快照計數（只計算目前已載入清單中、快照有資料的股票）
+  _sb('c-st_long',stocks.filter(s=>stMap[s.id]?.st==='long').length);
+  _sb('c-st_long_up',stocks.filter(s=>{const x=stMap[s.id];return x?.st==='long'&&x.up;}).length);
+  _sb('c-st_short',stocks.filter(s=>stMap[s.id]?.st==='short').length);
+  // 快照日期指示
+  const sdb=document.getElementById('stDateBar');
+  if(sdb){
+    if(stDate) sdb.textContent=`快照日期：${stDate}（每交易日 15:00 更新）`;
+    else sdb.textContent='快照尚未載入';
+  }
   // 大盤季線 regime 指示
   const rb=document.getElementById('regimeBar');
   if(rb){

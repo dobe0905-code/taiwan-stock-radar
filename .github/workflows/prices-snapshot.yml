@@ -1,0 +1,38 @@
+name: Short-term State Daily Snapshot
+
+on:
+  schedule:
+    # 每週一~五 07:00 UTC = 15:00 台北（台股 13:30 收盤後，行情已上架）
+    - cron: '0 7 * * 1-5'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run prices snapshot
+        run: node scripts/snapshot-prices.js
+
+      - name: Commit & push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/prices/
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          DAY=$(date -u -d 'now' +'%Y-%m-%d')
+          git commit -m "chore(prices): short-term state snapshot ${DAY}"
+          git push

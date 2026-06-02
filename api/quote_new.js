@@ -1,5 +1,7 @@
 // api/quote.js
 // 台灣證交所 + 櫃買中心 免費即時 API
+import { promises as fs } from 'fs';
+import path from 'path';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -10,6 +12,25 @@ export default async function handler(req, res) {
   const { type, market, stocks, stock_id } = req.query;
 
   try {
+
+    // ══════════════════════════════════════════════════
+    // 0. 全市場短線狀態（GitHub Action 每交易日快照，主表格徽章用）
+    //    type=shortterm               → 全市場 map { code:{st,up,d,b60} }
+    //    type=shortterm&stock_id=2330 → 單檔
+    // ══════════════════════════════════════════════════
+    if (type === 'shortterm') {
+      try {
+        const file = path.join(process.cwd(), 'data', 'prices', 'state-latest.json');
+        const snap = JSON.parse(await fs.readFile(file, 'utf8'));
+        res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+        if (stock_id) {
+          return res.status(200).json({ stock_id, date: snap.date, data: snap.stocks?.[stock_id] || null, source: 'prices_snapshot' });
+        }
+        return res.status(200).json({ date: snap.date, updated: snap.updated, count: snap.count, dist: snap.dist, stocks: snap.stocks, source: 'prices_snapshot' });
+      } catch (e) {
+        return res.status(200).json({ stock_id: stock_id || null, data: null, stocks: {}, error: e.message });
+      }
+    }
 
     // ══════════════════════════════════════════════════
     // 1. 上市股票清單 — 當日行情

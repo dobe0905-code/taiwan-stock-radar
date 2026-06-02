@@ -2898,7 +2898,7 @@ async function loadHoldersData(stockId){
       dCharts.holders=new Chart(canvas,{
         type:'doughnut',
         data:{labels:groups.map(g=>g.label),datasets:[{data:groups.map(g=>parseFloat(g.ratio.toFixed(1))),backgroundColor:['#388bfd','#3fb950','#e3b341','#f85149'],borderColor:'rgba(0,0,0,0)',borderWidth:2}]},
-        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:10},color:'#8b949e',padding:6}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw}%`}}}}
+        options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{position:'right',labels:{font:{size:13},color:'#aab4c0',padding:8}},tooltip:{callbacks:{label:ctx=>`${ctx.label}: ${ctx.raw}%`}}}}
       });
     }
     const tbl=document.getElementById('holders-table');

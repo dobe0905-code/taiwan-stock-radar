@@ -70,11 +70,14 @@ export default async function handler(req, res) {
               IndustryCategory: '',
               _today: true
             })).filter(d => d.Code && /^\d{4}/.test(d.Code) && d.ClosingPrice && d.ClosingPrice !== '--');
-            // 修正漲跌符號
-            data = data.map(d => ({
-              ...d,
-              Change: d.Dir === '-' ? String(-Math.abs(parseFloat(d.Change)||0)) : String(parseFloat(d.Change)||0)
-            }));
+            // 修正漲跌符號：row[9] 是 HTML（綠=跌 <p ...color:green>-</p>、紅=漲 ...color:red>+</p>）
+            // 舊版用 d.Dir==='-' 比對 HTML 字串永遠 false，導致下跌股 Change 維持正值而被顯示為上漲
+            data = data.map(d => {
+              const dir = String(d.Dir || '');
+              const isDown = /green/i.test(dir) || /<[^>]*>\s*-/.test(dir) || dir.trim() === '-';
+              const mag = Math.abs(parseFloat(d.Change) || 0);
+              return { ...d, Change: isDown ? String(-mag) : String(mag) };
+            });
           }
         }
       } catch(e) { console.log('MI_INDEX failed:', e.message); }

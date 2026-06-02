@@ -481,81 +481,62 @@ function buildMisBatches(){
   for(let i=0;i<tpex.length;i+=50) tpexMisBatch.push(tpex.slice(i,i+50));
 }
 
+// 套用單檔 MIS 即時資料到 stocks[] 並處理閃動/詳情面板同步
+function applyMisItem(item){
+  const sid=item.c; if(!sid) return;
+  const y=parseFloat(item.y)||0;
+  const price=misPrice(item);          // z 無效時用買賣價中點，不退昨收
+  if(!price||!y) return;
+  const s=stocks.find(x=>x.id===sid);
+  if(!s) return;
+  const prev=s.close;
+  s.close=price;
+  s.open=parseFloat(item.o)||s.open;
+  s.high=parseFloat(item.h)||s.high;
+  s.low=parseFloat(item.l)||s.low;
+  s.vol=parseFloat(item.v)||s.vol;
+  s.chg=parseFloat((price-y).toFixed(2));        // 漲跌據推導現價重算，與現價一致
+  s.chgP=parseFloat(((price-y)/y*100).toFixed(2));
+  s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn});
+  misCount++;
+  if(prev!==s.close){
+    const row=document.querySelector(`tr[data-id="${sid}"]`);
+    if(row){const c=row.querySelector('.live-price');if(c){c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');}}
+  }
+  if(currentDetId===sid){
+    const pe=document.getElementById('d-price');
+    const ce=document.getElementById('d-chg');
+    if(pe) pe.textContent=s.close.toFixed(2);
+    if(ce){ce.textContent=(s.chgP>=0?'+':'')+s.chgP.toFixed(2)+'%';ce.className='pill '+(s.chgP>0?'pill-up':s.chgP<0?'pill-dn':'pill-neu');}
+  }
+}
+
 async function pollMisBatch(){
   if(!isTradingNow()) return;
   try{
-    // 輪詢上市一批
-    if(twseMisBatch.length>0){
-      const batch = twseMisBatch[misIdx.twse % twseMisBatch.length];
-      const r = await fetch(`/api/quote?type=realtime&market=twse&stocks=${batch.join(',')}`);
-      const j = await r.json();
-      const arr = j.data||[];
-      for(const item of arr){
-        const sid=item.c;
-        if(!sid) continue;
-        // z=成交價 y=昨收 o=開盤 h=最高 l=最低 v=成交量
-        const y=parseFloat(item.y)||0;
-        const price=misPrice(item);          // z 無效時用買賣價中點，不退昨收
-        if(!price||!y) continue;
-        const s=stocks.find(x=>x.id===sid);
-        if(s){
-          const prev=s.close;
-          s.close=price;
-          s.open=parseFloat(item.o)||s.open;
-          s.high=parseFloat(item.h)||s.high;
-          s.low=parseFloat(item.l)||s.low;
-          s.vol=parseFloat(item.v)||s.vol;
-          s.chg=parseFloat((price-y).toFixed(2));        // 漲跌據推導現價重算，與現價一致
-          s.chgP=parseFloat(((price-y)/y*100).toFixed(2));
-          s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn});
-          misCount++;
-          if(prev!==s.close){
-            const row=document.querySelector(`tr[data-id="${sid}"]`);
-            if(row){const c=row.querySelector('.live-price');if(c){c.classList.remove('flash');void c.offsetWidth;c.classList.add('flash');}}
-          }
-          // 更新詳細面板
-          if(currentDetId===sid){
-            const pe=document.getElementById('d-price');
-            const ce=document.getElementById('d-chg');
-            if(pe) pe.textContent=s.close.toFixed(2);
-            if(ce){
-              ce.textContent=(s.chgP>=0?'+':'')+s.chgP.toFixed(2)+'%';
-              ce.className='pill '+(s.chgP>0?'pill-up':s.chgP<0?'pill-dn':'pill-neu');
-            }
-          }
-        }
-      }
-      misIdx.twse++;
+    // 優先：畫面上看得到的股票（搜尋/篩選後的可見列）→ 每輪都更新，秒級反應
+    const visIds=[...document.querySelectorAll('#tblBody tr[data-id]')].map(tr=>tr.dataset.id);
+    const visTwse=[], visTpex=[];
+    for(const id of visIds){
+      const s=stocks.find(x=>x.id===id);
+      if(!s||s.isETF) continue;
+      (s.market==='tpex'?visTpex:visTwse).push(id);
     }
-    // 輪詢上櫃一批
-    if(tpexMisBatch.length>0){
-      const batch2 = tpexMisBatch[misIdx.tpex % tpexMisBatch.length];
-      const r2 = await fetch(`/api/quote?type=realtime&market=tpex&stocks=${batch2.join(',')}`);
-      const j2 = await r2.json();
-      const arr2 = j2.data||[];
-      for(const item of arr2){
-        const sid=item.c;
-        if(!sid) continue;
-        const y=parseFloat(item.y)||0;
-        const price=misPrice(item);
-        if(!price||!y) continue;
-        const s=stocks.find(x=>x.id===sid);
-        if(s){
-          s.close=price;
-          s.open=parseFloat(item.o)||s.open;
-          s.high=parseFloat(item.h)||s.high;
-          s.low=parseFloat(item.l)||s.low;
-          s.vol=parseFloat(item.v)||s.vol;
-          s.chg=parseFloat((price-y).toFixed(2));
-          s.chgP=parseFloat(((price-y)/y*100).toFixed(2));
-          s.sig=calcSig({open:s.open,close:s.close,high:s.high,low:s.low,chgP:s.chgP,peV:s.peV,turn:s.turn});
-          misCount++;
-        }
-      }
-      misIdx.tpex++;
+    // 背景：全市場一次一批輪流補齊（畫面外的股票）
+    const bgTwse=twseMisBatch.length?twseMisBatch[misIdx.twse%twseMisBatch.length]:[];
+    const bgTpex=tpexMisBatch.length?tpexMisBatch[misIdx.tpex%tpexMisBatch.length]:[];
+    misIdx.twse++; misIdx.tpex++;
+    // 可見列優先，合併去重後各自上限 80 檔（單次 MIS 請求安全量）
+    const twseList=[...new Set([...visTwse,...bgTwse])].slice(0,80);
+    const tpexList=[...new Set([...visTpex,...bgTpex])].slice(0,80);
+    if(twseList.length){
+      const r=await fetch(`/api/quote?type=realtime&market=twse&stocks=${twseList.join(',')}`);
+      ((await r.json()).data||[]).forEach(applyMisItem);
     }
-    
-    
+    if(tpexList.length){
+      const r2=await fetch(`/api/quote?type=realtime&market=tpex&stocks=${tpexList.join(',')}`);
+      ((await r2.json()).data||[]).forEach(applyMisItem);
+    }
     updSum();
     renderTable();
   }catch(e){

@@ -96,6 +96,71 @@ export default async function handler(req, res) {
     }
 
     // ══════════════════════════════════════════════════
+    // 公司基本資料（GitHub Action 月快照，TWSE/TPEx 官方 OpenAPI）
+    //   type=company&stock_id=2330 → 單檔基本資料
+    // ══════════════════════════════════════════════════
+    if (type === 'company') {
+      if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+      try {
+        const file = path.join(process.cwd(), 'data', 'company', 'latest.json');
+        const snap = JSON.parse(await fs.readFile(file, 'utf8'));
+        const s = snap.stocks?.[stock_id] || null;
+        res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate');
+        return res.status(200).json({ stock_id, updated: snap.updated, data: s, source: 'twse_tpex_openapi' });
+      } catch (e) {
+        return res.status(200).json({ stock_id, data: null, error: e.message });
+      }
+    }
+
+    // ══════════════════════════════════════════════════
+    // 近五年年營收（FinMind 逐檔即時抓 → 彙總月營收為年營收）
+    //   type=revenue_annual&stock_id=2330
+    //   免費版逐檔可用；隨點隨抓 + s-maxage 快取，避免全市場批次（需付費）
+    // ══════════════════════════════════════════════════
+    if (type === 'revenue_annual') {
+      if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+      try {
+        // 抓 6 個完整年度的月營收（含當年 YTD）；起點往前 6 年的 1 月
+        const startYear = new Date().getFullYear() - 6;
+        const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockMonthRevenue&data_id=${encodeURIComponent(stock_id)}&start_date=${startYear}-01-01`;
+        const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+        const j = await r.json();
+        if (j.status !== 200 || !Array.isArray(j.data)) {
+          return res.status(200).json({ stock_id, years: [], error: j.msg || 'finmind_error', source: 'finmind' });
+        }
+        // 依「營收所屬年月」彙總（revenue_year/revenue_month 才是歸屬期；date 是公布日）
+        const byYear = {};   // year → { sum, months:Set }
+        for (const row of j.data) {
+          const y = row.revenue_year, m = row.revenue_month;
+          const rev = Number(row.revenue);
+          if (!y || !Number.isFinite(rev)) continue;
+          (byYear[y] = byYear[y] || { sum: 0, months: new Set() });
+          byYear[y].sum += rev;
+          byYear[y].months.add(m);
+        }
+        const curYear = new Date().getFullYear();
+        let years = Object.keys(byYear).map(Number).sort((a, b) => a - b).map(y => ({
+          year: y,
+          revenue: byYear[y].sum,            // 元（全年加總；當年為 YTD）
+          months: byYear[y].months.size,     // 已含幾個月（判斷是否完整年度）
+          partial: byYear[y].months.size < 12 || y >= curYear
+        }));
+        // YoY（以完整年度為主；當年 YTD 不算嚴謹 YoY，前端標註）
+        years = years.map((o, i) => {
+          const prev = years[i - 1];
+          o.yoy = prev && prev.revenue ? +(((o.revenue - prev.revenue) / prev.revenue) * 100).toFixed(1) : null;
+          return o;
+        });
+        // 只保留最近 6 個年度
+        years = years.slice(-6);
+        res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=172800');
+        return res.status(200).json({ stock_id, years, source: 'finmind' });
+      } catch (e) {
+        return res.status(200).json({ stock_id, years: [], error: e.message, source: 'finmind' });
+      }
+    }
+
+    // ══════════════════════════════════════════════════
     // 1. 集保持股分散（大戶/散戶）
     //    策略：TDCC OpenAPI → TDCC 政府開放平台 → TDCC 網頁POST（備援）
     // ══════════════════════════════════════════════════

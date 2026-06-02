@@ -1,0 +1,38 @@
+name: Company Profile Snapshot
+
+on:
+  schedule:
+    # 每月 5 號 14:00 UTC = 22:00 台北。公司基本資料幾乎不變，月更足夠
+    - cron: '0 14 5 * *'
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  snapshot:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Setup Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '20'
+
+      - name: Run company snapshot
+        run: node scripts/snapshot-company.js
+
+      - name: Commit & push
+        run: |
+          git config user.name  "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add data/company/
+          if git diff --cached --quiet; then
+            echo "No changes."
+            exit 0
+          fi
+          MONTH=$(date -u -d 'now' +'%Y-%m')
+          git commit -m "chore(company): profile snapshot ${MONTH}"
+          git push

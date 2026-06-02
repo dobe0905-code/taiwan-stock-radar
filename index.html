@@ -1755,6 +1755,9 @@ function buildDetHTML(s,live){
     <div id="ta-synth" style="display:none;font-size:12px;line-height:1.7;padding:10px 12px;margin-bottom:6px;border-radius:7px;background:var(--bg4);border:1px solid var(--border)"></div>
     <div id="ta-signals" style="font-size:10px;color:var(--text3);line-height:1.8;min-height:16px"></div>
   </div>
+  <div class="ds" id="company-section"><div class="dst">公司概況</div>
+    <div id="company-body" style="font-size:13px;color:var(--text3);line-height:1.6">載入中…</div>
+  </div>
   <div class="ds" id="price-chart-section"><div class="dst">價格走勢</div>
     <div id="tv-interval-row" style="display:flex;gap:6px;margin-bottom:10px;flex-wrap:wrap">
       ${(()=>{
@@ -1778,6 +1781,10 @@ function buildDetHTML(s,live){
     })()}
     <div id="tv-stock-wrap" style="height:440px;border-radius:8px;overflow:hidden;background:var(--bg);position:relative">
     </div>
+  </div>
+  <div class="ds" id="rev-annual-section"><div class="dst">近五年年營收</div>
+    <div style="height:180px;position:relative"><canvas id="c-rev-annual"></canvas></div>
+    <div id="rev-annual-note" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5">載入中…</div>
   </div>
   <div class="ds"><div class="dst">估值指標</div>
     <div class="kv2">
@@ -1966,6 +1973,9 @@ async function buildDetCharts(s){
   loadHoldersData(s.id);
   loadMarginData(s.id);
   loadInstitutionData(s.id);
+  // ── 公司基本資料 + 近五年年營收 ──
+  loadCompanyData(s);
+  loadAnnualRevenue(s.id);
 
   // ── 技術分析狀態（RSI / MACD / 趨勢 / 量能）──
   function calcAndShowTechStatus(kdata){
@@ -2816,6 +2826,77 @@ function drawSimulatedChart(s, container){
   dCharts.p=new Chart(canvas,{type:'line',data:{labels:lb,datasets:[{data:ps,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:6}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}});
 }
 
+
+// ── 公司基本資料（月快照：TWSE/TPEx 官方）──
+async function loadCompanyData(s){
+  const body=document.getElementById('company-body');
+  if(!body) return;
+  try{
+    const j=await (await fetch(`/api/fundamental?type=company&stock_id=${s.id}`)).json();
+    if(document.getElementById('company-body')!==body) return; // 面板已切換
+    const d=j.data;
+    if(!d){ body.innerHTML='<span style="color:var(--text3)">查無公司基本資料</span>'; return; }
+    const cap = d.capital!=null ? (d.capital/1e8).toFixed(1)+' 億元' : '—';
+    const shr = d.shares!=null ? (d.shares/1e8).toFixed(2)+' 億股' : '—';
+    const listedLbl = s.market==='tpex'?'上櫃日期':s.market==='esb'?'興櫃日期':'上市日期';
+    const webHost = (d.web||'').replace(/\/+$/,'');
+    body.innerHTML=`
+      <div class="kv2">
+        <div class="kv"><div class="kv-l">產業</div><div class="kv-v" style="font-size:14px">${s.sector||'—'}</div></div>
+        <div class="kv"><div class="kv-l">${listedLbl}</div><div class="kv-v" style="font-size:14px">${d.listed||'—'}</div></div>
+        <div class="kv"><div class="kv-l">成立日期</div><div class="kv-v" style="font-size:14px">${d.founded||'—'}</div></div>
+        <div class="kv"><div class="kv-l">實收資本額</div><div class="kv-v">${cap}</div></div>
+        <div class="kv"><div class="kv-l">已發行股數</div><div class="kv-v">${shr}</div></div>
+        <div class="kv"><div class="kv-l">董事長</div><div class="kv-v" style="font-size:14px">${d.chairman||'—'}</div></div>
+        <div class="kv"><div class="kv-l">總經理</div><div class="kv-v" style="font-size:14px">${d.ceo||'—'}</div></div>
+        <div class="kv"><div class="kv-l">發言人</div><div class="kv-v" style="font-size:14px">${d.spokesman||'—'}${d.spokesmanTitle?'・'+d.spokesmanTitle:''}</div></div>
+      </div>
+      <div style="margin-top:8px;display:flex;flex-direction:column;gap:5px;font-size:13px">
+        <div><span style="color:var(--text2)">地址　</span>${d.addr||'—'}</div>
+        <div><span style="color:var(--text2)">總機　</span>${d.tel||'—'}</div>
+        <div><span style="color:var(--text2)">官網　</span>${webHost?`<a href="https://${webHost}" target="_blank" rel="noopener" style="color:var(--accent2)">${webHost}</a>`:'—'}</div>
+      </div>`;
+  }catch(e){ if(document.getElementById('company-body')===body) body.innerHTML='<span style="color:var(--text3)">公司基本資料載入失敗</span>'; }
+}
+
+// ── 近五年年營收（FinMind 逐檔即時，後端彙總）──
+async function loadAnnualRevenue(stockId){
+  const note=document.getElementById('rev-annual-note');
+  const cv=document.getElementById('c-rev-annual');
+  if(!cv||!note) return;
+  try{
+    const j=await (await fetch(`/api/fundamental?type=revenue_annual&stock_id=${stockId}`)).json();
+    if(document.getElementById('c-rev-annual')!==cv) return; // 面板已切換
+    const ys=j.years||[];
+    if(!ys.length){ note.textContent='查無年營收資料（來源 FinMind）'; return; }
+    const labels=ys.map(o=>o.year);
+    const vals=ys.map(o=>+(o.revenue/1e8).toFixed(1));   // 億
+    const colors=ys.map(o=> o.partial ? 'rgba(227,179,65,.65)' : (o.yoy==null?'rgba(121,184,255,.7)':(o.yoy>=0?'rgba(63,185,80,.75)':'rgba(248,81,73,.75)')));
+    if(dCharts.revAnnual){ try{dCharts.revAnnual.destroy();}catch(e){} }
+    dCharts.revAnnual=new Chart(cv,{
+      type:'bar',
+      data:{labels,datasets:[{data:vals,backgroundColor:colors,borderRadius:4,maxBarThickness:48}]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{display:false},tooltip:{callbacks:{label:(ctx)=>{
+          const o=ys[ctx.dataIndex];
+          const yoy=o.yoy!=null?`，YoY ${o.yoy>=0?'+':''}${o.yoy}%`:'';
+          return `${o.revenue>=1e8?(o.revenue/1e8).toFixed(1)+'億':(o.revenue/1e4).toFixed(0)+'萬'}${o.partial?'（前'+o.months+'月）':''}${o.partial?'':yoy}`;
+        }}}},
+        scales:{x:{grid:{display:false},ticks:{color:'#aab4c0',font:{size:12}}},
+         y:{position:'right',grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#8b949e',font:{size:11},callback:v=>v+'億'}}}
+      }
+    });
+    // 文字摘要：最近一個完整年度的 YoY + 當年 YTD 提醒
+    const full=ys.filter(o=>!o.partial);
+    const last=full[full.length-1];
+    const cur=ys.find(o=>o.partial);
+    let txt='';
+    if(last) txt+=`${last.year} 全年營收 ${(last.revenue/1e8).toFixed(1)} 億${last.yoy!=null?`（YoY ${last.yoy>=0?'+':''}${last.yoy}%）`:''}。`;
+    if(cur) txt+=`${cur.year} 為前 ${cur.months} 月累計 ${(cur.revenue/1e8).toFixed(1)} 億（未滿全年，不計 YoY）。`;
+    txt+='來源：FinMind 月營收彙總。';
+    note.textContent=txt;
+  }catch(e){ if(document.getElementById('rev-annual-note')===note) note.textContent='年營收載入失敗'; }
+}
 
 // ── 籌碼分析資料載入（集保每週五更新）──
 async function loadHoldersData(stockId){

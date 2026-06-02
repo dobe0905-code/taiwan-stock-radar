@@ -593,59 +593,54 @@ window.addEventListener('firebase-ready', ()=>{
 async function loadData(){
   setLd('正在載入上市股票...');
   try{
-    // 第一階段：先載入 TWSE，快速顯示
+    // 所有背景請求同時發出（並行，互不阻塞）
+    const pPer = fetch(`${API}?type=twse_per`).then(r=>r.json()).catch(()=>({data:[]}));
+    const pRev = fetch('/api/fundamental?type=revenue').then(r=>r.json()).catch(()=>({stocks:{}}));
+    const pSt  = fetch(`${API}?type=shortterm`).then(r=>r.json()).catch(()=>({stocks:{}}));
+    const pTpex= fetch(`${API}?type=tpex_list`).then(r=>r.json()).catch(()=>({data:[]}));
+
+    // 第一階段：TWSE 一到立刻渲染（renderTable 之後不再呼叫 setLd 清表）
     const twseRes = await fetch(`${API}?type=twse_list`).then(r=>r.json());
     let twseStocks = processTWSE(twseRes.data||[]);
     stocks = twseStocks;
     if(stocks.length>0){
       document.getElementById('twseBadge').className='api-badge api-on';
       updSum(); updSB(); renderTable();
-      setLd('');
       showToast(`✓ 上市 ${twseStocks.length} 檔已載入，上櫃載入中...`);
     }
 
-    // 第二階段：背景載入 TPEx + PER + 月營收 YoY + 短線狀態
-    const [tpexRes, perRes, revRes, stRes] = await Promise.all([
-      fetch(`${API}?type=tpex_list`).then(r=>r.json()),
-      fetch(`${API}?type=twse_per`).then(r=>r.json()),
-      fetch('/api/fundamental?type=revenue').then(r=>r.json()).catch(()=>({stocks:{}})),
-      fetch(`${API}?type=shortterm`).then(r=>r.json()).catch(()=>({stocks:{}})),
-    ]);
-    // 全市場短線狀態 map
-    stMap = stRes?.stocks || {};
-    stDate = stRes?.date || '';
-
-    // 建立本益比 map
-    perMap={};
-    if(perRes.data) for(const p of perRes.data){
-      perMap[p.Code]={ per: parseFloat(p.PEratio)||null, yld: parseFloat(p.DividendYield)||null, pbr: parseFloat(p.PBratio)||null };
-    }
-    // 建立月營收 map（回測驗證因子）
-    revMap = revRes?.stocks || {};
-    revMonth = revRes?.month || '';
-    // 補上 TWSE 本益比（原本 processTWSE 時 perMap 還是空的）
-    for(const s of twseStocks){
-      const pe=perMap[s.id];
-      if(pe){ s.peV=pe.per; s.yld=pe.yld; s.pbV=pe.pbr; }
-    }
-
+    // 第二階段：TPEx 清單一到就合併渲染「全部個股」，不等 PER/營收/短線
+    const tpexRes = await pTpex;
     const tpexStocks = processTPEx(tpexRes.data||[]);
     stocks = [...twseStocks, ...tpexStocks];
-    // 合併月營收因子到每檔
-    for(const s of stocks){
-      const rv=revMap[s.id];
-      if(rv){ s.revYoY=rv.yoy; s.revMom=rv.mom; s.revTier=rv.tier; }
-    }
-
     if(stocks.length===0){ setLd('無資料，請稍後再試'); return; }
-    document.getElementById('twseBadge').className='api-badge api-on';
     document.getElementById('tpexBadge').className='api-badge api-on';
-
     updSum(); updSB(); renderTable();
+    startMisPolling();   // 此時 batches 已含 TPEx，立即開始即時輪詢
     setLU(); schedRef();
+    showToast(`✓ 全部 ${stocks.length} 檔已載入（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length}），指標背景補上…`);
+
+    // 第三階段：PER / 月營收 / 短線狀態 各自到位後就地補上欄位（不阻塞表格）
+    pPer.then(perRes=>{
+      perMap={};
+      if(perRes?.data) for(const p of perRes.data){
+        perMap[p.Code]={ per: parseFloat(p.PEratio)||null, yld: parseFloat(p.DividendYield)||null, pbr: parseFloat(p.PBratio)||null };
+      }
+      for(const s of stocks){ const pe=perMap[s.id]; if(pe){ s.peV=pe.per; s.yld=pe.yld; s.pbV=pe.pbr; } }
+      updSB(); renderTable();
+    });
+    pRev.then(revRes=>{
+      revMap = revRes?.stocks || {};
+      revMonth = revRes?.month || '';
+      for(const s of stocks){ const rv=revMap[s.id]; if(rv){ s.revYoY=rv.yoy; s.revMom=rv.mom; s.revTier=rv.tier; } }
+      updSB(); renderTable();
+    });
+    pSt.then(stRes=>{
+      stMap = stRes?.stocks || {};
+      stDate = stRes?.date || '';
+      updSB(); renderTable();
+    });
     loadMarketRegime();  // 大盤季線濾網（非阻塞，回來後刷新長線狀態）
-    showToast(`✓ 全部載入完成：${stocks.length} 檔（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length}）`);
-    startMisPolling();
   }catch(e){
     setLd('載入失敗：'+e.message);
     console.error(e);
@@ -3510,7 +3505,7 @@ function tqf(f){
   renderTable();
 }
 function togWL(id,btn){if(wl.has(id)){wl.delete(id);btn.classList.remove('on');}else{wl.add(id);btn.classList.add('on');}localStorage.setItem('wl',JSON.stringify([...wl]));document.getElementById('c-wl').textContent=wl.size;}
-function setLd(m){document.getElementById('tblBody').innerHTML=`<tr><td colspan="10"><div class="loading"><div class="spinner"></div><div>${m}</div></div></td></tr>`;}
+function setLd(m){const tb=document.getElementById('tblBody');if(!tb)return;tb.innerHTML=m?`<tr><td colspan="10"><div class="loading"><div class="spinner"></div><div>${m}</div></div></td></tr>`:'';}
 function setLU(){const n=new Date();const e=document.getElementById('lastUpd');if(e)e.textContent=n.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});}
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);}
 function schedRef(){

@@ -2839,7 +2839,6 @@ async function loadCompanyData(s){
     const cap = d.capital!=null ? (d.capital/1e8).toFixed(1)+' 億元' : '—';
     const shr = d.shares!=null ? (d.shares/1e8).toFixed(2)+' 億股' : '—';
     const listedLbl = s.market==='tpex'?'上櫃日期':s.market==='esb'?'興櫃日期':'上市日期';
-    const webHost = (d.web||'').replace(/\/+$/,'');
     body.innerHTML=`
       <div class="kv2">
         <div class="kv"><div class="kv-l">產業</div><div class="kv-v" style="font-size:14px">${s.sector||'—'}</div></div>
@@ -2856,11 +2855,6 @@ async function loadCompanyData(s){
       <div style="margin-top:10px">
         <div class="kv-l" style="margin-bottom:4px">近三年股利</div>
         <div id="co-dividends" style="font-size:13px">載入中…</div>
-      </div>
-      <div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;font-size:13px">
-        <div><span style="color:var(--text2)">地址　</span>${d.addr||'—'}</div>
-        <div><span style="color:var(--text2)">總機　</span>${d.tel||'—'}</div>
-        <div><span style="color:var(--text2)">官網　</span>${webHost?`<a href="https://${webHost}" target="_blank" rel="noopener" style="color:var(--accent2)">${webHost}</a>`:'—'}</div>
       </div>`;
     loadCompanyExtra(s.id);
   }catch(e){ if(document.getElementById('company-body')===body) body.innerHTML='<span style="color:var(--text3)">公司基本資料載入失敗</span>'; }

@@ -3565,12 +3565,7 @@ function showGlobalTbl(){
   panel.innerHTML=`
   <div style="background:var(--bg2);border-bottom:1px solid var(--border);padding:14px 16px 0;flex-shrink:0;">
     <div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:8px;margin-bottom:10px">
-      <div style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:.04em">📊 大盤K線圖</div>
-      <div id="global-iv-tabs" style="display:flex;gap:6px">
-        <button data-iv="D" style="${ivAct}" onclick="showGlobalTV(null,'D')">日線</button>
-        <button data-iv="W" style="${ivBase}" onclick="showGlobalTV(null,'W')">週線</button>
-        <button data-iv="M" style="${ivBase}" onclick="showGlobalTV(null,'M')">月線</button>
-      </div>
+      <div style="font-size:15px;font-weight:700;color:var(--text);letter-spacing:.04em">📊 大盤K線圖 <span style="font-size:11px;color:var(--text3);font-weight:400">(近60日走勢)</span></div>
     </div>
     <div id="global-chart-tabs" style="display:flex;gap:8px;flex-wrap:wrap;margin-bottom:12px">
       ${GLOBAL_CHARTS.map((c,i)=>`<button data-sym="${c.sym}" style="${i===0?btAct:btBase}" onclick="showGlobalTV('${c.sym}',null)">${c.label}</button>`).join('')}
@@ -3578,7 +3573,7 @@ function showGlobalTbl(){
     <div id="global-tv-wrap" style="height:500px;border-radius:8px 8px 0 0;overflow:hidden;background:var(--bg);"></div>
   </div>
   <div style="padding:6px 16px 4px;font-size:11px;color:var(--text3);border-bottom:1px solid var(--border)">
-    指數報價：Yahoo Finance｜K線圖：TradingView
+    指數報價：Yahoo Finance｜K線圖：Yahoo Finance（台/美股指數）· 證交所 TPEx（櫃買指數）
     <span style="margin-left:8px;cursor:pointer;color:var(--accent2)" onclick="globalLoaded=false;loadGlobalIndices()">⟳ 重新整理</span>
   </div>
   <div id="global-cards" style="padding:0 8px 16px">
@@ -3725,12 +3720,13 @@ function renderUSTable(){
 
 // ── 全球指數 TradingView 圖表切換 ──
 const GLOBAL_CHARTS=[
-  // 完全還原為使用者要的 TradingView 版本（即使部分 symbol 會 fallback，但 UI 一致）
-  {sym:'TWSE:TAIEX',   label:'🇹🇼 加權指數'},
-  {sym:'TPEX_INDEX',   label:'🏪 櫃買指數', tpex:true, name:'台灣櫃買指數'},
-  {sym:'CBOT:YM1!',    label:'🇺🇸 道瓊期貨'},
-  {sym:'NASDAQ:SOX',   label:'💻 費城半導體'},
-  {sym:'TAIFEX:TX1!',  label:'📅 台指近月'},
+  // 全部改用 Yahoo Finance v8（免認證、真實資料），各指數資料各自獨立
+  // 之前用 TradingView 的台股/期貨/費半 symbol 會被 tvSafeSymbol 全轉成 AAPL → 四張圖一樣
+  {sym:'^TWII',      label:'🇹🇼 加權指數',   yahoo:true, name:'台灣加權指數 TAIEX'},
+  {sym:'TPEX_INDEX', label:'🏪 櫃買指數',     tpex:true,  name:'台灣櫃買指數'},
+  {sym:'^DJI',       label:'🇺🇸 道瓊指數',   yahoo:true, name:'道瓊工業指數 DJIA'},
+  {sym:'^SOX',       label:'💻 費城半導體',   yahoo:true, name:'費城半導體 SOX'},
+  {sym:'^IXIC',      label:'🇺🇸 那斯達克',   yahoo:true, name:'那斯達克綜合指數'},
 ];
 
 // ── 櫃買指數 折線圖（仿 TPEx 官網：橘色折線 + 面積成交金額 + 即時/週/月/季/年）──

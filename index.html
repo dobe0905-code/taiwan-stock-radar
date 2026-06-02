@@ -1739,6 +1739,7 @@ function buildDetHTML(s,live){
         <div id="ta-volume" style="font-size:13px;font-weight:700;font-family:var(--mono);color:var(--text2)">—</div>
       </div>
     </div>
+    <div id="ta-synth" style="display:none;font-size:12px;line-height:1.7;padding:10px 12px;margin-bottom:6px;border-radius:7px;background:var(--bg4);border:1px solid var(--border)"></div>
     <div id="ta-signals" style="font-size:10px;color:var(--text3);line-height:1.8;min-height:16px"></div>
   </div>
   <div class="ds" id="price-chart-section"><div class="dst">價格走勢</div>
@@ -1896,14 +1897,14 @@ function buildDetHTML(s,live){
       </div>
     </div>
   </div>
-  <div class="ds"><div class="dst">今日盤面評分 <span style="font-size:10px;color:var(--text3);font-weight:400">(當日強弱＋技術明細，進出場價位見上方「操作策略總覽」)</span></div>
+  <div class="ds"><div class="dst">當日強弱 <span style="font-size:10px;color:var(--text3);font-weight:400">(僅描述今天這根 K 棒的漲跌/量能，非買賣方向；中期趨勢看上方「技術分析狀態」，進出場價位見「操作策略總覽」)</span></div>
     <div class="ai-box ${ac}" style="margin-bottom:14px">
       <div style="display:flex;align-items:center;gap:12px;margin-bottom:10px">
         <div class="ai-ttl" style="color:${sc};font-size:18px">${g.cls==='sig-buy'?'📈':g.cls==='sig-sell'?'📉':'⏸'} ${g.lbl}</div>
         <div class="ai-stars" style="color:${sc};font-size:16px">${stars}</div>
         <div style="margin-left:auto;font-family:var(--mono);font-size:14px;color:${sc}">評分 ${g.sc>0?'+':''}${g.sc}/+5</div>
       </div>
-      <div class="ai-sr" style="font-size:12px"><span>偏空</span><span style="font-family:var(--mono)">綜合評分</span><span>偏多</span></div>
+      <div class="ai-sr" style="font-size:12px"><span>今日偏弱</span><span style="font-family:var(--mono)">當日強弱</span><span>今日偏強</span></div>
       <div class="ai-bar" style="height:6px;margin-bottom:14px"><div class="ai-fill" style="width:${sn}%;background:${sc}"></div></div>
       <div class="ai-pts" style="font-size:13px">${g.rs.length?g.rs.map(r=>`<div style="padding:3px 0;border-bottom:1px solid var(--border)">· ${r}</div>`).join(''):'<div>· 無明顯訊號，建議觀望</div>'}</div>
     </div>
@@ -2044,6 +2045,43 @@ async function buildDetCharts(s){
     _s('ta-status', statusTxt, statusCol);
     const sigEl=document.getElementById('ta-signals');
     if(sigEl) sigEl.innerHTML=signals.map(t=>`<span style="margin-right:10px">· ${t}</span>`).join('');
+
+    // ── 綜合判讀：把「中期趨勢 × 大盤情境 × 今日強弱」用白話兜成一句，避免三框被誤讀為矛盾 ──
+    const synEl=document.getElementById('ta-synth');
+    if(synEl && trendTxt!=='—'){
+      const cur2=stocks.find(x=>x.id===currentDetId);
+      const dayChg=cur2&&typeof cur2.chgP==='number'?cur2.chgP:null;
+      // 中期趨勢
+      const trendUp=trendTxt==='多頭'||trendTxt==='偏多';
+      const trendDn=trendTxt==='空頭'||trendTxt==='偏空';
+      // 大盤情境
+      const regTxt=mktRegime==='bull'?'大盤站上季線、環境偏多':mktRegime==='bear'?'大盤跌破季線、環境偏空':'大盤季線方向中性';
+      // 今日強弱描述
+      let dayTxt='今日持平';
+      if(dayChg!=null){
+        if(dayChg>0) dayTxt=`今日 +${dayChg.toFixed(1)}%`;
+        else if(dayChg<0) dayTxt=`今日 ${dayChg.toFixed(1)}%`;
+      }
+      // 三者關係判讀
+      let verdict='', vcol='var(--text2)';
+      if(trendUp && dayChg!=null && dayChg<-1){
+        verdict='＝上升趨勢中的單日回檔，趨勢與當日方向不同步屬正常';vcol='var(--amber2)';
+      }else if(trendDn && dayChg!=null && dayChg>1){
+        verdict='＝下降趨勢中的單日反彈，留意是否僅為技術性反彈';vcol='var(--amber2)';
+      }else if(trendUp && dayChg!=null && dayChg>0){
+        verdict='＝趨勢與當日同步偏多';vcol='var(--green2)';
+      }else if(trendDn && dayChg!=null && dayChg<0){
+        verdict='＝趨勢與當日同步偏空';vcol='var(--red2)';
+      }else{
+        verdict='＝趨勢與當日方向不明顯';
+      }
+      synEl.style.display='block';
+      synEl.innerHTML=`<div style="font-size:10px;color:var(--text3);margin-bottom:4px">綜合判讀</div>`
+        +`<span style="color:${trendCol};font-weight:700">中期趨勢${trendTxt}</span>`
+        +`<span style="color:var(--text3)"> ｜ ${regTxt} ｜ </span>`
+        +`<span style="color:${dayChg>0?'var(--green2)':dayChg<0?'var(--red2)':'var(--text2)'};font-weight:700">${dayTxt}</span>`
+        +` <span style="color:${vcol}">${verdict}</span>`;
+    }
   }
 
   // ── ATR(14)：真實日波動度，用於推算停損/目標距離 ──

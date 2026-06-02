@@ -601,32 +601,27 @@ window.addEventListener('firebase-ready', ()=>{
 
 // ── 資料載入（分階段：TWSE 先顯示，TPEx+PER 背景載入）──
 async function loadData(){
-  setLd('正在載入上市股票...');
+  setLd('正在載入全部台股...');
   try{
-    // 所有背景請求同時發出（並行，互不阻塞）
+    // 指標類背景請求同時發出（並行，互不阻塞，回來後就地補欄位）
     const pPer = fetch(`${API}?type=twse_per`).then(r=>r.json()).catch(()=>({data:[]}));
     const pRev = fetch('/api/fundamental?type=revenue').then(r=>r.json()).catch(()=>({stocks:{}}));
     const pSt  = fetch(`${API}?type=shortterm`).then(r=>r.json()).catch(()=>({stocks:{}}));
-    const pTpex= fetch(`${API}?type=tpex_list`).then(r=>r.json()).catch(()=>({data:[]}));
 
-    // 第一階段：TWSE 一到立刻渲染（renderTable 之後不再呼叫 setLd 清表）
-    const twseRes = await fetch(`${API}?type=twse_list`).then(r=>r.json());
-    let twseStocks = processTWSE(twseRes.data||[]);
-    stocks = twseStocks;
-    if(stocks.length>0){
-      document.getElementById('twseBadge').className='api-badge api-on';
-      updSum(); updSB(); renderTable();
-      showToast(`✓ 上市 ${twseStocks.length} 檔已載入，上櫃載入中...`);
-    }
-
-    // 第二階段：TPEx 清單一到就合併渲染「全部個股」，不等 PER/營收/短線
-    const tpexRes = await pTpex;
+    // 上市 + 上櫃清單「並行」抓取，一起合併後「一次渲染」全部台股
+    // （上櫃已於後端剔除權證，payload 大幅縮小，兩清單幾乎同時返回）
+    const [twseRes, tpexRes] = await Promise.all([
+      fetch(`${API}?type=twse_list`).then(r=>r.json()),
+      fetch(`${API}?type=tpex_list`).then(r=>r.json()).catch(()=>({data:[]}))
+    ]);
+    const twseStocks = processTWSE(twseRes.data||[]);
     const tpexStocks = processTPEx(tpexRes.data||[]);
     stocks = [...twseStocks, ...tpexStocks];
     if(stocks.length===0){ setLd('無資料，請稍後再試'); return; }
+    document.getElementById('twseBadge').className='api-badge api-on';
     document.getElementById('tpexBadge').className='api-badge api-on';
     updSum(); updSB(); renderTable();
-    startMisPolling();   // 此時 batches 已含 TPEx，立即開始即時輪詢
+    startMisPolling();   // batches 已含 TPEx，立即開始即時輪詢
     setLU(); schedRef();
     showToast(`✓ 全部 ${stocks.length} 檔已載入（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length}），指標背景補上…`);
 
@@ -1702,6 +1697,18 @@ async function buildDetCharts(s){
     const f=v=>(v>0?v.toFixed(2):'—');
     const pcd=(from,to)=>from>0?((to-from)/from*100):0;
     const sgn=x=>(x>=0?'+':'')+x.toFixed(1)+'%';
+    // 進場時機評估：用「個股趨勢支撐(均線)」+「整個大盤趨勢(季線regime)」判斷現價是否為好進場價，
+    // 而非無腦以現價進場。延伸過高→建議等拉回支撐；貼近支撐→理想買區；大盤逆勢→降部位/暫緩。
+    const entryTiming=(support,lbl)=>{
+      const ext=atr>0?(cur-support)/atr:0;
+      let t;
+      if(ext>2) t=`現價高於${lbl} ${f(support)} 達 ${ext.toFixed(1)} 個 ATR（偏延伸/追高），<b style="color:var(--amber2)">理想等拉回 ${lbl}附近</b>再進，風報比較佳`;
+      else if(ext<0.3) t=`現價已貼近/回測 ${lbl} ${f(support)}，<b style="color:var(--green2)">屬理想拉回買區</b>（須結構未破）`;
+      else t=`現價距 ${lbl} ${f(support)} 約 ${ext.toFixed(1)} 個 ATR，位置尚合理`;
+      if(mktRegime==='bear') t+='。惟<b style="color:var(--red2)">大盤跌破季線（逆勢）</b>，整體做多勝率下降，宜減碼或暫緩';
+      else if(mktRegime==='bull') t+='。大盤站上季線（順勢），可正常參與';
+      return t;
+    };
 
     // ── 動能指標（RSI/MACD/量比），用回測校準的「正確用法」校準方向，非 naive 金叉/爆量=買 ──
     let rsi14=null, dif=null, hist=null, vr5=null;
@@ -1746,21 +1753,29 @@ async function buildDetCharts(s){
     // 動能負面分數：DIF<0 或 爆量 屬警訊，用於把方向標籤降級
     const momWarn=()=>((dif!=null&&dif<0)?1:0)+((vr5!=null&&vr5>=1.5)?1:0);
 
-    // 三格價位
-    const levels=(entry,stop,target)=>`
+    // 三格價位：進場改為「區間」＝理想拉回支撐(下緣) ↔ 現價(上緣)；
+    // 停損/目標仍以現價為錨（回測校準的 ATR 距離），% 相對現價（最差成交情境）。
+    const levels=(cur_,stop,target,ideal,lbl)=>{
+      const lo=Math.min(ideal,cur_), hi=Math.max(ideal,cur_);
+      const same=Math.abs(ideal-cur_)/(cur_||1)<0.004;
+      const entryTxt=same?f(cur_):f(lo)+'~'+f(hi);
+      const entrySub=same?'貼近'+lbl:'理想'+lbl+'↔現價';
+      return `
       <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:7px">
         <div style="background:var(--bg3);border-radius:6px;padding:7px 4px;text-align:center">
-          <div style="font-size:9px;color:var(--text3)">進場參考</div>
-          <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--accent2)">${f(entry)}</div></div>
+          <div style="font-size:9px;color:var(--text3)">進場區間</div>
+          <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent2)">${entryTxt}</div>
+          <div style="font-size:8px;color:var(--text3)">${entrySub}</div></div>
         <div style="background:var(--bg3);border-radius:6px;padding:7px 4px;text-align:center">
           <div style="font-size:9px;color:var(--text3)">停損</div>
           <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--red2)">${f(stop)}</div>
-          <div style="font-size:9px;color:var(--text3)">${sgn(pcd(entry,stop))}</div></div>
+          <div style="font-size:9px;color:var(--text3)">${sgn(pcd(cur_,stop))}</div></div>
         <div style="background:var(--bg3);border-radius:6px;padding:7px 4px;text-align:center">
           <div style="font-size:9px;color:var(--text3)">目標</div>
           <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--green2)">${f(target)}</div>
-          <div style="font-size:9px;color:var(--text3)">${sgn(pcd(entry,target))}</div></div>
+          <div style="font-size:9px;color:var(--text3)">${sgn(pcd(cur_,target))}</div></div>
       </div>`;
+    };
     const head=(title,horizon,lbl,col,bg)=>`
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
         <span style="font-size:13px;font-weight:700;color:var(--text)">${title}</span>
@@ -1797,9 +1812,11 @@ async function buildDetCharts(s){
         ?'季線<b style="color:var(--green2)">上揚 ✓</b>（回測證實 edge 幾乎全來自季線上揚，20日超額 +0.7%）'
         :'季線<b style="color:var(--red2)">走平/下彎 ✗</b>（回測此情況 20日超額 −1.0%，排列雖多頭但動能不足，降低部位或等季線翻揚）';
       const mom=momLines().map(t=>'· '+t).join('<br>');
+      const ideal=Math.min(ma10,cur);  // 短線理想拉回支撐＝MA10
       stBody=note('均線多頭排列(MA5&gt;MA10&gt;MA20)＋站上季線。'+slopeTxt+'。短線edge偏弱，當趨勢確認用，真正報酬要持有約3個月見「長線」；停損/目標＝實測中位MAE/MFE，風報比約1.2。支撐 MA10 '+f(ma10)+'／MA20 '+f(ma20))
+        +note('<b style="color:var(--accent2)">📍 進場時機：</b>'+entryTiming(ma10,'MA10'))
         +note('<b style="color:var(--text2)">動能確認（RSI/MACD/量比，回測校準）：</b><br>'+mom)
-        +levels(entry,stop,target);
+        +levels(cur,stop,target,ideal,'MA10');
     }else if(ma5<ma10&&ma10<ma20&&cur<ma60){
       stLbl='📉 短空'; stCol='var(--red2)'; stBg='rgba(255,161,152,.12)';
       stBody=note('均線空頭排列＋跌破季線；回測20日超額 −2.5%（可靠避開訊號，勿做多接刀）。反彈壓力參考 MA20 '+f(ma20));
@@ -1837,9 +1854,11 @@ async function buildDetCharts(s){
           ?'季線<b style="color:var(--green2)">上揚 ✓</b>，符合最佳進場條件（強多×季線上揚回測 60日勝率 57.8%、超額 +2.7%）。'
           :'⚠️ 季線<b style="color:var(--red2)">走平/下彎</b>，回測此情況 60日為負超額（−2.3%）——營收面雖強，技術動能未啟動，建議等季線翻揚再布局。';
         const mom=momLines().map(t=>'· '+t).join('<br>');
-        ltBody+=note('價位以持有約3個月(60日)實測校準。'+slopeNote+'理想拉回季線 MA60 '+f(ma60)+' 附近布局。')
+        const ideal=Math.min(ma60,cur);  // 長線理想拉回支撐＝季線 MA60
+        ltBody+=note('價位以持有約3個月(60日)實測校準。'+slopeNote)
+          +note('<b style="color:var(--accent2)">📍 進場時機：</b>'+entryTiming(ma60,'季線'))
           +note('<b style="color:var(--text2)">動能確認（RSI/MACD/量比，回測校準）：</b><br>'+mom)
-          +levels(entry,stop,target);
+          +levels(cur,stop,target,ideal,'季線');
       }
     }else{
       ltCol='var(--text2)'; ltBg='rgba(139,148,158,.1)'; ltLbl='無資料';

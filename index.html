@@ -24,7 +24,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 ::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-thumb{background:var(--bg5);border-radius:2px;}
 #header{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--header);background:rgba(7,11,20,.95);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;}
-.search-wrap{flex:1;max-width:420px;display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 12px;}
+.search-wrap{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(420px,38vw);display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 12px;}
+@media(max-width:760px){.search-wrap{position:static;transform:none;width:auto;flex:1;}}
 .search-wrap:focus-within{border-color:var(--border2);}
 .search-wrap input{background:none;border:none;outline:none;color:var(--text);font-size:16px;width:100%;}
 .search-wrap input::placeholder{color:var(--text3);}
@@ -69,6 +70,30 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .mkt-tab{padding:13px 22px;font-size:17px;color:var(--text2);cursor:pointer;border-bottom:2px solid transparent;transition:all .15s;white-space:nowrap;}
 .mkt-tab:hover{color:var(--text);}
 .mkt-tab.active{color:var(--accent2);border-bottom-color:var(--accent);}
+.sb-mkt{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;font-size:17px;color:var(--text2);cursor:pointer;transition:all .15s;border-left:2px solid transparent;border-bottom:0;white-space:normal;}
+.sb-mkt:hover{background:var(--bg3);color:var(--text);}
+.sb-mkt.active{background:rgba(56,139,253,.08);border-left-color:var(--accent);border-bottom-color:transparent;color:var(--accent2);}
+.daily-brief{margin:12px 16px 0;background:var(--bg2);border:1px solid var(--border);border-radius:10px;overflow:hidden;flex-shrink:0;}
+.db-head{display:flex;align-items:center;gap:8px;padding:11px 16px;cursor:pointer;user-select:none;}
+.db-head:hover{background:var(--bg3);}
+.db-head .db-title{font-size:17px;font-weight:700;color:var(--text);}
+.db-head .db-sub{font-size:12px;color:var(--text3);margin-left:6px;}
+.db-head .db-arr{margin-left:auto;font-size:12px;color:var(--text3);transition:transform .2s;}
+.daily-brief.collapsed .db-arr{transform:rotate(-90deg);}
+.daily-brief.collapsed .db-body{display:none;}
+.db-body{padding:0 16px 14px;}
+.db-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;}
+.db-card{background:var(--bg);border:1px solid var(--border);border-radius:8px;padding:11px 13px;}
+.db-card h4{font-size:13px;color:var(--text3);font-weight:700;letter-spacing:.04em;margin:0 0 8px;text-transform:uppercase;}
+.db-line{font-size:14px;color:var(--text2);line-height:1.65;}
+.db-line b{color:var(--text);}
+.db-news{margin-top:6px;}
+.db-news-grp{margin-bottom:10px;}
+.db-news-grp .ng-lbl{font-size:13px;font-weight:700;color:var(--accent2);margin-bottom:5px;}
+.db-news-item{display:block;font-size:14px;color:var(--text2);text-decoration:none;padding:5px 0;border-bottom:1px solid var(--border);line-height:1.5;}
+.db-news-item:last-child{border-bottom:0;}
+.db-news-item:hover{color:var(--text);}
+.db-news-item .ni-meta{font-size:11px;color:var(--text3);margin-left:6px;}
 .summary-bar{display:flex;gap:8px;padding:10px 16px;overflow-x:auto;flex-shrink:0;}
 .sum-card{background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 14px;white-space:nowrap;flex-shrink:0;min-width:110px;cursor:pointer;transition:all .15s;}
 .sum-card:hover{border-color:var(--border2);background:var(--bg3);transform:translateY(-1px);}
@@ -222,6 +247,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <div class="sb-label">總覽</div>
     <div class="sb-item active" onclick="setSF('all',this)"><span>全部股票</span><span class="sb-cnt" id="c-all">—</span></div>
     <div class="sb-item" onclick="setSF('wl',this)"><span>⭐ 我的自選股</span><span class="sb-cnt" id="c-wl">0</span></div>
+    <div class="sb-label">市場</div>
+    <div class="sb-mkt mkt-tab active" onclick="setMkt('all',this)"><span>🇹🇼 全部台股</span></div>
+    <div class="sb-mkt mkt-tab" onclick="setMkt('twse',this)"><span>🏛 上市</span></div>
+    <div class="sb-mkt mkt-tab" onclick="setMkt('tpex',this)"><span>🏪 上櫃</span></div>
+    <div class="sb-mkt mkt-tab" onclick="setMkt('esb',this)"><span>🌱 興櫃</span></div>
+    <div class="sb-mkt mkt-tab" onclick="setMkt('etf',this)"><span>📦 ETF</span></div>
+    <div class="sb-mkt mkt-tab" onclick="setMkt('global',this)"><span>🌐 全球指數</span></div>
     <div class="sb-label">選股因子（回測驗證）</div>
     <div class="sb-item" onclick="setSF('long_buy',this)" title="長線策略狀態：月營收高成長 ＋ 大盤站上季線（回測有效區）。大盤跌破季線時會自動排除（順勢因子空頭期反轉）"><span>🚀 長線布局</span><span class="sb-cnt" id="c-long_buy">—</span></div>
     <div id="regimeBar" style="font-size:10px;color:var(--text3);padding:2px 14px 6px 28px;line-height:1.4">大盤趨勢：載入中…</div>
@@ -238,11 +270,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <div class="sb-item" onclick="setSF('near_up',this)" title="即將漲停：漲幅 +7%~+9.5%（未鎖死）且收盤靠近當日最高、量能放大，盤中向漲停價靠攏中。為動能/距離啟發式，非預測保證"><span>🔺 即將漲停</span><span class="sb-cnt" id="c-near_up">—</span></div>
     <div class="sb-item" onclick="setSF('near_dn',this)" title="即將跌停：跌幅 -9.5%~-7%（未鎖死）且收盤靠近當日最低，盤中向跌停價靠攏中。為動能/距離啟發式，非預測保證"><span>🔻 即將跌停</span><span class="sb-cnt" id="c-near_dn">—</span></div>
     <div class="sb-item" onclick="setSF('disp',this)" title="處置股：證交所/櫃買公告之處置有價證券（分盤交易、預收款券等），波動與流動性風險高，請謹慎"><span>⚠️ 處置股</span><span class="sb-cnt" id="c-disp">—</span></div>
-    <div class="sb-label">市場類型</div>
-    <div class="sb-item" onclick="setSF('twse',this)"><span>🏛 上市 TWSE</span><span class="sb-cnt" id="c-twse">—</span></div>
-    <div class="sb-item" onclick="setSF('tpex',this)"><span>🏪 上櫃 TPEx</span><span class="sb-cnt" id="c-tpex">—</span></div>
-    <div class="sb-item" onclick="setSF('esb',this)" title="興櫃：上市櫃前的議價市場，無漲跌幅限制、流動性低。回測 edge 建立於上市櫃資料，興櫃訊號僅供參考"><span>🌱 興櫃 ESB</span><span class="sb-cnt" id="c-esb">—</span></div>
-    <div class="sb-item" onclick="setSF('etf',this)"><span>📦 ETF</span><span class="sb-cnt" id="c-etf">—</span></div>
+    <div class="sb-label">產業分類</div>
     <div class="sb-item" onclick="toggleSub(this)"><span>個股產業</span><div style="display:flex;align-items:center;gap:5px;"><span class="sb-cnt" id="c-stk">—</span><span id="sub-arr" style="font-size:10px;color:var(--text3)">▶</span></div></div>
     <div id="sub-sectors" class="sb-sub"></div>
     <div class="sb-label">熱門族群</div>
@@ -272,14 +300,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
   </aside>
 
   <main id="main">
-    <div class="mkt-tabs">
-      <div class="mkt-tab active" onclick="setMkt('all',this)">🇹🇼 全部台股</div>
-      <div class="mkt-tab" onclick="setMkt('twse',this)">🏛 上市</div>
-      <div class="mkt-tab" onclick="setMkt('tpex',this)">🏪 上櫃</div>
-      <div class="mkt-tab" onclick="setMkt('esb',this)">🌱 興櫃</div>
-      <div class="mkt-tab" onclick="setMkt('etf',this)">📦 ETF</div>
-      <div class="mkt-tab" onclick="setMkt('global',this)">🌐 全球指數</div>
-    </div>
+    <div id="dailyBrief" class="daily-brief"></div>
     <div class="summary-bar">
       <div class="sum-card" title="點擊查看全部股票" onclick="sumCardClick('all')"><div class="sum-lbl">已載入</div><div class="sum-val c-neu" id="s-tot">—</div><div class="sum-sub">檔股票</div></div>
       <div class="sum-card" title="點擊切換上市頁籤" onclick="sumCardClick('twse')"><div class="sum-lbl">上市</div><div class="sum-val c-neu" id="s-twse">—</div><div class="sum-sub">TWSE →</div></div>
@@ -420,6 +441,113 @@ async function loadOvernight(){
     const j=await r.json();
     if(j&&Array.isArray(j.data)&&j.data.some(x=>x.ok)) overnightData=j.data;
   }catch(e){ overnightData=null; }
+  buildDailyBrief();   // 隔夜風向到位後刷新每日焦點摘要
+}
+
+// ══════════════════════════════════════════════════
+// 每日焦點：盤勢摘要（資料驅動，全部來自既有可靠來源）+ Google News 新聞標題
+//   不做任何臆測式「AI 分析」；僅彙整現有確定的數據與聚合真實新聞標題。
+// ══════════════════════════════════════════════════
+let dailyNewsLoaded=false;
+function dbCollapsed(){ return localStorage.getItem('dbCollapsed')==='1'; }
+function toggleDailyBrief(){
+  const el=document.getElementById('dailyBrief'); if(!el) return;
+  el.classList.toggle('collapsed');
+  localStorage.setItem('dbCollapsed', el.classList.contains('collapsed')?'1':'0');
+}
+function buildDailyBrief(){
+  const box=document.getElementById('dailyBrief'); if(!box) return;
+  const tw=stocks.filter(s=>s.market==='twse'||s.market==='tpex');
+  // ① 大盤趨勢
+  let regimeTxt='—';
+  if(mktRegime==='bull') regimeTxt=`<b style="color:var(--green2)">站上季線（順勢偏多）</b>　加權 ${mktLast?mktLast.toFixed(0):'—'} ≥ MA60 ${mktMA60?mktMA60.toFixed(0):'—'}`;
+  else if(mktRegime==='bear') regimeTxt=`<b style="color:var(--red2)">跌破季線（逆勢偏空）</b>　加權 ${mktLast?mktLast.toFixed(0):'—'} ＜ MA60 ${mktMA60?mktMA60.toFixed(0):'—'}`;
+  // ② 漲跌家數
+  const up=tw.filter(s=>s.chgP>0).length, dn=tw.filter(s=>s.chgP<0).length, fl=tw.length-up-dn;
+  const limUp=tw.filter(s=>limitState(s)==='up').length;
+  // ③ 隔夜美股風向
+  let ovTxt='載入中…';
+  if(overnightData){
+    const g=sym=>overnightData.find(x=>x.symbol===sym&&x.ok);
+    const sgn=v=>(v>=0?'+':'')+v.toFixed(2)+'%';
+    const col=v=>v>=0?'var(--green2)':'var(--red2)';
+    const sox=g('^SOX'),nas=g('^IXIC'),sp=g('^GSPC'),vix=g('^VIX');
+    const parts=[];
+    if(sox) parts.push(`費半 <b style="color:${col(sox.changeP)}">${sgn(sox.changeP)}</b>`);
+    if(nas) parts.push(`那指 <b style="color:${col(nas.changeP)}">${sgn(nas.changeP)}</b>`);
+    if(sp)  parts.push(`標普 <b style="color:${col(sp.changeP)}">${sgn(sp.changeP)}</b>`);
+    if(vix) parts.push(`VIX <b>${vix.price?vix.price.toFixed(1):sgn(vix.changeP)}</b>`);
+    ovTxt = parts.length?parts.join('　'):'無資料';
+  } else ovTxt='無資料（盤後或來源限制）';
+  // ④ 類股輪動（依產業平均漲跌幅排序，至少3檔）
+  const secAgg={};
+  for(const s of tw){ if(s.isETF||!s.sector||s.sector==='ETF') continue; (secAgg[s.sector]=secAgg[s.sector]||[]).push(s.chgP); }
+  const secRows=Object.entries(secAgg).filter(([,a])=>a.length>=3)
+    .map(([k,a])=>({k,avg:a.reduce((x,y)=>x+y,0)/a.length,n:a.length}))
+    .sort((a,b)=>b.avg-a.avg);
+  const topSec=secRows.slice(0,3), botSec=secRows.slice(-3).reverse();
+  const secLine=arr=>arr.map(r=>`${r.k} <b style="color:${r.avg>=0?'var(--green2)':'var(--red2)'}">${(r.avg>=0?'+':'')+r.avg.toFixed(2)}%</b>`).join('　');
+  // ⑤ 焦點個股（成交值前 5 大；tradeValue 為元）
+  const hot=[...tw].filter(s=>s.tradeValue>0).sort((a,b)=>b.tradeValue-a.tradeValue).slice(0,5);
+  const hotLine=hot.map(s=>`<b>${s.name}</b> ${(s.chgP>=0?'+':'')+s.chgP.toFixed(2)}%`).join('　')||'—';
+
+  const wasCollapsed = box.classList.contains('collapsed') || dbCollapsed();
+  box.className='daily-brief'+(wasCollapsed?' collapsed':'');
+  box.innerHTML=`
+    <div class="db-head" onclick="toggleDailyBrief()">
+      <span class="db-title">📌 每日焦點</span>
+      <span class="db-sub">盤勢摘要為既有數據彙整，新聞為 Google 新聞聚合標題（點擊連回原文）</span>
+      <span class="db-arr">▼</span>
+    </div>
+    <div class="db-body">
+      <div class="db-grid">
+        <div class="db-card">
+          <h4>大盤趨勢</h4>
+          <div class="db-line">${regimeTxt}</div>
+          <div class="db-line" style="margin-top:6px">上漲 <b style="color:var(--green2)">${up}</b>　下跌 <b style="color:var(--red2)">${dn}</b>　平盤 <b>${fl}</b>${limUp?`　漲停 <b style="color:var(--green2)">${limUp}</b>`:''}</div>
+        </div>
+        <div class="db-card">
+          <h4>隔夜美股風向</h4>
+          <div class="db-line">${ovTxt}</div>
+        </div>
+        <div class="db-card">
+          <h4>類股輪動（產業平均漲跌幅）</h4>
+          <div class="db-line">領漲：${secLine(topSec)||'—'}</div>
+          <div class="db-line" style="margin-top:4px">領跌：${secLine(botSec)||'—'}</div>
+        </div>
+        <div class="db-card">
+          <h4>焦點個股（成交值前5大）</h4>
+          <div class="db-line">${hotLine}</div>
+        </div>
+      </div>
+      <div class="db-news" id="dbNews"><div class="db-line" style="color:var(--text3)">新聞載入中…</div></div>
+    </div>`;
+  if(!dailyNewsLoaded) loadDailyNews();
+}
+async function loadDailyNews(){
+  const wrap=document.getElementById('dbNews'); if(!wrap) return;
+  try{
+    const r=await fetch('/api/global?type=news');
+    const j=await r.json();
+    const groups=j&&j.groups||[];
+    if(!groups.length||!groups.some(g=>g.items&&g.items.length)){
+      wrap.innerHTML='<div class="db-line" style="color:var(--text3)">暫無新聞</div>'; return;
+    }
+    dailyNewsLoaded=true;
+    const fmt=d=>{ try{ const t=new Date(d); const m=Math.floor((Date.now()-t)/60000); if(m<60) return m+'分前'; if(m<1440) return Math.floor(m/60)+'小時前'; return Math.floor(m/1440)+'天前'; }catch(e){ return ''; } };
+    const esc=s=>(s||'').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+    let html='<div class="db-grid">';
+    for(const g of groups){
+      if(!g.items||!g.items.length) continue;
+      html+=`<div class="db-news-grp"><div class="ng-lbl">${esc(g.label)}</div>`;
+      for(const it of g.items.slice(0,5)){
+        html+=`<a class="db-news-item" href="${esc(it.link)}" target="_blank" rel="noopener">${esc(it.title)}<span class="ni-meta">${esc(it.source)}${it.pubDate?' · '+fmt(it.pubDate):''}</span></a>`;
+      }
+      html+='</div>';
+    }
+    html+='</div>';
+    wrap.innerHTML=html;
+  }catch(e){ wrap.innerHTML='<div class="db-line" style="color:var(--text3)">新聞載入失敗</div>'; }
 }
 
 // ── 熱門族群定義（代號 Set）— 依產品性質/開發技術/國際新聞/供應鏈分類 ──
@@ -644,7 +772,7 @@ async function loadData(){
     if(stocks.length===0){ setLd('無資料，請稍後再試'); return; }
     document.getElementById('twseBadge').className='api-badge api-on';
     document.getElementById('tpexBadge').className='api-badge api-on';
-    updSum(); updSB(); renderTable();
+    updSum(); updSB(); renderTable(); buildDailyBrief();
     startMisPolling();   // batches 已含 TPEx，立即開始即時輪詢
     setLU(); schedRef();
     showToast(`✓ 全部 ${stocks.length} 檔已載入（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length} + 興櫃 ${esbStocks.length}），指標背景補上…`);

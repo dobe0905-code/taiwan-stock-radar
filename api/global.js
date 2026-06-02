@@ -263,6 +263,55 @@ export default async function handler(req, res) {
       return res.status(200).json({ data: quotes, source: 'YAHOO_SEARCH' });
     }
 
+    // ══════════════════════════════════════════════════
+    // 每日焦點新聞（Google News RSS 代理）
+    //   僅取「標題＋來源媒體＋時間＋原文連結」，點擊連回原始新聞，
+    //   不轉載全文（RSS 本身也不提供全文），屬新聞聚合的正當用法。
+    // ══════════════════════════════════════════════════
+    if (type === 'news') {
+      const TOPICS = [
+        { key: 'market', label: '台股大盤', q: '台股 OR 加權指數 OR 台股盤勢' },
+        { key: 'chip',   label: '半導體 / AI', q: '台積電 OR 半導體 OR AI晶片 OR CoWoS OR 輝達' },
+        { key: 'hot',    label: '熱門個股', q: '鴻海 OR 聯發科 OR 法人買超 OR 強勢股' },
+        { key: 'global', label: '國際 / 美股', q: '美股 OR 聯準會 OR 那斯達克 OR 費城半導體' },
+      ];
+      const decode = (s) => (s || '')
+        .replace(/<!\[CDATA\[|\]\]>/g, '')
+        .replace(/<[^>]+>/g, ' ')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>')
+        .replace(/&quot;/g, '"').replace(/&#39;/g, "'").replace(/&apos;/g, "'")
+        .replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ')
+        .trim();
+      const parseRss = (xml, limit) => {
+        const out = [];
+        const blocks = xml.split('<item>').slice(1);
+        for (const b of blocks.slice(0, limit)) {
+          const grab = (re) => { const m = b.match(re); return m ? decode(m[1]) : ''; };
+          let title = grab(/<title>([\s\S]*?)<\/title>/);
+          const source = grab(/<source[^>]*>([\s\S]*?)<\/source>/);
+          const link = grab(/<link>([\s\S]*?)<\/link>/);
+          const pubDate = grab(/<pubDate>([\s\S]*?)<\/pubDate>/);
+          // Google News 標題格式常為「標題 - 來源媒體」，去掉尾段來源避免重複
+          if (source && title.endsWith(' - ' + source)) title = title.slice(0, -(source.length + 3)).trim();
+          if (title) out.push({ title, source, link, pubDate });
+        }
+        return out;
+      };
+      const fetchTopic = async (t) => {
+        const url = `https://news.google.com/rss/search?q=${encodeURIComponent(t.q + ' when:2d')}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
+        try {
+          const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          if (!r.ok) return { key: t.key, label: t.label, items: [] };
+          const xml = await r.text();
+          return { key: t.key, label: t.label, items: parseRss(xml, 6) };
+        } catch (e) { return { key: t.key, label: t.label, items: [] }; }
+      };
+      const groups = await Promise.all(TOPICS.map(fetchTopic));
+      res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=1800');
+      return res.status(200).json({ groups, updated: new Date().toISOString(), source: 'GoogleNews_RSS' });
+    }
+
     return res.status(400).json({ error: '不支援的 type 參數' });
 
   } catch (err) {

@@ -172,6 +172,18 @@ export default async function handler(req, res) {
         data = await r.json();
       }
 
+      // 過濾權證/牛熊證/ETN，只保留普通股與 ETF
+      // （上櫃股票清單原始含上萬檔權證，會拖慢前端載入並污染漲跌幅排序）
+      const isRealStock = (code, name) => {
+        if (!code) return false;
+        if (/[購售]\d|牛\d|熊\d|購$|售$/.test(name || '')) return false; // 權證/牛熊證
+        if (/^\d{4}$/.test(code)) return true;        // 普通股（4 位數字）
+        if (/^00\d{2,4}$/.test(code)) return true;    // ETF（00 開頭）
+        if (/^\d{4}[A-Z]$/.test(code)) return true;   // 特別股（如 2841A）
+        return false;                                  // 其餘（6 位權證等）剔除
+      };
+      data = (data || []).filter(d => isRealStock(d.SecuritiesCompanyCode, d.CompanyName));
+
       res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
       return res.status(200).json({ data, source: 'TPEx', ts: new Date().toISOString() });
     }

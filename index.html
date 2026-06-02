@@ -24,6 +24,14 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 ::-webkit-scrollbar{width:4px;height:4px;}
 ::-webkit-scrollbar-thumb{background:var(--bg5);border-radius:2px;}
 #header{position:fixed;top:0;left:0;right:0;z-index:100;height:var(--header);background:rgba(7,11,20,.95);backdrop-filter:blur(16px);border-bottom:1px solid var(--border);display:flex;align-items:center;padding:0 16px;gap:12px;}
+.brand{display:flex;align-items:center;gap:10px;flex-shrink:0;text-decoration:none;cursor:pointer;}
+.brand-logo{width:36px;height:36px;flex-shrink:0;}
+.brand-txt{display:flex;flex-direction:column;line-height:1.05;}
+.brand-name{font-size:18px;font-weight:800;color:var(--text);letter-spacing:.02em;white-space:nowrap;}
+.brand-name .rad{color:var(--accent2);}
+.brand-tm{font-size:9px;font-weight:600;color:var(--text3);vertical-align:super;margin-left:1px;}
+.brand-sub{font-size:9px;font-weight:700;color:var(--text3);letter-spacing:.22em;white-space:nowrap;}
+@media(max-width:760px){.brand-txt{display:none;}}
 .search-wrap{position:absolute;left:50%;top:50%;transform:translate(-50%,-50%);width:min(420px,38vw);display:flex;align-items:center;gap:8px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;padding:6px 12px;}
 @media(max-width:760px){.search-wrap{position:static;transform:none;width:auto;flex:1;}}
 .search-wrap:focus-within{border-color:var(--border2);}
@@ -225,6 +233,42 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 </head>
 <body>
 <div id="header">
+  <a class="brand" onclick="location.reload()" title="台股雷達 — 商標暨智慧財產權所有，未經授權不得使用">
+    <svg class="brand-logo" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="台股雷達 logo">
+      <defs>
+        <radialGradient id="rgGlow" cx="50%" cy="50%" r="50%">
+          <stop offset="0%" stop-color="#388bfd" stop-opacity="0.28"/>
+          <stop offset="100%" stop-color="#388bfd" stop-opacity="0"/>
+        </radialGradient>
+        <linearGradient id="rgSweep" x1="20" y1="20" x2="38.5" y2="11" gradientUnits="userSpaceOnUse">
+          <stop offset="0%" stop-color="#7ee787" stop-opacity="0.6"/>
+          <stop offset="100%" stop-color="#7ee787" stop-opacity="0"/>
+        </linearGradient>
+      </defs>
+      <circle cx="20" cy="20" r="18.5" fill="#0c1220" stroke="#1b2740"/>
+      <circle cx="20" cy="20" r="18.5" fill="url(#rgGlow)"/>
+      <circle cx="20" cy="20" r="13" stroke="#2a3a5c" stroke-width="1"/>
+      <circle cx="20" cy="20" r="7" stroke="#2a3a5c" stroke-width="1"/>
+      <line x1="20" y1="1.5" x2="20" y2="38.5" stroke="#2a3a5c" stroke-width="0.8"/>
+      <line x1="1.5" y1="20" x2="38.5" y2="20" stroke="#2a3a5c" stroke-width="0.8"/>
+      <g>
+        <path d="M20 20 L38.5 20 A18.5 18.5 0 0 0 34.17 8.1 Z" fill="url(#rgSweep)"/>
+        <line x1="20" y1="20" x2="38.5" y2="20" stroke="#7ee787" stroke-width="1.3" stroke-opacity="0.85"/>
+        <animateTransform attributeName="transform" type="rotate" from="0 20 20" to="360 20 20" dur="4s" repeatCount="indefinite"/>
+      </g>
+      <g stroke-linecap="round">
+        <line x1="13.5" y1="12.5" x2="13.5" y2="22.5" stroke="#7ee787" stroke-width="1"/>
+        <rect x="12.1" y="15" width="2.8" height="5.2" rx="0.6" fill="#7ee787"/>
+        <line x1="26.5" y1="15.5" x2="26.5" y2="26.5" stroke="#ffa198" stroke-width="1"/>
+        <rect x="25.1" y="18.6" width="2.8" height="5.2" rx="0.6" fill="#ffa198"/>
+      </g>
+      <circle cx="20" cy="20" r="1.7" fill="#79b8ff"/>
+    </svg>
+    <span class="brand-txt">
+      <span class="brand-name">台股<span class="rad">雷達</span><span class="brand-tm">®</span></span>
+      <span class="brand-sub">TAIWAN STOCK RADAR</span>
+    </span>
+  </a>
   <div class="search-wrap">
     <svg width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" viewBox="0 0 24 24" style="color:var(--text3);flex-shrink:0"><circle cx="11" cy="11" r="8"/><path d="M21 21l-4.35-4.35"/></svg>
     <input id="searchInput" type="text" placeholder="個股或ETF代號/名稱查詢..." oninput="clearTimeout(window._searchT);window._searchT=setTimeout(onSearch,180)">
@@ -1965,28 +2009,28 @@ async function buildDetCharts(s){
       const entryTxt=same?f(cur_):f(lo)+'~'+f(hi);
       const entrySub=same?'貼近'+lbl:'理想'+lbl+'↔現價';
       return `
-      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:7px">
-        <div style="background:var(--bg3);border-radius:6px;padding:7px 4px;text-align:center">
-          <div style="font-size:9px;color:var(--text3)">進場區間</div>
-          <div style="font-family:var(--mono);font-size:13px;font-weight:700;color:var(--accent2)">${entryTxt}</div>
-          <div style="font-size:8px;color:var(--text3)">${entrySub}</div></div>
-        <div style="background:var(--bg3);border-radius:6px;padding:7px 4px;text-align:center">
-          <div style="font-size:9px;color:var(--text3)">停損</div>
-          <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--red2)">${f(stop)}</div>
-          <div style="font-size:9px;color:var(--text3)">${sgn(pcd(cur_,stop))}</div></div>
-        <div style="background:var(--bg3);border-radius:6px;padding:7px 4px;text-align:center">
-          <div style="font-size:9px;color:var(--text3)">目標</div>
-          <div style="font-family:var(--mono);font-size:15px;font-weight:700;color:var(--green2)">${f(target)}</div>
-          <div style="font-size:9px;color:var(--text3)">${sgn(pcd(cur_,target))}</div></div>
+      <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:6px;margin-top:8px">
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 4px;text-align:center">
+          <div style="font-size:14px;color:var(--text3)">進場區間</div>
+          <div style="font-family:var(--mono);font-size:19px;font-weight:700;color:var(--accent2)">${entryTxt}</div>
+          <div style="font-size:12px;color:var(--text3)">${entrySub}</div></div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 4px;text-align:center">
+          <div style="font-size:14px;color:var(--text3)">停損</div>
+          <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:var(--red2)">${f(stop)}</div>
+          <div style="font-size:14px;color:var(--text3)">${sgn(pcd(cur_,stop))}</div></div>
+        <div style="background:var(--bg3);border-radius:6px;padding:8px 4px;text-align:center">
+          <div style="font-size:14px;color:var(--text3)">目標</div>
+          <div style="font-family:var(--mono);font-size:22px;font-weight:700;color:var(--green2)">${f(target)}</div>
+          <div style="font-size:14px;color:var(--text3)">${sgn(pcd(cur_,target))}</div></div>
       </div>`;
     };
     const head=(title,horizon,lbl,col,bg)=>`
-      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:3px">
-        <span style="font-size:13px;font-weight:700;color:var(--text)">${title}</span>
-        <span style="font-size:9px;color:var(--text3)">${horizon}</span>
-        <span style="margin-left:auto;font-size:13px;font-weight:700;color:${col};background:${bg};border-radius:6px;padding:3px 11px">${lbl}</span>
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px">
+        <span style="font-size:20px;font-weight:700;color:var(--text)">${title}</span>
+        <span style="font-size:13px;color:var(--text3)">${horizon}</span>
+        <span style="margin-left:auto;font-size:18px;font-weight:700;color:${col};background:${bg};border-radius:6px;padding:4px 13px">${lbl}</span>
       </div>`;
-    const note=t=>`<div style="font-size:10px;color:var(--text3);line-height:1.6;margin-top:5px">${t}</div>`;
+    const note=t=>`<div style="font-size:19px;color:var(--text3);line-height:1.65;margin-top:7px">${t}</div>`;
     const divider='<div style="border-top:1px solid var(--border);margin:11px 0"></div>';
 
     // ========== 當沖（當日／隔日）==========
@@ -1997,7 +2041,7 @@ async function buildDetCharts(s){
     const dtBg =dtFit?'rgba(126,231,135,.12)':'rgba(139,148,158,.1)';
     const dayHi=s.high>0?s.high:cur, dayLo=s.low>0?s.low:cur;
     const dt = head('⚡ 當沖','當日／隔日',dtFit?'具備當沖條件':'條件不足',dtCol,dtBg)
-      + `<div style="font-size:10px;color:var(--text2);line-height:1.7">
+      + `<div style="font-size:18px;color:var(--text2);line-height:1.7">
           流動性：<b style="color:${liquid?'var(--green2)':'var(--text3)'}">${fmV(s.vol)}張${liquid?' ✓':' ✗(<3000，市場中位)'}</b>
           波動(ATR)：<b style="color:${volatile?'var(--green2)':'var(--text3)'}">${atrP.toFixed(1)}%${volatile?' ✓':' ✗(<2.6%，需高於市場中位)'}</b><br>
           今日盤面：<b style="color:var(--text)">${g.lbl}</b>　當日區間 <b>${f(dayLo)} ~ ${f(dayHi)}</b></div>`
@@ -2034,9 +2078,9 @@ async function buildDetCharts(s){
       const av20=vols.slice(-20).reduce((a,b)=>a+b,0)/20, tv=vols[vols.length-1]||0, vr=av20>0?tv/av20:0;
       // 回測：突破甜蜜點是溫和放量 1.0–2.0×（60日超額 +1.6~+2.8%）；爆量 ≥2.5× 反為追高陷阱（超額 −1.1%）
       if(cur>hi20&&vr>=2.5){
-        brk=`　<span style="font-size:9px;color:var(--amber2);background:rgba(227,179,65,.14);border-radius:4px;padding:2px 6px" title="創20日新高但爆量(≥2.5倍均量)，回測60日超額 −1.1%，追高陷阱，宜等回測支撐">⚠️爆量追高</span>`;
+        brk=`　<span style="font-size:13px;color:var(--amber2);background:rgba(227,179,65,.14);border-radius:4px;padding:2px 7px" title="創20日新高但爆量(≥2.5倍均量)，回測60日超額 −1.1%，追高陷阱，宜等回測支撐">⚠️爆量追高</span>`;
       }else if(cur>hi20&&vr>=1.0){
-        brk=`　<span style="font-size:9px;color:var(--accent2);background:rgba(56,139,253,.14);border-radius:4px;padding:2px 6px" title="創20日新高且溫和放量(1.0–2.0倍均量)，回測60日超額 +1.6~+2.8%（突破甜蜜點）">⚡帶量突破</span>`;
+        brk=`　<span style="font-size:13px;color:var(--accent2);background:rgba(56,139,253,.14);border-radius:4px;padding:2px 7px" title="創20日新高且溫和放量(1.0–2.0倍均量)，回測60日超額 +1.6~+2.8%（突破甜蜜點）">⚡帶量突破</span>`;
       }
     }
     const st = head('📊 短線'+brk,'5–20 交易日',stLbl,stCol,stBg)+stBody;
@@ -2129,7 +2173,7 @@ async function buildDetCharts(s){
       + note('<b style="color:var(--text2)">'+ctxAct+'</b><br>※ 情境僅影響「該不該進、部位大小」，<b>不改變</b>下方 ATR 校準的進場/停損/目標價位。');
 
     el.innerHTML = ctx + divider + dt + divider + st + divider + lt
-      + `<div style="font-size:9px;color:var(--text3);line-height:1.5;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆來自回測(95檔2年)：停損/目標＝實測 MFE/MAE 校準的 ATR 倍數；季線斜率、突破量比門檻經全市場掃描驗證。底部「今日盤面評分」的 RSI/MACD/量比 已以回測校準的「正確用法」納入上方方向判斷（非 naive 金叉/爆量＝買：強多中爆量為負超額、RSI 過熱反屬動能確認、趨勢中拉回為最佳買點）。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
+      + `<div style="font-size:14px;color:var(--text3);line-height:1.6;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆來自回測(95檔2年)：停損/目標＝實測 MFE/MAE 校準的 ATR 倍數；季線斜率、突破量比門檻經全市場掃描驗證。底部「今日盤面評分」的 RSI/MACD/量比 已以回測校準的「正確用法」納入上方方向判斷（非 naive 金叉/爆量＝買：強多中爆量為負超額、RSI 過熱反屬動能確認、趨勢中拉回為最佳買點）。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
   }
 
   // ── MA 均線乖離率（季線公式：BIAS = (現價 - MA60) / MA60 × 100%）──

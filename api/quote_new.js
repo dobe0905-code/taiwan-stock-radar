@@ -223,6 +223,89 @@ export default async function handler(req, res) {
     }
 
     // ══════════════════════════════════════════════════
+    // 2c. 產業別對照表（上市+上櫃公司基本資料，代號→產業中文名）
+    //     MI_INDEX 不帶產業別，故另抓公司基本資料補上（每日更新即可）
+    // ══════════════════════════════════════════════════
+    if (type === 'industry_map') {
+      // MOPS 統一產業代碼 → 中文（上市/上櫃共用）
+      const IND = {
+        '01':'水泥','02':'食品','03':'塑膠','04':'紡織纖維','05':'電機機械','06':'電器電纜',
+        '07':'化學','08':'玻璃陶瓷','09':'造紙','10':'鋼鐵','11':'橡膠','12':'汽車',
+        '13':'電子','14':'建材營造','15':'航運','16':'觀光餐旅','17':'金融','18':'貿易百貨',
+        '19':'綜合','20':'其他','21':'化學','22':'生技醫療','23':'油電燃氣','24':'半導體',
+        '25':'電腦週邊','26':'光電','27':'通信網路','28':'電子零組件','29':'電子通路',
+        '30':'資訊服務','31':'其他電子','32':'文化創意','33':'農業科技','34':'電子商務',
+        '35':'綠能環保','36':'數位雲端','37':'運動休閒','38':'居家生活','80':'管理股票','91':'存託憑證'
+      };
+      const map = {};
+      const settled = await Promise.allSettled([
+        fetch('https://openapi.twse.com.tw/v1/opendata/t187ap03_L', { headers: { 'Accept': 'application/json' } }).then(r => r.json()),
+        fetch('https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O', { headers: { 'Accept': 'application/json' } }).then(r => r.json()),
+      ]);
+      if (settled[0].status === 'fulfilled' && Array.isArray(settled[0].value)) {
+        for (const r of settled[0].value) {
+          const code = (r['公司代號'] || '').trim();
+          const name = IND[(r['產業別'] || '').trim()];
+          if (code && name) map[code] = name;
+        }
+      }
+      if (settled[1].status === 'fulfilled' && Array.isArray(settled[1].value)) {
+        for (const r of settled[1].value) {
+          const code = (r.SecuritiesCompanyCode || '').trim();
+          const name = IND[(r.SecuritiesIndustryCode || '').trim()];
+          if (code && name) map[code] = name;
+        }
+      }
+      res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate');
+      return res.status(200).json({ map, source: 'MOPS_t187ap03', ts: new Date().toISOString() });
+    }
+
+    // ══════════════════════════════════════════════════
+    // 2d. 處置股（TWSE 處置有價證券 + TPEx 處置資訊），回傳 code→處置資訊 map
+    // ══════════════════════════════════════════════════
+    if (type === 'disposition') {
+      const map = {};
+      // 解析 ROC 日期區間字串末端日期 → 是否仍在處置期間
+      const rocEndActive = (period) => {
+        try {
+          const dates = (period || '').match(/(\d{2,3})[\/\.](\d{1,2})[\/\.](\d{1,2})/g) || [];
+          if (!dates.length) return true; // 無法解析則保守視為有效
+          const last = dates[dates.length - 1].split(/[\/\.]/);
+          const end = new Date(1911 + parseInt(last[0]), parseInt(last[1]) - 1, parseInt(last[2]));
+          const today = new Date(); today.setHours(0, 0, 0, 0);
+          return end >= today;
+        } catch (e) { return true; }
+      };
+      const settled = await Promise.allSettled([
+        fetch('https://www.twse.com.tw/rwd/zh/announcement/punish?response=json', { headers: { 'Accept': 'application/json', 'Referer': 'https://www.twse.com.tw/' } }).then(r => r.json()),
+        fetch('https://www.tpex.org.tw/openapi/v1/tpex_disposal_information', { headers: { 'Accept': 'application/json' } }).then(r => r.json()),
+      ]);
+      // TWSE: [編號,公布日期,證券代號,證券名稱,累計,處置條件,處置起迄時間,處置措施,處置內容,備註]
+      if (settled[0].status === 'fulfilled') {
+        const rows = settled[0].value?.data || settled[0].value?.tables?.[0]?.data || [];
+        for (const r of rows) {
+          const code = (r[2] || '').trim();
+          if (!/^\d{4}$/.test(code)) continue; // 只留普通股，排除權證
+          const period = r[6] || '';
+          if (!rocEndActive(period)) continue;
+          map[code] = { name: (r[3] || '').trim(), period, reason: (r[5] || '').trim(), measure: (r[7] || '').trim(), market: 'twse' };
+        }
+      }
+      // TPEx: {SecuritiesCompanyCode,CompanyName,DispositionPeriod,DispositionReasons,DisposalCondition}
+      if (settled[1].status === 'fulfilled' && Array.isArray(settled[1].value)) {
+        for (const r of settled[1].value) {
+          const code = (r.SecuritiesCompanyCode || '').trim();
+          if (!/^\d{4}$/.test(code)) continue;
+          const period = r.DispositionPeriod || '';
+          if (!rocEndActive(period)) continue;
+          map[code] = { name: (r.CompanyName || '').trim(), period, reason: (r.DispositionReasons || r.DisposalCondition || '').trim(), measure: (r.DisposalCondition || '').trim(), market: 'tpex' };
+        }
+      }
+      res.setHeader('Cache-Control', 's-maxage=3600, stale-while-revalidate');
+      return res.status(200).json({ map, count: Object.keys(map).length, source: 'TWSE+TPEx', ts: new Date().toISOString() });
+    }
+
+    // ══════════════════════════════════════════════════
     // 3. 盤中即時報價（MIS getStockInfo）
     // ══════════════════════════════════════════════════
     if (type === 'realtime' || type === 'twse_realtime' || type === 'tpex_realtime') {

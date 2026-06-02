@@ -46,11 +46,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .api-on .api-dot{background:var(--green);box-shadow:0 0 6px var(--green);}
 .api-off .api-dot{background:var(--text3);}
 .live-badge{display:flex;align-items:center;gap:5px;padding:3px 8px;border-radius:5px;font-size:10px;font-family:var(--mono);background:rgba(248,81,73,.1);border:1px solid rgba(248,81,73,.25);color:var(--red2);}
-.st-badge{display:inline-block;font-size:9px;padding:1px 6px;border-radius:4px;margin-left:5px;cursor:help;white-space:nowrap;font-weight:600;}
+.st-badge{display:inline-block;font-size:13px;padding:2px 7px;border-radius:4px;margin-left:5px;cursor:help;white-space:nowrap;font-weight:600;}
 .st-badge.st-long{color:var(--green2);background:rgba(126,231,135,.12);}
 .st-badge.st-short{color:var(--red2);background:rgba(255,161,152,.12);}
 .st-badge.st-range{color:var(--amber2);background:rgba(227,179,65,.1);}
-.lim-tag{display:inline-block;font-size:11px;font-weight:800;padding:2px 7px;border-radius:4px;margin-right:6px;font-family:var(--mono);letter-spacing:.5px;}
+.lim-tag{display:inline-block;font-size:13px;font-weight:800;padding:2px 8px;border-radius:4px;margin-right:6px;font-family:var(--mono);letter-spacing:.5px;}
 .lim-tag.lim-up{color:#fff;background:#e5484d;box-shadow:0 0 6px rgba(229,72,77,.6);}
 .lim-tag.lim-dn{color:#fff;background:#2ea043;box-shadow:0 0 6px rgba(46,160,67,.55);}
 @keyframes limpulse{0%,100%{opacity:1}50%{opacity:.55}}
@@ -118,7 +118,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .f-sort{padding:7px 14px;border-radius:6px;font-size:16px;border:1px solid var(--border);background:var(--bg3);color:var(--text2);cursor:pointer;outline:none;}
 .tbl-wrap{flex:1;overflow:auto;}
 .tbl{width:100%;border-collapse:collapse;}
-.tbl thead th{position:sticky;top:0;z-index:5;background:var(--bg3);padding:12px 13px;font-size:15px;font-weight:700;letter-spacing:.06em;color:var(--text3);text-transform:uppercase;white-space:nowrap;border-bottom:1px solid var(--border);text-align:left;}
+.tbl thead th{position:sticky;top:0;z-index:5;background:var(--bg3);padding:12px 13px;font-size:16px;font-weight:700;letter-spacing:.04em;color:var(--text2);text-transform:uppercase;white-space:nowrap;border-bottom:1px solid var(--border);text-align:left;}
 .tbl thead th.sortable{cursor:pointer;user-select:none;transition:color .12s,background .12s;}
 .tbl thead th.sortable:hover{color:var(--accent2);background:var(--bg4);}
 .tbl thead th.sortable.active{color:var(--accent2);}
@@ -131,19 +131,19 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .tbl tbody td:first-child{padding-left:16px;}
 .td-id{font-family:var(--mono);font-size:16px;color:var(--accent2);font-weight:600;}
 .td-name{font-size:17px;font-weight:500;}
-.td-sec{font-size:14px;color:var(--text3);background:var(--bg4);padding:2px 6px;border-radius:3px;display:inline-block;margin-top:2px;}
+.td-sec{font-size:15px;color:var(--text2);background:var(--bg4);padding:2px 7px;border-radius:3px;display:inline-block;margin-top:2px;}
 .td-price{font-family:var(--mono);font-size:18px;font-weight:600;}
-.pill{font-size:10px;font-family:var(--mono);font-weight:600;padding:2px 7px;border-radius:5px;display:inline-block;}
+.pill{font-size:15px;font-family:var(--mono);font-weight:600;padding:3px 9px;border-radius:5px;display:inline-block;}
 .pill-up{background:rgba(63,185,80,.12);color:var(--green2);}
 .pill-dn{background:rgba(248,81,73,.12);color:var(--red2);}
 .pill-neu{background:var(--bg4);color:var(--text3);}
 .td-m{font-family:var(--mono);font-size:16px;color:var(--text2);}
-.sig{font-size:14px;font-weight:700;padding:5px 13px;border-radius:4px;letter-spacing:.03em;display:inline-block;}
+.sig{font-size:16px;font-weight:700;padding:5px 14px;border-radius:4px;letter-spacing:.03em;display:inline-block;}
 .sig-buy{background:rgba(63,185,80,.15);color:#7ee787;border:1px solid rgba(63,185,80,.25);}
 .sig-sell{background:rgba(248,81,73,.15);color:#ffa198;border:1px solid rgba(248,81,73,.25);}
 .sig-hold{background:rgba(210,153,34,.12);color:#e3b341;border:1px solid rgba(210,153,34,.2);}
 .sig-watch{background:var(--bg4);color:var(--text3);border:1px solid var(--border);}
-.etf-tag{font-size:9px;font-weight:700;padding:1px 5px;border-radius:3px;margin-left:4px;background:rgba(188,140,255,.15);color:#bc8cff;border:1px solid rgba(188,140,255,.2);}
+.etf-tag{font-size:12px;font-weight:700;padding:1px 6px;border-radius:3px;margin-left:4px;background:rgba(188,140,255,.15);color:#bc8cff;border:1px solid rgba(188,140,255,.2);}
 .f-pos{color:var(--green2);font-family:var(--mono);font-size:11px;}
 .f-neg{color:var(--red2);font-family:var(--mono);font-size:11px;}
 .star-btn{background:none;border:none;cursor:pointer;font-size:13px;color:var(--text3);transition:color .15s;padding:2px;}
@@ -1255,16 +1255,16 @@ function renderTable(){
   const visible = (tblShowAll || l.length<=TBL_PAGE) ? l : l.slice(0,TBL_PAGE);
   const makeRow=(s,i)=>{
     const isLive=!!liveData[s.id];
-    const mktTag=s.market==='tpex'?'<span style="font-size:9px;color:var(--amber2);margin-left:3px">櫃</span>':s.market==='esb'?'<span style="font-size:9px;color:var(--purple);margin-left:3px" title="興櫃">興</span>':'';
+    const mktTag=s.market==='tpex'?'<span style="font-size:12px;color:var(--amber2);margin-left:3px">櫃</span>':s.market==='esb'?'<span style="font-size:12px;color:var(--purple);margin-left:3px" title="興櫃">興</span>':'';
     const disp=dispMap[s.id];
-    const dispTag=disp?`<span style="font-size:9px;color:var(--red2);margin-left:3px;cursor:help" title="處置股（${disp.period||''}）｜原因：${disp.reason||'—'}｜措施：${disp.measure||'—'}">⚠️處</span>`:'';
+    const dispTag=disp?`<span style="font-size:12px;color:var(--red2);margin-left:3px;cursor:help" title="處置股（${disp.period||''}）｜原因：${disp.reason||'—'}｜措施：${disp.measure||'—'}">⚠️處</span>`:'';
     // 月營收 YoY 標籤（回測驗證因子）
     let revTag='';
     if(s.revTier){
       const c=s.revTier==='高成長'?'var(--green2)':s.revTier==='衰退'?'var(--red2)':'var(--text2)';
       const b=s.revTier==='高成長'?'rgba(126,231,135,.12)':s.revTier==='衰退'?'rgba(255,161,152,.12)':'rgba(139,148,158,.1)';
       const v=s.revYoY!=null?(s.revYoY>=0?'+':'')+s.revYoY.toFixed(0)+'%':'—';
-      revTag=`<span style="font-size:9px;font-family:var(--mono);padding:1px 5px;border-radius:4px;margin-left:5px;color:${c};background:${b}" title="月營收年增 YoY（${revMonth}）：${s.revTier}">營${v}</span>`;
+      revTag=`<span style="font-size:13px;font-family:var(--mono);padding:1px 6px;border-radius:4px;margin-left:5px;color:${c};background:${b}" title="月營收年增 YoY（${revMonth}）：${s.revTier}">營${v}</span>`;
     }
     // 長線策略狀態徽章（緊湊，只顯示 icon，hover 看依據）
     let lsTag='';
@@ -1273,11 +1273,11 @@ function renderTable(){
       const lsShort={'ls-strong':'長多','ls-hold':'觀望','ls-weak':'轉弱'}[ls.cls];
       const lsCol={'ls-strong':'var(--green2)','ls-hold':'var(--amber2)','ls-weak':'var(--red2)'}[ls.cls];
       const lsBg={'ls-strong':'rgba(126,231,135,.12)','ls-hold':'rgba(227,179,65,.12)','ls-weak':'rgba(255,161,152,.12)'}[ls.cls];
-      lsTag=`<span style="font-size:9px;padding:1px 5px;border-radius:4px;margin-left:4px;cursor:help;color:${lsCol};background:${lsBg}" title="長線：${ls.lbl} — ${ls.reason}">${ls.icon}${lsShort}</span>`;
+      lsTag=`<span style="font-size:13px;padding:2px 6px;border-radius:4px;margin-left:4px;cursor:help;color:${lsCol};background:${lsBg}" title="長線：${ls.lbl} — ${ls.reason}">${ls.icon}${lsShort}</span>`;
     }
     return`<tr ${useAnim?`style="animation-delay:${Math.min(i*3,300)}ms"`:''} data-id="${s.id}" onclick="openDet('${s.id}')">
       <td onclick="event.stopPropagation()"><button class="star-btn ${wl.has(s.id)?'on':''}" onclick="togWL('${s.id}',this)">★</button></td>
-      <td><span class="td-id">${s.id}</span>${s.isETF?'<span class="etf-tag">ETF</span>':''}${mktTag}${dispTag}${isLive?'<span style="font-size:9px;color:var(--red2);margin-left:3px">●</span>':''}</td>
+      <td><span class="td-id">${s.id}</span>${s.isETF?'<span class="etf-tag">ETF</span>':''}${mktTag}${dispTag}${isLive?'<span style="font-size:12px;color:var(--red2);margin-left:3px">●</span>':''}</td>
       <td><div class="td-name">${limitTagHTML(s,isLive)}${s.name}${revTag}${lsTag}${shortBadge(s.id)}</div>${!s.isETF?'<div class="td-sec">'+s.sector+'</div>':''}</td>
       <td><span class="td-price live-price ${s.chgP>0?'c-up':s.chgP<0?'c-dn':'c-neu'}">${s.close.toFixed(2)}</span></td>
       <td><span class="pill ${s.chgP>0?'pill-up':s.chgP<0?'pill-dn':'pill-neu'}">${s.chgP>=0?'+':''}${s.chgP.toFixed(2)}%</span></td>

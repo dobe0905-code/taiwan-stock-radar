@@ -2845,18 +2845,56 @@ async function loadCompanyData(s){
         <div class="kv"><div class="kv-l">產業</div><div class="kv-v" style="font-size:14px">${s.sector||'—'}</div></div>
         <div class="kv"><div class="kv-l">${listedLbl}</div><div class="kv-v" style="font-size:14px">${d.listed||'—'}</div></div>
         <div class="kv"><div class="kv-l">成立日期</div><div class="kv-v" style="font-size:14px">${d.founded||'—'}</div></div>
+        <div class="kv"><div class="kv-l">最新除權息日</div><div class="kv-v" style="font-size:14px" id="co-exdate">載入中…</div></div>
         <div class="kv"><div class="kv-l">實收資本額</div><div class="kv-v">${cap}</div></div>
         <div class="kv"><div class="kv-l">已發行股數</div><div class="kv-v">${shr}</div></div>
-        <div class="kv"><div class="kv-l">董事長</div><div class="kv-v" style="font-size:14px">${d.chairman||'—'}</div></div>
-        <div class="kv"><div class="kv-l">總經理</div><div class="kv-v" style="font-size:14px">${d.ceo||'—'}</div></div>
-        <div class="kv"><div class="kv-l">發言人</div><div class="kv-v" style="font-size:14px">${d.spokesman||'—'}${d.spokesmanTitle?'・'+d.spokesmanTitle:''}</div></div>
       </div>
-      <div style="margin-top:8px;display:flex;flex-direction:column;gap:5px;font-size:13px">
+      <div style="margin-top:10px">
+        <div class="kv-l" style="margin-bottom:4px">主要經營業務</div>
+        <div id="co-business" style="font-size:13px;line-height:1.6;color:var(--text)">載入中…</div>
+      </div>
+      <div style="margin-top:10px">
+        <div class="kv-l" style="margin-bottom:4px">近三年股利</div>
+        <div id="co-dividends" style="font-size:13px">載入中…</div>
+      </div>
+      <div style="margin-top:10px;display:flex;flex-direction:column;gap:5px;font-size:13px">
         <div><span style="color:var(--text2)">地址　</span>${d.addr||'—'}</div>
         <div><span style="color:var(--text2)">總機　</span>${d.tel||'—'}</div>
         <div><span style="color:var(--text2)">官網　</span>${webHost?`<a href="https://${webHost}" target="_blank" rel="noopener" style="color:var(--accent2)">${webHost}</a>`:'—'}</div>
       </div>`;
+    loadCompanyExtra(s.id);
   }catch(e){ if(document.getElementById('company-body')===body) body.innerHTML='<span style="color:var(--text3)">公司基本資料載入失敗</span>'; }
+}
+
+// ── 公司延伸資料：主要業務（MOPS）＋ 近年股利（FinMind）──
+async function loadCompanyExtra(stockId){
+  const biz=document.getElementById('co-business');
+  if(!biz) return;
+  try{
+    const j=await (await fetch(`/api/fundamental?type=company_extra&stock_id=${stockId}`)).json();
+    if(document.getElementById('co-business')!==biz) return; // 面板已切換
+    biz.innerHTML = j.business ? j.business : '<span style="color:var(--text3)">查無主要業務資料（MOPS）</span>';
+    const ex=document.getElementById('co-exdate'); if(ex) ex.textContent = j.latestEx || '—';
+    const dv=document.getElementById('co-dividends');
+    if(dv){
+      const ds=j.dividends||[];
+      if(ds.length){
+        dv.innerHTML = ds.slice().reverse().map(d=>{
+          const parts=[];
+          if(d.cash>0) parts.push('現金 '+d.cash+' 元');
+          if(d.stock>0) parts.push('股票 '+d.stock+' 元');
+          const dvTxt = parts.length ? parts.join('＋') : '未配發';
+          const exd = d.exCash||d.exStock;
+          const exTxt = exd ? `　<span style="color:var(--text3)">除息 ${exd}</span>` : '';
+          return `<div style="display:flex;justify-content:space-between;padding:3px 0;border-bottom:1px solid var(--border)"><span style="color:var(--text2)">${d.year} 年度</span><span style="font-family:var(--mono)">${dvTxt}${exTxt}</span></div>`;
+        }).join('');
+      }else{
+        dv.innerHTML='<span style="color:var(--text3)">查無股利資料（FinMind）</span>';
+      }
+    }
+  }catch(e){
+    if(document.getElementById('co-business')===biz) biz.innerHTML='<span style="color:var(--text3)">延伸資料載入失敗</span>';
+  }
 }
 
 // ── 近五年年營收（FinMind 逐檔即時，後端彙總）──

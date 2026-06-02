@@ -161,6 +161,57 @@ export default async function handler(req, res) {
     }
 
     // ══════════════════════════════════════════════════
+    // 公司延伸資料：主要經營業務（MOPS）＋ 近年股利/除權息（FinMind）
+    //   type=company_extra&stock_id=2330
+    //   兩來源平行抓、互不影響；隨點隨抓 + 快取
+    // ══════════════════════════════════════════════════
+    if (type === 'company_extra') {
+      if (!stock_id) return res.status(400).json({ error: '缺少 stock_id' });
+      const out = { stock_id, business: '', dividends: [], latestEx: '', source: 'mops+finmind' };
+
+      const pBiz = (async () => {
+        try {
+          const body = `co_id=${encodeURIComponent(stock_id)}&queryName=co_id&inpuType=co_id&TYPEK=all&step=1&firstin=1`;
+          const r = await fetch('https://mopsov.twse.com.tw/mops/web/ajax_t05st03', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/x-www-form-urlencoded', 'User-Agent': 'Mozilla/5.0' },
+            body
+          });
+          const t = await r.text();
+          const m = t.match(/主要經營業務<\/th>\s*<td[^>]*>([\s\S]*?)<\/td>/);
+          if (m) out.business = m[1].replace(/<br\s*\/?>/gi, '').replace(/<[^>]+>/g, '').replace(/&nbsp;/g, ' ').replace(/\s+/g, '').trim();
+        } catch (e) { /* 留空 */ }
+      })();
+
+      const pDiv = (async () => {
+        try {
+          const url = `https://api.finmindtrade.com/api/v4/data?dataset=TaiwanStockDividend&data_id=${encodeURIComponent(stock_id)}&start_date=2019-01-01`;
+          const j = await (await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } })).json();
+          if (j.status === 200 && Array.isArray(j.data)) {
+            const rows = j.data.map(r => {
+              const roc = parseInt(String(r.year).replace(/\D/g, ''));
+              return {
+                year: Number.isFinite(roc) ? roc + 1911 : null,   // 盈餘所屬年度（西元）
+                cash: +(((r.CashEarningsDistribution || 0) + (r.CashStatutorySurplus || 0))).toFixed(2),
+                stock: +(((r.StockEarningsDistribution || 0) + (r.StockStatutorySurplus || 0))).toFixed(2),
+                exCash: r.CashExDividendTradingDate || '',
+                exStock: r.StockExDividendTradingDate || '',
+                pay: r.CashDividendPaymentDate || ''
+              };
+            }).filter(x => x.year).sort((a, b) => a.year - b.year);
+            out.dividends = rows.slice(-3);
+            const dates = rows.flatMap(r => [r.exCash, r.exStock]).filter(Boolean).sort();
+            out.latestEx = dates.length ? dates[dates.length - 1] : '';
+          }
+        } catch (e) { /* 留空 */ }
+      })();
+
+      await Promise.allSettled([pBiz, pDiv]);
+      res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate=172800');
+      return res.status(200).json(out);
+    }
+
+    // ══════════════════════════════════════════════════
     // 1. 集保持股分散（大戶/散戶）
     //    策略：TDCC OpenAPI → TDCC 政府開放平台 → TDCC 網頁POST（備援）
     // ══════════════════════════════════════════════════

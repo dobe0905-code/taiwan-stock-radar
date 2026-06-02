@@ -125,7 +125,7 @@ export default async function handler(req, res) {
         data = await r.json();
       }
 
-      res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate');
+      res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1200');
       return res.status(200).json({ data, source: 'TWSE', ts: new Date().toISOString() });
     }
 

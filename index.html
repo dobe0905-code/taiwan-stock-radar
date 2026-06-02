@@ -1786,6 +1786,16 @@ function buildDetHTML(s,live){
     <div style="height:180px;position:relative"><canvas id="c-rev-annual"></canvas></div>
     <div id="rev-annual-note" style="font-size:11px;color:var(--text3);margin-top:8px;line-height:1.5">載入中…</div>
   </div>
+  <div class="ds" id="financials-section"><div class="dst">季財報分析（近12季）</div>
+    <div id="fin-note" style="font-size:11px;color:var(--text3);margin-bottom:10px;line-height:1.5">載入中…</div>
+    <div style="font-size:12px;color:var(--text2);margin:4px 0 4px">資產負債走勢（億元）</div>
+    <div style="height:180px;position:relative"><canvas id="c-fin-bs"></canvas></div>
+    <div style="font-size:12px;color:var(--text2);margin:14px 0 4px">獲利能力（單季 %）</div>
+    <div style="height:180px;position:relative"><canvas id="c-fin-profit"></canvas></div>
+    <div style="font-size:12px;color:var(--text2);margin:14px 0 4px">經營能力（成長率 / 變現率 % ‧ 週轉率 次/季）</div>
+    <div style="height:180px;position:relative"><canvas id="c-fin-oper"></canvas></div>
+    <div style="font-size:10px;color:var(--text3);margin-top:8px;line-height:1.5">※ 比率均依公開財報（FinMind）自行計算，僅供體質檢視，非買賣訊號。</div>
+  </div>
   <div class="ds"><div class="dst">估值指標</div>
     <div class="kv2">
       <div class="kv"><div class="kv-l">本益比 PER</div><div class="kv-v ${s.peV&&s.peV<15?'c-up':s.peV&&s.peV>35?'c-dn':'c-neu'}">${s.peV?s.peV.toFixed(1):'—'}</div></div>
@@ -1973,9 +1983,10 @@ async function buildDetCharts(s){
   loadHoldersData(s.id);
   loadMarginData(s.id);
   loadInstitutionData(s.id);
-  // ── 公司基本資料 + 近五年年營收 ──
+  // ── 公司基本資料 + 近五年年營收 + 季財報分析 ──
   loadCompanyData(s);
   loadAnnualRevenue(s.id);
+  loadFinancials(s.id);
 
   // ── 技術分析狀態（RSI / MACD / 趨勢 / 量能）──
   function calcAndShowTechStatus(kdata){
@@ -2928,6 +2939,85 @@ async function loadAnnualRevenue(stockId){
     txt+='來源：FinMind 月營收彙總。';
     note.textContent=txt;
   }catch(e){ if(document.getElementById('rev-annual-note')===note) note.textContent='年營收載入失敗'; }
+}
+
+// ── 季財報分析：資產負債 / 獲利能力 / 經營能力（FinMind 逐檔即時）──
+async function loadFinancials(stockId){
+  const note=document.getElementById('fin-note');
+  const cvBS=document.getElementById('c-fin-bs');
+  const cvPr=document.getElementById('c-fin-profit');
+  const cvOp=document.getElementById('c-fin-oper');
+  if(!note||!cvBS||!cvPr||!cvOp) return;
+  try{
+    const j=await (await fetch(`/api/fundamental?type=financials&stock_id=${stockId}`)).json();
+    if(document.getElementById('c-fin-bs')!==cvBS) return; // 面板已切換
+    const q=j.quarters||[];
+    if(!q.length){ note.textContent='查無季財報資料（來源 FinMind，金融/部分產業財報格式不同可能無資料）'; return; }
+    const labels=q.map(o=>o.label);
+    const e8=v=>v==null?null:+(v/1e8).toFixed(0);
+    const cAxis={x:{grid:{display:false},ticks:{color:'#aab4c0',font:{size:11},maxRotation:0}}};
+    const destroy=k=>{ if(dCharts[k]){ try{dCharts[k].destroy();}catch(e){} } };
+
+    // ① 資產負債走勢（億元）：資產 vs 負債 vs 權益（分組長條）
+    destroy('finBS');
+    dCharts.finBS=new Chart(cvBS,{type:'bar',
+      data:{labels,datasets:[
+        {label:'資產',data:q.map(o=>e8(o.assets)),backgroundColor:'rgba(121,184,255,.75)',borderRadius:3,maxBarThickness:14},
+        {label:'負債',data:q.map(o=>e8(o.liabilities)),backgroundColor:'rgba(248,81,73,.7)',borderRadius:3,maxBarThickness:14},
+        {label:'權益',data:q.map(o=>e8(o.equity)),backgroundColor:'rgba(63,185,80,.7)',borderRadius:3,maxBarThickness:14}
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{labels:{color:'#aab4c0',font:{size:11},boxWidth:12,padding:8}},
+          tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label} ${ctx.parsed.y!=null?ctx.parsed.y+' 億':'—'}`}}},
+        scales:{...cAxis,y:{position:'right',grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#8b949e',font:{size:10},callback:v=>v+'億'}}}}
+    });
+
+    // ② 獲利能力（單季 %）：毛利率/營益率/淨利率/ROE/ROA
+    destroy('finProfit');
+    const line=(label,data,color)=>({label,data,borderColor:color,backgroundColor:color,pointRadius:2,borderWidth:2,tension:.3,spanGaps:true});
+    dCharts.finProfit=new Chart(cvPr,{type:'line',
+      data:{labels,datasets:[
+        line('毛利率',q.map(o=>o.grossMargin),'#79b8ff'),
+        line('營益率',q.map(o=>o.opMargin),'#7ee787'),
+        line('淨利率',q.map(o=>o.netMargin),'#e3b341'),
+        line('ROE',q.map(o=>o.roe),'#bc8cff'),
+        line('ROA',q.map(o=>o.roa),'#ff7b72')
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{labels:{color:'#aab4c0',font:{size:11},boxWidth:12,padding:8}},
+          tooltip:{callbacks:{label:ctx=>`${ctx.dataset.label} ${ctx.parsed.y!=null?ctx.parsed.y+'%':'—'}`}}},
+        scales:{...cAxis,y:{position:'right',grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#8b949e',font:{size:10},callback:v=>v+'%'}}}}
+    });
+
+    // ③ 經營能力：營收YoY/流動比/速動比（左軸 %）＋ 資產/存貨週轉率（右軸 次）
+    destroy('finOper');
+    const lineY=(label,data,color,axis)=>({label,data,borderColor:color,backgroundColor:color,pointRadius:2,borderWidth:2,tension:.3,spanGaps:true,yAxisID:axis,borderDash:axis==='yR'?[4,3]:[]});
+    dCharts.finOper=new Chart(cvOp,{type:'line',
+      data:{labels,datasets:[
+        lineY('營收YoY',q.map(o=>o.revYoY),'#7ee787','yL'),
+        lineY('流動比',q.map(o=>o.currentRatio),'#79b8ff','yL'),
+        lineY('速動比',q.map(o=>o.quickRatio),'#58a6ff','yL'),
+        lineY('資產週轉',q.map(o=>o.assetTurnover),'#e3b341','yR'),
+        lineY('存貨週轉',q.map(o=>o.invTurnover),'#bc8cff','yR')
+      ]},
+      options:{responsive:true,maintainAspectRatio:false,
+        plugins:{legend:{labels:{color:'#aab4c0',font:{size:11},boxWidth:12,padding:8}},
+          tooltip:{callbacks:{label:ctx=>{const v=ctx.parsed.y;if(v==null)return `${ctx.dataset.label} —`;return ctx.dataset.yAxisID==='yR'?`${ctx.dataset.label} ${v} 次`:`${ctx.dataset.label} ${v}%`;}}}},
+        scales:{...cAxis,
+          yL:{position:'left',grid:{color:'rgba(255,255,255,.05)'},ticks:{color:'#8b949e',font:{size:10},callback:v=>v+'%'}},
+          yR:{position:'right',grid:{display:false},ticks:{color:'#8b949e',font:{size:10},callback:v=>v+'次'}}}}
+    });
+
+    // 文字摘要：最新一季重點
+    const last=q[q.length-1];
+    let txt=`最新 ${last.label}：`;
+    if(last.netMargin!=null) txt+=`淨利率 ${last.netMargin}%、`;
+    if(last.roe!=null) txt+=`ROE ${last.roe}%（單季）、`;
+    if(last.currentRatio!=null) txt+=`流動比 ${last.currentRatio}%、`;
+    if(last.revYoY!=null) txt+=`營收 YoY ${last.revYoY>=0?'+':''}${last.revYoY}%。`;
+    txt=txt.replace(/、$/,'。');
+    note.textContent=txt;
+  }catch(e){ if(document.getElementById('fin-note')===note) note.textContent='季財報載入失敗'; }
 }
 
 // ── 籌碼分析資料載入（集保每週五更新）──

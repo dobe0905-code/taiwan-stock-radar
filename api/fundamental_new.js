@@ -3,6 +3,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { requireAuth } from './_auth.js';
+import { rateLimit } from './_ratelimit.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -10,6 +11,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!(await requireAuth(req, res))) return;
+  if (!(await rateLimit(req, res))) return;
 
   const { type, stock_id } = req.query;
 

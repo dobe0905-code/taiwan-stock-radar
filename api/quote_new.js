@@ -3,6 +3,7 @@
 import { promises as fs } from 'fs';
 import path from 'path';
 import { requireAuth } from './_auth.js';
+import { rateLimit } from './_ratelimit.js';
 
 // 記憶體快取：把較重的清單回應在函式熱著時暫存數分鐘，
 // 避免每個請求都重抓證交所/櫃買（尤其重複登入、重新整理、多人同時用時）。
@@ -23,6 +24,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!(await requireAuth(req, res))) return;
+  if (!(await rateLimit(req, res))) return;
 
   const { type, market, stocks, stock_id } = req.query;
 

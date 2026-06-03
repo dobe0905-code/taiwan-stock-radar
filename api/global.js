@@ -1,6 +1,7 @@
 // api/global.js
 // 美股個股 + 全球指數 — Yahoo Finance v8 (免費, 無需 token)
 import { requireAuth } from './_auth.js';
+import { rateLimit } from './_ratelimit.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -8,6 +9,7 @@ export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
   if (!(await requireAuth(req, res))) return;
+  if (!(await rateLimit(req, res))) return;
 
   const { type, symbols, symbol } = req.query;
 

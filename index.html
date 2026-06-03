@@ -278,6 +278,40 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 </style>
 </head>
 <body>
+<style>
+.auth-gate{position:fixed;inset:0;z-index:100000;background:radial-gradient(ellipse at 50% 35%,#0c1220 0%,#070b14 70%);display:flex;align-items:center;justify-content:center;padding:20px;}
+.auth-gate.hidden{display:none;}
+.auth-card{width:100%;max-width:380px;background:var(--bg2);border:1px solid var(--border2);border-radius:16px;padding:38px 32px;text-align:center;box-shadow:0 24px 60px rgba(0,0,0,.55);}
+.auth-logo{font-size:38px;line-height:1;margin-bottom:14px;}
+.auth-title{font-size:24px;font-weight:700;color:var(--text);margin:0 0 8px;letter-spacing:1px;}
+.auth-sub{font-size:13px;color:var(--text2);line-height:1.7;margin:0 0 26px;}
+.auth-btn{width:100%;display:flex;align-items:center;justify-content:center;gap:10px;background:#fff;color:#1f1f1f;border:none;border-radius:10px;padding:12px 16px;font-size:15px;font-weight:600;cursor:pointer;transition:transform .12s,box-shadow .12s;font-family:inherit;}
+.auth-btn:hover{transform:translateY(-1px);box-shadow:0 6px 18px rgba(0,0,0,.4);}
+.auth-btn:disabled{opacity:.6;cursor:default;transform:none;box-shadow:none;}
+.auth-btn svg{width:18px;height:18px;flex-shrink:0;}
+.auth-spin{width:30px;height:30px;border:3px solid var(--border2);border-top-color:var(--accent);border-radius:50%;margin:8px auto 0;animation:authspin .8s linear infinite;}
+@keyframes authspin{to{transform:rotate(360deg);}}
+.auth-msg{margin-top:16px;font-size:12.5px;line-height:1.6;min-height:18px;color:var(--red2);}
+.auth-foot{margin-top:22px;font-size:11px;color:var(--text3);line-height:1.6;}
+.user-box{display:flex;align-items:center;gap:8px;}
+.user-email{font-size:12px;color:var(--text2);max-width:160px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.logout-btn{background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:7px;padding:4px 10px;font-size:12px;cursor:pointer;font-family:inherit;transition:color .12s,border-color .12s;}
+.logout-btn:hover{color:var(--red2);border-color:var(--red);}
+</style>
+<div id="authGate" class="auth-gate">
+  <div class="auth-card">
+    <div class="auth-logo">📡</div>
+    <h1 class="auth-title">台股雷達</h1>
+    <p class="auth-sub" id="authSub">驗證登入狀態中…</p>
+    <button id="authGoogleBtn" class="auth-btn" style="display:none">
+      <svg viewBox="0 0 48 48" xmlns="http://www.w3.org/2000/svg"><path fill="#EA4335" d="M24 9.5c3.54 0 6.71 1.22 9.21 3.6l6.85-6.85C35.9 2.38 30.47 0 24 0 14.62 0 6.51 5.38 2.56 13.22l7.98 6.19C12.43 13.72 17.74 9.5 24 9.5z"/><path fill="#4285F4" d="M46.98 24.55c0-1.57-.15-3.09-.38-4.55H24v9.02h12.94c-.58 2.96-2.26 5.48-4.78 7.18l7.73 6c4.51-4.18 7.09-10.36 7.09-17.65z"/><path fill="#FBBC05" d="M10.53 28.59c-.48-1.45-.76-2.99-.76-4.59s.27-3.14.76-4.59l-7.98-6.19C.92 16.46 0 20.12 0 24c0 3.88.92 7.54 2.56 10.78l7.97-6.19z"/><path fill="#34A853" d="M24 48c6.48 0 11.93-2.13 15.89-5.81l-7.73-6c-2.15 1.45-4.92 2.3-8.16 2.3-6.26 0-11.57-4.22-13.47-9.91l-7.98 6.19C6.51 42.62 14.62 48 24 48z"/></svg>
+      使用 Google 登入
+    </button>
+    <div class="auth-spin" id="authSpin"></div>
+    <div class="auth-msg" id="authMsg"></div>
+    <div class="auth-foot">本平台為邀請制 · 僅授權帳號可使用</div>
+  </div>
+</div>
 <div id="header">
   <a class="brand" onclick="location.reload()" title="台股雷達 — 商標暨智慧財產權所有，未經授權不得使用">
     <svg class="brand-logo" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="台股雷達 logo">
@@ -328,6 +362,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     </div>
     <div class="delay-badge">⏱ 報價延遲30秒</div>
     <div class="upd-info">更新 <span id="lastUpd">--:--</span> &nbsp;·&nbsp; <span class="upd-val" id="cd">--:--</span></div>
+    <div class="user-box" id="userBox" style="display:none">
+      <span class="user-email" id="userEmail"></span>
+      <button class="logout-btn" id="logoutBtn">登出</button>
+    </div>
   </div>
 </div>
 
@@ -4329,6 +4367,81 @@ function schedRef(){
   },1000);
 }
 window.addEventListener('load',loadData);
+</script>
+<script type="module">
+// ===== Phase 1: Supabase 登入閘門（邀請制 Google 登入）=====
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2/+esm';
+
+const SB_URL = 'https://mollhkwtuxxgqtnujnuh.supabase.co';
+const SB_KEY = 'sb_publishable_6xtAJOfaWgo715ZjzRtdYg_ffUo-rma';
+const SB = createClient(SB_URL, SB_KEY);
+window._sb = SB;
+
+const gate   = document.getElementById('authGate');
+const subEl  = document.getElementById('authSub');
+const btn    = document.getElementById('authGoogleBtn');
+const spin   = document.getElementById('authSpin');
+const msg    = document.getElementById('authMsg');
+const userBox= document.getElementById('userBox');
+const userEm = document.getElementById('userEmail');
+const logout = document.getElementById('logoutBtn');
+
+function showLogin(message){
+  gate.classList.remove('hidden');
+  spin.style.display = 'none';
+  btn.style.display  = 'flex';
+  btn.disabled = false;
+  subEl.textContent = '本平台為邀請制，請使用授權的 Google 帳號登入';
+  msg.textContent = message || '';
+  userBox.style.display = 'none';
+}
+
+function showLoggedIn(session){
+  gate.classList.add('hidden');
+  const email = session?.user?.email || '';
+  userEm.textContent = email;
+  userBox.style.display = 'flex';
+}
+
+// 處理 OAuth 回跳時夾帶的錯誤（例如帳號不在白名單，trigger 擋下）
+function checkAuthError(){
+  const h = new URLSearchParams((window.location.hash || '').replace(/^#/, ''));
+  if(h.get('error')){
+    const desc = decodeURIComponent(h.get('error_description') || '');
+    history.replaceState(null, '', window.location.pathname + window.location.search);
+    const friendly = /allowlist|未在允許名單/i.test(desc)
+      ? '此 Google 帳號未獲授權，請聯絡管理員加入白名單。'
+      : ('登入失敗：' + desc);
+    return friendly;
+  }
+  return null;
+}
+
+btn.addEventListener('click', async () => {
+  btn.disabled = true;
+  msg.textContent = '';
+  const { error } = await SB.auth.signInWithOAuth({
+    provider: 'google',
+    options: { redirectTo: window.location.origin + window.location.pathname }
+  });
+  if(error){ btn.disabled = false; msg.textContent = '登入失敗：' + error.message; }
+});
+
+logout.addEventListener('click', async () => {
+  await SB.auth.signOut();
+  location.reload();
+});
+
+SB.auth.onAuthStateChange((_event, session) => {
+  if(session) showLoggedIn(session);
+});
+
+(async () => {
+  const authErr = checkAuthError();
+  const { data: { session } } = await SB.auth.getSession();
+  if(session && !authErr){ showLoggedIn(session); }
+  else { showLogin(authErr); }
+})();
 </script>
 </body>
 </html>

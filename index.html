@@ -4352,7 +4352,9 @@ function tqf(f){
   Object.entries(ids).forEach(([k,id])=>document.getElementById(id)?.classList.toggle('active',qf.has(k)));
   renderTable();
 }
-function togWL(id,btn){if(wl.has(id)){wl.delete(id);btn.classList.remove('on');}else{wl.add(id);btn.classList.add('on');}localStorage.setItem('wl',JSON.stringify([...wl]));document.getElementById('c-wl').textContent=wl.size;}
+function togWL(id,btn){if(wl.has(id)){wl.delete(id);btn.classList.remove('on');}else{wl.add(id);btn.classList.add('on');}localStorage.setItem('wl',JSON.stringify([...wl]));document.getElementById('c-wl').textContent=wl.size;if(window._cloudWLToggle)window._cloudWLToggle(id,wl.has(id));}
+// Phase 3：供登入模組把雲端自選股套用回本機（closure 內可存取 let wl）
+window.applyCloudWL=function(ids){if(!Array.isArray(ids))return;ids.forEach(i=>wl.add(i));localStorage.setItem('wl',JSON.stringify([...wl]));const c=document.getElementById('c-wl');if(c)c.textContent=wl.size;if(typeof renderTable==='function')renderTable();};
 function setLd(m){const tb=document.getElementById('tblBody');if(!tb)return;tb.innerHTML=m?`<tr><td colspan="10"><div class="loading"><div class="spinner"></div><div>${m}</div></div></td></tr>`:'';}
 function setLU(){const n=new Date();const e=document.getElementById('lastUpd');if(e)e.textContent=n.toLocaleTimeString('zh-TW',{hour:'2-digit',minute:'2-digit'});}
 function showToast(m){const t=document.getElementById('toast');t.textContent=m;t.classList.add('show');setTimeout(()=>t.classList.remove('show'),3500);}
@@ -4416,11 +4418,45 @@ function showLogin(message){
   userBox.style.display = 'none';
 }
 
+let _wlLoaded = false;
 function showLoggedIn(session){
   gate.classList.add('hidden');
   const email = session?.user?.email || '';
   userEm.textContent = email;
   userBox.style.display = 'flex';
+  if(!_wlLoaded){ _wlLoaded = true; loadCloudWL(); }
+}
+
+// ===== Phase 3：自選股雲端同步 =====
+// 切換單檔（togWL 觸發）：加入→upsert、移除→delete
+window._cloudWLToggle = async (stockId, isAdded) => {
+  try {
+    const { data: { user } } = await SB.auth.getUser();
+    if(!user) return;
+    if(isAdded){
+      await SB.from('watchlist').upsert({ user_id: user.id, stock_id: stockId });
+    } else {
+      await SB.from('watchlist').delete().eq('user_id', user.id).eq('stock_id', stockId);
+    }
+  } catch(e){ console.warn('自選股雲端同步失敗', e); }
+};
+
+// 登入後：拉雲端自選股、合併本機、並把本機既有但雲端沒有的補上雲端（遷移舊資料）
+async function loadCloudWL(){
+  try {
+    const { data: { user } } = await SB.auth.getUser();
+    if(!user) return;
+    const { data, error } = await SB.from('watchlist').select('stock_id');
+    if(error) { console.warn('讀取雲端自選股失敗', error); return; }
+    const cloud = new Set((data || []).map(r => r.stock_id));
+    const local = new Set(JSON.parse(localStorage.getItem('wl') || '[]'));
+    const toPush = [...local].filter(id => !cloud.has(id));
+    if(toPush.length){
+      await SB.from('watchlist').upsert(toPush.map(id => ({ user_id: user.id, stock_id: id })));
+      toPush.forEach(id => cloud.add(id));
+    }
+    if(window.applyCloudWL) window.applyCloudWL([...cloud]);
+  } catch(e){ console.warn('loadCloudWL error', e); }
 }
 
 // 處理 OAuth 回跳時夾帶的錯誤（例如帳號不在白名單，trigger 擋下）
@@ -4449,6 +4485,7 @@ btn.addEventListener('click', async () => {
 
 logout.addEventListener('click', async () => {
   await SB.auth.signOut();
+  localStorage.removeItem('wl'); // 清本機快取，避免換帳號時資料混到
   location.reload();
 });
 

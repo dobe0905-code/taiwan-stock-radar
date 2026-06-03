@@ -330,6 +330,38 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     </div>
   </div>
 </div>
+
+<!-- 資料來源與更新頻率說明彈窗 -->
+<div id="dataInfoModal" style="display:none;position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)closeDataInfo()">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;max-width:600px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 16px 48px rgba(0,0,0,.6)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2)">
+      <div style="font-size:16px;font-weight:700;color:var(--text)">資料來源與更新頻率</div>
+      <div onclick="closeDataInfo()" style="cursor:pointer;font-size:20px;color:var(--text3);line-height:1">✕</div>
+    </div>
+    <div style="padding:18px 20px;font-size:13px;color:var(--text2);line-height:1.7">
+      <p style="margin:0 0 14px;color:var(--text3)">所有數值皆取自下列官方/公開來源原樣呈現，本平台不做估算或捏造。即時性受各來源本身限制。</p>
+      <table style="width:100%;border-collapse:collapse;font-size:12.5px">
+        <thead><tr style="color:var(--text3);text-align:left">
+          <th style="padding:6px 8px;border-bottom:1px solid var(--border)">資料</th>
+          <th style="padding:6px 8px;border-bottom:1px solid var(--border)">來源</th>
+          <th style="padding:6px 8px;border-bottom:1px solid var(--border)">更新頻率</th>
+        </tr></thead>
+        <tbody>
+          <tr><td style="padding:6px 8px">個股現價・內外盤・均價</td><td style="padding:6px 8px">證交所/櫃買 MIS</td><td style="padding:6px 8px;color:var(--green2)">盤中每數秒（約延遲30秒內）</td></tr>
+          <tr><td style="padding:6px 8px">當日分時走勢</td><td style="padding:6px 8px">MIS ＋ Yahoo 1分K</td><td style="padding:6px 8px;color:var(--green2)">盤中即時</td></tr>
+          <tr><td style="padding:6px 8px">日K線・均線・技術指標</td><td style="padding:6px 8px">Yahoo Finance</td><td style="padding:6px 8px">每日（最後一根盤中隨延遲更新）</td></tr>
+          <tr><td style="padding:6px 8px">上市/上櫃當日行情</td><td style="padding:6px 8px">證交所 MI_INDEX／櫃買</td><td style="padding:6px 8px">每日盤後（盤中由 MIS 覆蓋）</td></tr>
+          <tr><td style="padding:6px 8px">本益比・殖利率・PBR</td><td style="padding:6px 8px">證交所</td><td style="padding:6px 8px">每日盤後</td></tr>
+          <tr><td style="padding:6px 8px">三大法人・融資融券</td><td style="padding:6px 8px">證交所 T86／MI_MARGN</td><td style="padding:6px 8px;color:var(--amber2)">每日盤後（傍晚）</td></tr>
+          <tr><td style="padding:6px 8px">月營收</td><td style="padding:6px 8px">公開資訊觀測站</td><td style="padding:6px 8px;color:var(--amber2)">每月</td></tr>
+          <tr><td style="padding:6px 8px">集保股權分散</td><td style="padding:6px 8px">TDCC 集保中心</td><td style="padding:6px 8px;color:var(--amber2)">每週（週五更新）</td></tr>
+          <tr><td style="padding:6px 8px">美股・全球指數</td><td style="padding:6px 8px">Yahoo Finance</td><td style="padding:6px 8px">即時（免費源約延遲15分）</td></tr>
+        </tbody>
+      </table>
+      <p style="margin:14px 0 0;font-size:12px;color:var(--text3)">※ 操作策略（當沖/短線/長線進場・停損・目標）為依上述資料以技術規則（均線排列、ATR 波動度、RSI/MACD/量比）自動計算之<b>參考區間</b>，非預測或保證。詳見使用條款。</p>
+    </div>
+  </div>
+</div>
 <div id="header">
   <a class="brand" onclick="location.reload()" title="台股雷達 — 商標暨智慧財產權所有，未經授權不得使用">
     <svg class="brand-logo" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="台股雷達 logo">
@@ -378,7 +410,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <div class="api-badge api-off" id="tpexBadge">
       <div class="api-dot"></div><span>櫃買中心</span>
     </div>
-    <div class="delay-badge">⏱ 報價延遲30秒</div>
+    <div class="delay-badge" onclick="showDataInfo()" style="cursor:pointer" title="點我看各類資料的來源與更新頻率">⏱ 報價延遲30秒 ⓘ</div>
     <div class="upd-info">更新 <span id="lastUpd">--:--</span> &nbsp;·&nbsp; <span class="upd-val" id="cd">--:--</span></div>
     <div class="user-box" id="userBox" style="display:none">
       <span class="user-email" id="userEmail"></span>
@@ -2920,19 +2952,6 @@ function drawLineChart(stockId,kdata,chgP){
   });
 }
 
-function drawSimulatedChart(s, container){
-  container.innerHTML='<div style="position:relative;height:160px"><canvas id="c-price"></canvas></div>';
-  const canvas=document.getElementById('c-price');
-  if(!canvas) return;
-  const n=20,ps=[],lb=[];
-  let p=s.close*.95;
-  for(let i=0;i<n;i++){p+=p*(Math.random()-.48)*.02;ps.push(+p.toFixed(2));const d=new Date();d.setDate(d.getDate()-(n-i));lb.push((d.getMonth()+1)+'/'+(d.getDate()));}
-  ps[ps.length-1]=s.close;
-  const cc=s.chgP>=0?'#3fb950':'#f85149';
-  dCharts.p=new Chart(canvas,{type:'line',data:{labels:lb,datasets:[{data:ps,borderColor:cc,backgroundColor:cc==='#3fb950'?'rgba(63,185,80,.08)':'rgba(248,81,73,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:6}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}});
-}
-
-
 // ── 公司基本資料（月快照：TWSE/TPEx 官方）──
 async function loadCompanyData(s){
   const body=document.getElementById('company-body');
@@ -4315,6 +4334,8 @@ function toggleSub(el){const s=document.getElementById('sub-sectors'),a=document
 // ── 使用條款與免責聲明彈窗 ──
 function showTerms(){const m=document.getElementById('termsModal');if(m)m.style.display='flex';}
 function closeTerms(){const m=document.getElementById('termsModal');if(m)m.style.display='none';}
+function showDataInfo(){const m=document.getElementById('dataInfoModal');if(m)m.style.display='flex';}
+function closeDataInfo(){const m=document.getElementById('dataInfoModal');if(m)m.style.display='none';}
 
 // ── 側欄分組縮小/展開：點標題切換到下一個 .sb-label 之前的所有兄弟節點 ──
 function toggleSbGroup(label){

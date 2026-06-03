@@ -17,6 +17,34 @@ function memGet(key) {
 function memSet(key, payload, ttlMs) {
   _mem.set(key, { exp: Date.now() + ttlMs, payload });
 }
+// 即使已過期也回傳舊資料（上游全掛時的最後防線，避免回傳空清單或 500）
+function memGetStale(key) {
+  const e = _mem.get(key);
+  return e ? e.payload : null;
+}
+
+// 帶「逾時 + 重試」的 fetch：
+//  - 上游（TPEx/TWSE）偶發 socket 中斷會讓 fetch 直接 throw（undici 'terminated'），
+//    若沒包好就會冒泡到最外層 catch → 整支 API 回 500「資料取得失敗：terminated」。
+//  - 用 AbortController 設逾時（預設 8 秒，壓在 Vercel 10 秒 timeout 之下），
+//    失敗則短暫等待後重試一次；仍失敗才丟出，交由呼叫端處理（退回備援/舊快取）。
+async function fetchRetry(url, opts = {}, { retries = 1, timeoutMs = 8000 } = {}) {
+  let lastErr;
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, { ...opts, signal: ctrl.signal });
+      clearTimeout(timer);
+      return r;
+    } catch (e) {
+      clearTimeout(timer);
+      lastErr = e;
+      if (attempt < retries) await new Promise(s => setTimeout(s, 300));
+    }
+  }
+  throw lastErr;
+}
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
@@ -170,7 +198,7 @@ export default async function handler(req, res) {
         const yy = today.getFullYear() - 1911;
         const mm = String(today.getMonth()+1).padStart(2,'0');
         const dd = String(today.getDate()).padStart(2,'0');
-        const r = await fetch(
+        const r = await fetchRetry(
           `https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_close_download.php?d=${yy}%2F${mm}%2F${dd}&s=0,asc,0&o=json`,
           { headers: { 'Accept': 'application/json', 'Referer': 'https://www.tpex.org.tw/' } }
         );
@@ -195,13 +223,15 @@ export default async function handler(req, res) {
         }
       } catch(e) { console.log('TPEx daily failed:', e.message); }
 
-      // 備援：openapi
+      // 備援：openapi（包 try/catch + 逾時重試，避免 terminated 冒泡到最外層 catch 變成 500）
       if (!data || data.length < 50) {
-        const r = await fetch(
-          'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes',
-          { headers: { 'Accept': 'application/json' } }
-        );
-        data = await r.json();
+        try {
+          const r = await fetchRetry(
+            'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes',
+            { headers: { 'Accept': 'application/json' } }
+          );
+          if (r.ok) data = await r.json();
+        } catch (e) { console.log('TPEx openapi failed:', e.message); }
       }
 
       // 過濾權證/牛熊證/ETN，只保留普通股與 ETF
@@ -215,6 +245,16 @@ export default async function handler(req, res) {
         return false;                                  // 其餘（6 位權證等）剔除
       };
       data = (data || []).filter(d => isRealStock(d.SecuritiesCompanyCode, d.CompanyName));
+
+      // 兩個來源都失敗（上游中斷/逾時）→ 回退到記憶體舊快取（即使過期），
+      // 避免前端拿到空清單或 500。短 s-maxage 讓 CDN 很快再回源拿新資料。
+      if (!data || data.length < 50) {
+        const stale = memGetStale('tpex_list');
+        if (stale) {
+          res.setHeader('Cache-Control', 's-maxage=60, stale-while-revalidate=600');
+          return res.status(200).json({ ...stale, stale: true });
+        }
+      }
 
       const _payload = { data, source: 'TPEx', ts: new Date().toISOString() };
       if (data && data.length > 50) memSet('tpex_list', _payload, 180 * 1000);

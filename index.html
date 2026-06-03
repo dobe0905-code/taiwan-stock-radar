@@ -992,7 +992,8 @@ window.addEventListener('firebase-ready', ()=>{
 // ── 資料載入（分階段：TWSE 先顯示，TPEx+PER 背景載入）──
 async function loadData(){
   window._dataLoaded = true;
-  setLd('正在載入全部台股...');
+  // 僅首次載入（目前無資料）顯示載入動畫；自動更新時保留現有表格、背景靜默刷新，避免畫面閃成空白。
+  if(!stocks.length) setLd('正在載入全部台股...');
   try{
     // 指標類背景請求同時發出（並行，互不阻塞，回來後就地補欄位）
     const pPer = fetch(`${API}?type=twse_per`).then(r=>r.json()).catch(()=>({data:[]}));
@@ -1306,7 +1307,12 @@ let tblShowAll=false;
 
 function renderTable(){
   const l=getFiltered(), tb=document.getElementById('tblBody');
-  if(!l.length){tb.innerHTML='<tr><td colspan="10"><div class="empty">找不到符合條件的股票</div></td></tr>';return;}
+  if(!l.length){
+    // stocks 為空 = 台股尚未載入完成（例如登入後雲端自選股先回來觸發 renderTable）→ 顯示載入動畫，
+    // 而非誤判為「篩選無結果」把載入轉圈洗掉。只有 stocks 已有資料但篩選後為空，才顯示「找不到」。
+    if(!stocks.length){tb.innerHTML='<tr><td colspan="10"><div class="loading"><div class="spinner"></div><div>正在載入全部台股...</div></div></td></tr>';return;}
+    tb.innerHTML='<tr><td colspan="10"><div class="empty">找不到符合條件的股票</div></td></tr>';return;
+  }
   const useAnim=l.length<=100; // 小列表才用動畫
   const visible = (tblShowAll || l.length<=TBL_PAGE) ? l : l.slice(0,TBL_PAGE);
   const makeRow=(s,i)=>{

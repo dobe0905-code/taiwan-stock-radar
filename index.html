@@ -386,6 +386,15 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <button onclick="stayLoggedIn()" style="width:100%;background:var(--accent);color:#fff;border:none;border-radius:9px;padding:11px;font-size:15px;font-weight:600;cursor:pointer;font-family:inherit">繼續使用</button>
   </div>
 </div>
+<div id="strategyGuideModal" style="display:none;position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)closeStratGuide()">
+  <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;max-width:560px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 16px 48px rgba(0,0,0,.6)">
+    <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2)">
+      <div style="font-size:16px;font-weight:700;color:var(--text)">📋 操作決策檢查清單 — <span id="sgTitle"></span></div>
+      <div onclick="closeStratGuide()" style="cursor:pointer;font-size:20px;color:var(--text3);line-height:1">✕</div>
+    </div>
+    <div id="sgBody" style="padding:18px 22px"></div>
+  </div>
+</div>
 <div id="dataInfoModal" style="display:none;position:fixed;inset:0;z-index:100001;background:rgba(0,0,0,.6);align-items:center;justify-content:center;padding:20px" onclick="if(event.target===this)closeDataInfo()">
   <div style="background:var(--bg2);border:1px solid var(--border2);border-radius:14px;max-width:600px;width:100%;max-height:85vh;overflow:auto;box-shadow:0 16px 48px rgba(0,0,0,.6)">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:16px 20px;border-bottom:1px solid var(--border);position:sticky;top:0;background:var(--bg2)">
@@ -2584,7 +2593,54 @@ async function buildDetCharts(s){
       + note(ctxLines.map(t=>'· '+t).join('<br>'))
       + note('<b style="color:var(--text2)">'+ctxAct+'</b><br>※ 情境僅影響「該不該進、部位大小」，<b>不改變</b>下方 ATR 校準的進場/停損/目標價位。');
 
-    el.innerHTML = ctx + divider + dt + divider + st + divider + lt
+    // ── 📋 操作決策檢查清單（動態版）：把上方已算好的數值整理成 5 題判讀流程，點按鈕彈窗顯示 ──
+    // 全部複用本函式已計算的 MA/ATR/RSI/MACD/量比/大盤濾網/長線狀態，零新增運算與 API。
+    (function buildGuide(){
+      const gBull = ma5>ma10&&ma10>ma20&&cur>ma60;
+      const gBear = ma5<ma10&&ma10<ma20&&cur<ma60;
+      const stStop=cur-2.0*atr, stTarget=cur+2.4*atr, stIdeal=Math.min(ma10,cur);
+      const ltStop=cur-3.2*atr, ltTarget=cur+4.9*atr, ltIdeal=Math.min(ma60,cur);
+      const extDesc=(support,lbl)=>{
+        if(!(atr>0&&support>0)) return '位置資料不足';
+        const ext=(cur-support)/atr;
+        if(ext>2) return `現價高於${lbl} ${f(support)} 達 ${ext.toFixed(1)} 個 ATR（偏延伸/追高），<b style="color:var(--amber2)">理想等拉回 ${lbl}附近</b>再進`;
+        if(ext<0.3) return `現價已貼近 ${lbl} ${f(support)}，<b style="color:var(--green2)">屬理想拉回買區</b>`;
+        return `現價距 ${lbl} ${f(support)} 約 ${ext.toFixed(1)} 個 ATR，位置尚合理`;
+      };
+      const regTxt = mktRegime==='bull' ? '<b style="color:var(--green2)">大盤站上季線 ✅</b> 偏多環境，可正常參與'
+                  : mktRegime==='bear' ? '<b style="color:var(--red2)">大盤跌破季線 ⚠️</b> 逆勢，做多勝率下降，宜減碼或觀望'
+                  : '大盤季線方向中性';
+      const momTxt = `RSI ${rsi14!=null?rsi14:'—'} ／ MACD DIF ${dif!=null?(dif>0?'&gt;0 多方續行':'&lt;0 動能轉弱'):'—'} ／ 量比 ${vr5!=null?vr5+'x':'—'}`;
+      const Q=(n,t,body)=>`<div style="margin:14px 0 0"><div style="font-size:15px;font-weight:700;color:var(--text)">${n} ${t}</div><div style="font-size:14px;color:var(--text2);line-height:1.75;margin-top:4px">${body}</div></div>`;
+      // ② 中期強弱
+      let q2;
+      if(gBull) q2=`均線多頭排列：MA5 ${f(ma5)} &gt; MA10 ${f(ma10)} &gt; MA20 ${f(ma20)}，且站上季線 MA60 ${f(ma60)} ✅<br>季線${ma60Up?'<b style="color:var(--green2)">上揚 ✅</b>（趨勢健康關鍵）':'<b style="color:var(--red2)">走平/下彎 ⚠️</b>（動能不足）'}<br>動能：${momTxt}`;
+      else if(gBear) q2=`<b style="color:var(--red2)">均線空頭排列＋跌破季線</b>，弱勢——做多避開，勿接刀。反彈壓力參考 MA20 ${f(ma20)}`;
+      else q2=`<b style="color:var(--amber2)">均線糾結／未站穩季線</b>，方向不明，建議觀望等突破。MA20 ${f(ma20)}／季線 ${f(ma60)}`;
+      // ③④ 短線進出場（僅多頭排列才給做多價位）
+      let q34;
+      if(gBull) q34=Q('③','進場區間在哪？（不追高）',`短線（5–20日）→ <b style="color:var(--accent2)">${f(stIdeal)} ~ ${f(cur)}</b>（理想拉回 MA10 ↔ 現價）<br>${extDesc(ma10,'MA10')}`)
+        +Q('④','停損 &amp; 目標先定好（短線）',`停損 <b style="color:var(--red2)">${f(stStop)}</b>（${sgn(pcd(cur,stStop))}，現價 −2.0×ATR）　目標 <b style="color:var(--green2)">${f(stTarget)}</b>（${sgn(pcd(cur,stTarget))}，+2.4×ATR）<br>風報比 ≈ 1.2（賺的空間 &gt; 賠的空間）`);
+      else q34=Q('③④','進場/停損/目標',`目前非多頭排列，<b>不提供做多進場價位</b>；先等趨勢轉強或突破再評估。`);
+      // 長線
+      let qLong;
+      if(ls&&ls.cls==='ls-strong') qLong=`營收體質強 × ${mktRegime==='bull'?'<b style="color:var(--green2)">季線站上</b>':mktRegime==='bear'?'<b style="color:var(--red2)">季線跌破</b>':'季線中性'} → 偏多<br>進場區間 <b style="color:var(--accent2)">${f(ltIdeal)} ~ ${f(cur)}</b>（拉回季線↔現價）<br>${extDesc(ma60,'季線')}<br>停損 <b style="color:var(--red2)">${f(ltStop)}</b>（${sgn(pcd(cur,ltStop))}）　目標 <b style="color:var(--green2)">${f(ltTarget)}</b>（${sgn(pcd(cur,ltTarget))}）　風報比 ≈ 1.5`;
+      else qLong=ls?(ls.lbl+'：'+(ls.reason||'依月營收分級判斷')):'無月營收資料，長線狀態無法判斷';
+      // 當沖
+      const dtTxt=`流動性 ${fmV(s.vol)}張 ${liquid?'✓':'✗(&lt;3000，市場中位)'} ／ 波動 ATR ${atrP.toFixed(1)}% ${volatile?'✓':'✗(&lt;2.6%，低於市場中位)'} → <b style="color:${(liquid&&volatile)?'var(--green2)':'var(--text3)'}">${(liquid&&volatile)?'具備當沖條件':'條件不足'}</b>`;
+      window._stratGuide = `
+        <div style="font-size:14px;color:var(--text2);line-height:1.7">看到訊號後，照順序自問 5 題，全過再考慮出手。</div>
+        ${Q('①','大盤順風嗎？',regTxt)}
+        ${Q('②','這支現在強勢嗎？（中期趨勢）',q2)}
+        ${q34}
+        ${Q('⑤','部位控制',`${ctxLbl}（${ctxAct}）<br>單筆風險不超過總資金的固定比例。`)}
+        <div style="border-top:1px solid var(--border);margin:14px 0 0;padding-top:10px"><div style="font-size:15px;font-weight:700;color:var(--text)">🚀 若做長線（數月）</div><div style="font-size:14px;color:var(--text2);line-height:1.75;margin-top:4px">${qLong}</div></div>
+        <div style="border-top:1px solid var(--border);margin:12px 0 0;padding-top:10px"><div style="font-size:15px;font-weight:700;color:var(--text)">⚡ 當沖</div><div style="font-size:14px;color:var(--text2);line-height:1.75;margin-top:4px">${dtTxt}</div></div>
+        <div style="border-top:1px solid var(--border);margin:14px 0 0;padding-top:10px;font-size:13px;color:var(--text3);line-height:1.7">💡 核心觀念：不靠「猜對方向」，靠「賺多賠少＋嚴守停損」。沒有工具能預測未來或保證獲利。<br>⚠ 本內容為資料整理與方法說明，<b>非投資建議，不保證獲利，投資風險自負</b>。</div>`;
+      window._stratGuideTitle = `${s.name||''} ${s.id||''}`;
+    })();
+    const guideBtn = `<div style="text-align:right;margin-bottom:8px"><button onclick="openStratGuide()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--accent2);border-radius:7px;padding:6px 13px;font-size:14px;cursor:pointer;font-family:inherit">📋 怎麼判讀</button></div>`;
+    el.innerHTML = guideBtn + ctx + divider + dt + divider + st + divider + lt
       + `<div style="font-size:14px;color:var(--text3);line-height:1.6;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆為規則化計算：停損/目標＝ATR 倍數距離；季線斜率、突破量比為過濾條件。底部「今日盤面評分」的 RSI/MACD/量比 已以「正確用法」納入上方方向判斷（非 naive 金叉/爆量＝買：強多中爆量視為警訊、RSI 過熱屬動能確認、趨勢中拉回為較佳買點）。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
   }
 
@@ -4411,6 +4467,17 @@ function showTerms(){const m=document.getElementById('termsModal');if(m)m.style.
 function closeTerms(){const m=document.getElementById('termsModal');if(m)m.style.display='none';}
 function showDataInfo(){const m=document.getElementById('dataInfoModal');if(m)m.style.display='flex';}
 function closeDataInfo(){const m=document.getElementById('dataInfoModal');if(m)m.style.display='none';}
+function openStratGuide(){
+  const m=document.getElementById('strategyGuideModal');
+  const b=document.getElementById('sgBody');
+  const t=document.getElementById('sgTitle');
+  if(!m||!b) return;
+  if(!window._stratGuide){ b.innerHTML='<div style="color:var(--text3);font-size:13px">尚無資料（請等個股策略載入完成後再試）</div>'; }
+  else b.innerHTML=window._stratGuide;
+  if(t) t.textContent=window._stratGuideTitle||'';
+  m.style.display='flex';
+}
+function closeStratGuide(){const m=document.getElementById('strategyGuideModal');if(m)m.style.display='none';}
 
 // ── 行動裝置：漢堡選單開關側欄抽屜 ──
 function toggleSidebar(){document.body.classList.toggle('sb-open');}

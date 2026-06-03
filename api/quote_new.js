@@ -2,12 +2,14 @@
 // 台灣證交所 + 櫃買中心 免費即時 API
 import { promises as fs } from 'fs';
 import path from 'path';
+import { requireAuth } from './_auth.js';
 
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
-  res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
   if (req.method === 'OPTIONS') return res.status(200).end();
+  if (!(await requireAuth(req, res))) return;
 
   const { type, market, stocks, stock_id } = req.query;
 

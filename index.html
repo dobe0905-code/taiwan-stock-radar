@@ -4377,6 +4377,26 @@ const SB_KEY = 'sb_publishable_6xtAJOfaWgo715ZjzRtdYg_ffUo-rma';
 const SB = createClient(SB_URL, SB_KEY);
 window._sb = SB;
 
+// ===== Phase 2: 所有打 /api/ 的請求自動帶上登入 token =====
+const _origFetch = window.fetch.bind(window);
+window.fetch = async function(input, init){
+  init = init || {};
+  let url = '';
+  try { url = typeof input === 'string' ? input : (input && input.url) || String(input); } catch(e){}
+  if(url.indexOf('/api/') !== -1){
+    try {
+      const { data:{ session } } = await SB.auth.getSession();
+      const tok = session?.access_token;
+      if(tok){
+        const h = new Headers(init.headers || (typeof input !== 'string' && input.headers) || {});
+        h.set('Authorization', 'Bearer ' + tok);
+        init = { ...init, headers: h };
+      }
+    } catch(e){ /* 未登入則不帶 token，API 會回 401 */ }
+  }
+  return _origFetch(input, init);
+};
+
 const gate   = document.getElementById('authGate');
 const subEl  = document.getElementById('authSub');
 const btn    = document.getElementById('authGoogleBtn');

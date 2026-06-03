@@ -4639,32 +4639,36 @@ window.doLogout = doLogout;
 logout.addEventListener('click', doLogout);
 
 // ── 閒置自動登出（15 分鐘無操作；登出前 60 秒跳提示倒數）──
+// 以「現實時間」計算：記錄最後操作時間戳，每秒比對 Date.now()，並在喚醒/切回分頁時立即檢查。
+// 即使裝置深度休眠（JavaScript 被凍結），喚醒後一比對現實時間就會正確判斷，行為一致可預測。
 const IDLE_LIMIT = 15 * 60 * 1000;   // 15 分鐘
 const IDLE_WARN  = 60 * 1000;        // 登出前 60 秒提示
-let _idleWarnT=null, _idleOutT=null, _idleCountT=null, _idleActive=false;
-function clearIdleTimers(){ clearTimeout(_idleWarnT); clearTimeout(_idleOutT); clearInterval(_idleCountT); }
-function hideIdleWarn(){ const w=document.getElementById('idleWarn'); if(w) w.style.display='none'; }
-function resetIdle(){
-  if(!_idleActive) return;             // 未登入不計時
-  clearIdleTimers(); hideIdleWarn();
-  _idleWarnT = setTimeout(showIdleWarn, IDLE_LIMIT - IDLE_WARN);
-  _idleOutT  = setTimeout(doLogout, IDLE_LIMIT);
+let _idleActive=false, _lastActivity=Date.now(), _idleInt=null, _warnShown=false;
+function idleTick(){
+  if(!_idleActive) return;
+  const elapsed = Date.now() - _lastActivity;
+  if(elapsed >= IDLE_LIMIT){ doLogout(); return; }
+  const w=document.getElementById('idleWarn'), c=document.getElementById('idleCount');
+  if(elapsed >= IDLE_LIMIT - IDLE_WARN){
+    _warnShown=true;
+    if(w) w.style.display='flex';
+    if(c) c.textContent=Math.max(0, Math.ceil((IDLE_LIMIT - elapsed)/1000));
+  } else if(_warnShown){
+    _warnShown=false;
+    if(w) w.style.display='none';
+  }
 }
-function showIdleWarn(){
-  const w=document.getElementById('idleWarn'); const c=document.getElementById('idleCount');
-  if(!w) return;
-  let left=Math.round(IDLE_WARN/1000);
-  if(c) c.textContent=left;
-  w.style.display='flex';
-  _idleCountT=setInterval(()=>{ left--; if(c) c.textContent=Math.max(0,left); if(left<=0) clearInterval(_idleCountT); }, 1000);
-}
-function stayLoggedIn(){ resetIdle(); }   // 「繼續使用」按鈕
+function bumpActivity(){ if(_warnShown) return; _lastActivity=Date.now(); }  // 提示中需明確點按鈕，被動操作不重置
+function stayLoggedIn(){ _lastActivity=Date.now(); _warnShown=false; const w=document.getElementById('idleWarn'); if(w) w.style.display='none'; }
 window.stayLoggedIn = stayLoggedIn;
 function startIdleWatch(){
-  if(_idleActive) return; _idleActive=true;
+  if(_idleActive) return; _idleActive=true; _lastActivity=Date.now();
   ['mousemove','mousedown','keydown','scroll','touchstart','click'].forEach(ev=>
-    window.addEventListener(ev, ()=>{ const w=document.getElementById('idleWarn'); if(!w||w.style.display!=='flex') resetIdle(); }, {passive:true}));
-  resetIdle();
+    window.addEventListener(ev, bumpActivity, {passive:true}));
+  // 切回分頁 / 視窗重新取得焦點（含休眠喚醒）→ 立即用現實時間檢查
+  document.addEventListener('visibilitychange', ()=>{ if(!document.hidden) idleTick(); });
+  window.addEventListener('focus', idleTick);
+  _idleInt=setInterval(idleTick, 1000);
 }
 
 SB.auth.onAuthStateChange((_event, session) => {

@@ -4,6 +4,19 @@ import { promises as fs } from 'fs';
 import path from 'path';
 import { requireAuth } from './_auth.js';
 
+// 記憶體快取：把較重的清單回應在函式熱著時暫存數分鐘，
+// 避免每個請求都重抓證交所/櫃買（尤其重複登入、重新整理、多人同時用時）。
+// TTL 設在前端 5 分鐘自動更新之下，確保自動更新仍會拿到新資料。
+const _mem = new Map(); // key -> { exp, payload }
+function memGet(key) {
+  const e = _mem.get(key);
+  if (e && e.exp > Date.now()) return e.payload;
+  return null;
+}
+function memSet(key, payload, ttlMs) {
+  _mem.set(key, { exp: Date.now() + ttlMs, payload });
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -40,6 +53,11 @@ export default async function handler(req, res) {
     //    備援：openapi STOCK_DAY_ALL（前一日，至少有資料）
     // ══════════════════════════════════════════════════
     if (type === 'twse_list' || !type) {
+      const _hit = memGet('twse_list');
+      if (_hit) {
+        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1200');
+        return res.status(200).json(_hit);
+      }
       let data = null;
 
       // 主要：TWSE 官網 MI_INDEX 當日全市場行情
@@ -127,14 +145,21 @@ export default async function handler(req, res) {
         data = await r.json();
       }
 
+      const _payload = { data, source: 'TWSE', ts: new Date().toISOString() };
+      if (data && data.length > 100) memSet('twse_list', _payload, 180 * 1000); // 僅在資料完整時快取 3 分鐘
       res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1200');
-      return res.status(200).json({ data, source: 'TWSE', ts: new Date().toISOString() });
+      return res.status(200).json(_payload);
     }
 
     // ══════════════════════════════════════════════════
     // 2. 上櫃股票清單 — 當日行情
     // ══════════════════════════════════════════════════
     if (type === 'tpex_list') {
+      const _hit = memGet('tpex_list');
+      if (_hit) {
+        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1200');
+        return res.status(200).json(_hit);
+      }
       let data = null;
 
       // 主要：TPEx 官網當日行情
@@ -189,14 +214,21 @@ export default async function handler(req, res) {
       };
       data = (data || []).filter(d => isRealStock(d.SecuritiesCompanyCode, d.CompanyName));
 
+      const _payload = { data, source: 'TPEx', ts: new Date().toISOString() };
+      if (data && data.length > 50) memSet('tpex_list', _payload, 180 * 1000);
       res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1200');
-      return res.status(200).json({ data, source: 'TPEx', ts: new Date().toISOString() });
+      return res.status(200).json(_payload);
     }
 
     // ══════════════════════════════════════════════════
     // 2b. 興櫃股票每日行情（TPEx openapi，議價市場無漲跌幅限制）
     // ══════════════════════════════════════════════════
     if (type === 'emerging_list') {
+      const _hit = memGet('emerging_list');
+      if (_hit) {
+        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1200');
+        return res.status(200).json(_hit);
+      }
       let data = [];
       try {
         const r = await fetch(
@@ -223,8 +255,10 @@ export default async function handler(req, res) {
         }
       } catch (e) { console.log('emerging failed:', e.message); }
 
+      const _payload = { data, source: 'TPEx_ESB', ts: new Date().toISOString() };
+      if (data && data.length > 20) memSet('emerging_list', _payload, 180 * 1000);
       res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1200');
-      return res.status(200).json({ data, source: 'TPEx_ESB', ts: new Date().toISOString() });
+      return res.status(200).json(_payload);
     }
 
     // ══════════════════════════════════════════════════

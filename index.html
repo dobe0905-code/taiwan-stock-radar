@@ -991,6 +991,7 @@ window.addEventListener('firebase-ready', ()=>{
 
 // ── 資料載入（分階段：TWSE 先顯示，TPEx+PER 背景載入）──
 async function loadData(){
+  window._dataLoaded = true;
   setLd('正在載入全部台股...');
   try{
     // 指標類背景請求同時發出（並行，互不阻塞，回來後就地補欄位）
@@ -4368,7 +4369,9 @@ function schedRef(){
     if(r===0)loadData();
   },1000);
 }
-window.addEventListener('load',loadData);
+// Phase 2/3：資料載入改由登入確認後觸發（showLoggedIn），避免剛登入時 session 尚未就緒導致 /api 無 token 被 401。
+// 此處保留一個延遲保險：若 1.2 秒後仍未載入（例如 Supabase CDN 異常），仍嘗試載入一次。
+window.addEventListener('load',()=>{setTimeout(()=>{if(!window._dataLoaded)loadData();},1200);});
 </script>
 <script type="module">
 // ===== Phase 1: Supabase 登入閘門（邀請制 Google 登入）=====
@@ -4425,6 +4428,8 @@ function showLoggedIn(session){
   userEm.textContent = email;
   userBox.style.display = 'flex';
   if(!_wlLoaded){ _wlLoaded = true; loadCloudWL(); }
+  // Phase 2/3：登入確認後（token 已就緒）才載入台股資料，修正「剛登入那一次」載不出的時間差。
+  if(!window._dataLoaded && typeof window.loadData === 'function'){ window.loadData(); }
 }
 
 // ===== Phase 3：自選股雲端同步 =====

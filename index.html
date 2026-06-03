@@ -274,7 +274,47 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .ai-dot.on{background:var(--accent2);}
 .ai-open{cursor:pointer;font-size:13px;font-weight:700;color:var(--accent2);white-space:nowrap;}
 .ai-disc2{font-size:12px;color:var(--text3);line-height:1.5;padding:0 14px 12px;}
-@media(max-width:1200px){#sidebar{display:none;}#det{width:100%;}.col-law,.col-yld{display:none;}}
+/* ── 漢堡選單按鈕 + 遮罩（桌面隱藏，行動裝置顯示）── */
+.nav-toggle{display:none;flex-shrink:0;width:38px;height:34px;flex-direction:column;justify-content:center;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;cursor:pointer;padding:0;margin-right:2px;}
+.nav-toggle span{display:block;width:18px;height:2px;background:var(--text);border-radius:2px;transition:.2s;}
+#sbOverlay{display:none;position:fixed;inset:0;top:var(--header);background:rgba(0,0,0,.5);z-index:39;}
+
+/* ── 平板（≤1200px）：側欄改為抽屜，詳情面板滿版 ── */
+@media(max-width:1200px){
+  .col-law,.col-yld{display:none;}
+  .nav-toggle{display:flex;}
+  #det{width:100%;}
+  #sidebar{position:fixed;top:var(--header);left:0;height:calc(100vh - var(--header));z-index:40;transform:translateX(-100%);transition:transform .25s cubic-bezier(.4,0,.2,1);box-shadow:4px 0 20px rgba(0,0,0,.45);}
+  body.sb-open #sidebar{transform:translateX(0);}
+  body.sb-open #sbOverlay{display:block;}
+}
+
+/* ── 手機（≤760px）：縮小字級、精簡欄位、緊湊排版 ── */
+@media(max-width:760px){
+  body{font-size:15px;}
+  #header{padding:0 10px;gap:8px;}
+  .header-right{gap:6px;}
+  .upd-info,.delay-badge .dbtxt{font-size:11px;}
+  .api-badge span{display:none;}
+  .col-vol,.col-chg{display:none;}
+  .mkt-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;}
+  .mkt-tab{padding:11px 14px;font-size:15px;flex-shrink:0;}
+  .summary-bar{padding:8px 10px;gap:6px;}
+  .sum-card{min-width:88px;padding:8px 10px;}
+  .sum-val{font-size:22px;}
+  .filter-bar{padding:7px 10px;gap:5px;}
+  .f-btn{padding:6px 11px;font-size:14px;}
+  .tbl thead th{padding:9px 7px;font-size:13px;}
+  .tbl tbody td{padding:9px 7px;}
+  .td-id{font-size:14px;}
+  .td-name{font-size:15px;}
+  .td-price{font-size:16px;}
+  .td-sec{font-size:12px;}
+  .pill{font-size:13px;padding:3px 7px;}
+  .sig{font-size:13px;padding:4px 9px;}
+  #sidebar{width:78vw;max-width:300px;}
+  .daily-brief{margin:10px;}
+}
 </style>
 </head>
 <body>
@@ -363,6 +403,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
   </div>
 </div>
 <div id="header">
+  <button id="navToggle" class="nav-toggle" onclick="toggleSidebar()" aria-label="選單" title="選單">
+    <span></span><span></span><span></span>
+  </button>
   <a class="brand" onclick="location.reload()" title="台股雷達 — 商標暨智慧財產權所有，未經授權不得使用">
     <svg class="brand-logo" viewBox="0 0 40 40" fill="none" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="台股雷達 logo">
       <defs>
@@ -421,6 +464,7 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 
 
 <div id="app">
+  <div id="sbOverlay" onclick="toggleSidebar()"></div>
   <aside id="sidebar">
     <div class="sb-label" onclick="toggleSbGroup(this)">總覽</div>
     <div class="sb-item active" onclick="setSF('all',this)"><span>全部股票</span><span class="sb-cnt" id="c-all">—</span></div>
@@ -518,8 +562,8 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
           <th class="sortable" data-key="chgP" onclick="setSort('chgP')">漲跌幅<span class="sort-ind"></span></th>
           <th class="col-law sortable" data-key="peV" onclick="setSort('peV')">本益比<span class="sort-ind"></span></th>
           <th class="col-yld sortable" data-key="yld" onclick="setSort('yld')">殖利率<span class="sort-ind"></span></th>
-          <th class="sortable" data-key="vol" onclick="setSort('vol')">成交量<span class="sort-ind"></span></th>
-          <th class="sortable" data-key="chg" onclick="setSort('chg')">漲跌價<span class="sort-ind"></span></th>
+          <th class="col-vol sortable" data-key="vol" onclick="setSort('vol')">成交量<span class="sort-ind"></span></th>
+          <th class="col-chg sortable" data-key="chg" onclick="setSort('chg')">漲跌價<span class="sort-ind"></span></th>
           <th class="sortable" data-key="sig" onclick="setSort('sig')" title="當日強弱：僅反映今天這根 K 棒的漲跌/量能，非買賣方向；與個股面板「當日強弱」相同">當日強弱<span class="sort-ind"></span></th>
         </tr></thead>
         <tbody id="tblBody">
@@ -1399,8 +1443,8 @@ function renderTable(){
       <td><span class="pill ${s.chgP>0?'pill-up':s.chgP<0?'pill-dn':'pill-neu'}">${s.chgP>=0?'+':''}${s.chgP.toFixed(2)}%</span></td>
       <td class="col-law"><span class="td-m">${s.peV?s.peV.toFixed(1):'—'}</span></td>
       <td class="col-yld"><span class="td-m">${s.yld?s.yld.toFixed(2)+'%':'—'}</span></td>
-      <td><span class="td-m">${fmV(s.vol)}</span></td>
-      <td><span class="td-m ${s.chg>0?'c-up':s.chg<0?'c-dn':'c-neu'}">${s.chg>0?'+':''}${s.chg.toFixed(2)}</span></td>
+      <td class="col-vol"><span class="td-m">${fmV(s.vol)}</span></td>
+      <td class="col-chg"><span class="td-m ${s.chg>0?'c-up':s.chg<0?'c-dn':'c-neu'}">${s.chg>0?'+':''}${s.chg.toFixed(2)}</span></td>
       <td><span class="sig ${s.sig.cls}">${s.sig.lbl}</span></td>
     </tr>`;
   };
@@ -4336,6 +4380,17 @@ function showTerms(){const m=document.getElementById('termsModal');if(m)m.style.
 function closeTerms(){const m=document.getElementById('termsModal');if(m)m.style.display='none';}
 function showDataInfo(){const m=document.getElementById('dataInfoModal');if(m)m.style.display='flex';}
 function closeDataInfo(){const m=document.getElementById('dataInfoModal');if(m)m.style.display='none';}
+
+// ── 行動裝置：漢堡選單開關側欄抽屜 ──
+function toggleSidebar(){document.body.classList.toggle('sb-open');}
+function closeSidebar(){document.body.classList.remove('sb-open');}
+// 在手機選單裡點任一篩選/市場/族群後自動收起抽屜（桌面寬度不受影響）
+document.addEventListener('click',function(e){
+  if(window.innerWidth>1200)return;
+  if(!document.body.classList.contains('sb-open'))return;
+  const it=e.target.closest('#sidebar .sb-item,#sidebar .sb-mkt,#sidebar .sb-sub-item');
+  if(it)setTimeout(closeSidebar,160);
+});
 
 // ── 側欄分組縮小/展開：點標題切換到下一個 .sb-label 之前的所有兄弟節點 ──
 function toggleSbGroup(label){

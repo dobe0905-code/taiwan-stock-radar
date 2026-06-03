@@ -383,13 +383,13 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
     <div class="sb-mkt mkt-tab" onclick="setMkt('etf',this)"><span>📦 ETF</span></div>
     <div class="sb-mkt mkt-tab" onclick="setMkt('global',this)"><span>🌐 全球指數</span></div>
     <div class="sb-label" onclick="toggleSbGroup(this)">選股因子（回測驗證）</div>
-    <div class="sb-item" onclick="setSF('long_buy',this)" title="長線策略狀態：月營收高成長 ＋ 大盤站上季線（回測有效區）。大盤跌破季線時會自動排除（順勢因子空頭期反轉）"><span>🚀 長線布局</span><span class="sb-cnt" id="c-long_buy">—</span></div>
+    <div class="sb-item" onclick="setSF('long_buy',this)" title="長線策略狀態：月營收高成長 ＋ 大盤站上季線。大盤跌破季線時會自動排除（順勢因子空頭期會反轉）"><span>🚀 長線布局</span><span class="sb-cnt" id="c-long_buy">—</span></div>
     <div id="regimeBar" style="font-size:10px;color:var(--text3);padding:2px 14px 6px 28px;line-height:1.4">大盤趨勢：載入中…</div>
-    <div class="sb-item" onclick="setSF('rev_hi',this)" title="月營收年增>20%：多頭/正常盤回測20日對大盤超額+1.3%、勝率61%（中小型股更強+1.7%）。⚠️順勢因子，2022空頭期回測會反轉失效，需配合大盤趨勢（指數站上月/季線才啟用）"><span>📈 營收高成長</span><span class="sb-cnt" id="c-rev_hi">—</span></div>
-    <div class="sb-item" onclick="setSF('rev_dn',this)" title="月營收年增<0%：多頭/正常盤回測20日跑輸大盤-3.3%，避雷用。⚠️空頭期此族群反而易均值回歸反彈，避雷效果僅限正常盤"><span>📉 營收衰退（避雷）</span><span class="sb-cnt" id="c-rev_dn">—</span></div>
+    <div class="sb-item" onclick="setSF('rev_hi',this)" title="月營收年增>20%：屬回測驗證的順勢加分因子，須配合大盤趨勢（指數站上月/季線才啟用），空頭期效果會減弱"><span>📈 營收高成長</span><span class="sb-cnt" id="c-rev_hi">—</span></div>
+    <div class="sb-item" onclick="setSF('rev_dn',this)" title="月營收年增<0%：基本面轉弱，正常盤屬避雷參考；空頭期此族群易均值回歸反彈，避雷效果有限"><span>📉 營收衰退（避雷）</span><span class="sb-cnt" id="c-rev_dn">—</span></div>
     <div class="sb-label" onclick="toggleSbGroup(this)">短線狀態（全市場每日快照）</div>
-    <div class="sb-item" onclick="setSF('st_long',this)" title="均線多頭排列（MA5>MA10>MA20）且站上季線（MA60）。回測：趨勢中拉回為最佳買點，季線上揚時勝率更高"><span>📈 短多</span><span class="sb-cnt" id="c-st_long">—</span></div>
-    <div class="sb-item" onclick="setSF('st_long_up',this)" title="短多 ＋ 季線（MA60）上揚：回測勝率與超額報酬最強的子集"><span>📈 短多（季線上揚）</span><span class="sb-cnt" id="c-st_long_up">—</span></div>
+    <div class="sb-item" onclick="setSF('st_long',this)" title="均線多頭排列（MA5>MA10>MA20）且站上季線（MA60）。趨勢中拉回為較佳買點，季線上揚時較穩"><span>📈 短多</span><span class="sb-cnt" id="c-st_long">—</span></div>
+    <div class="sb-item" onclick="setSF('st_long_up',this)" title="短多 ＋ 季線（MA60）上揚：回測驗證較穩健的子集"><span>📈 短多（季線上揚）</span><span class="sb-cnt" id="c-st_long_up">—</span></div>
     <div class="sb-item" onclick="setSF('st_short',this)" title="均線空頭排列（MA5<MA10<MA20）且跌破季線（MA60）：弱勢，避開或反向"><span>📉 短空</span><span class="sb-cnt" id="c-st_short">—</span></div>
     <div id="stDateBar" style="font-size:10px;color:var(--text3);padding:2px 14px 6px 28px;line-height:1.4">快照日期：載入中…</div>
     <div class="sb-label" onclick="toggleSbGroup(this)">盤中即時訊號</div>
@@ -546,32 +546,31 @@ let secMap={};  // 代號→產業中文名（上市+上櫃公司基本資料，
 let dispMap={}; // 代號→處置資訊 {name,period,reason,measure}（處置股，每小時更新）
 
 // ── 短線狀態徽章（與個股面板「操作策略總覽」短線判斷一致：MA 排列 + 季線）──
-// st: long(短多)/short(短空)/range(盤整)/na(資料不足)；up: 季線上揚(回測 edge 關鍵)
+// st: long(短多)/short(短空)/range(盤整)/na(資料不足)；up: 季線上揚
 function shortBadge(id){
   const s=stMap[id];
   if(!s||s.st==='na') return '';
-  if(s.st==='long')  return `<span class="st-badge st-long" title="短多：均線多頭排列(MA5>MA10>MA20)＋站上季線${s.up?'，季線上揚（回測 edge 關鍵）':'，但季線走平/下彎(回測超額轉差)'}。季線乖離 ${s.b60}%">📈 短多${s.up?' ▲':''}</span>`;
-  if(s.st==='short') return `<span class="st-badge st-short" title="短空：均線空頭排列＋跌破季線（回測20日超額 −2.5%，避開）。季線乖離 ${s.b60}%">📉 短空</span>`;
+  if(s.st==='long')  return `<span class="st-badge st-long" title="短多：均線多頭排列(MA5>MA10>MA20)＋站上季線${s.up?'，季線上揚（較穩健）':'，但季線走平/下彎（動能轉弱）'}。季線乖離 ${s.b60}%">📈 短多${s.up?' ▲':''}</span>`;
+  if(s.st==='short') return `<span class="st-badge st-short" title="短空：均線空頭排列＋跌破季線（弱勢，避開做多）。季線乖離 ${s.b60}%">📉 短空</span>`;
   return `<span class="st-badge st-range" title="盤整：均線糾結或未站穩季線，方向不明。季線乖離 ${s.b60}%">⚖️ 盤整</span>`;
 }
 let mktRegime=null;  // 大盤趨勢濾網：'bull'(指數站上季線) / 'bear'(跌破季線) / null(未知)
 let mktMA60=0, mktLast=0;  // 加權指數季線值 / 最新收盤（供 tooltip）
 let overnightData=null;    // 隔夜美股風向（費半/NASDAQ/S&P/VIX），供市場情境濾網用
 
-// ── 長線策略狀態（回測驗證：月營收 YoY 高成長 + 大盤季線濾網）──
-// 回測：高成長 20日超額 +1.3%（中小型 +1.7%），但 2022 空頭期會反轉 → 故加大盤濾網
+// ── 長線策略狀態（月營收 YoY 分級 + 大盤季線濾網）──
 function longState(s){
   if(!s.revTier) return null;
   if(s.revTier==='衰退')
-    return {cls:'ls-weak', icon:'⚠️', lbl:'長線轉弱', reason:'月營收年增<0%，基本面轉弱（回測：跑輸大盤 -3.3%）'};
+    return {cls:'ls-weak', icon:'⚠️', lbl:'長線轉弱', reason:'月營收年增<0%，基本面轉弱'};
   if(s.revTier==='高成長'){
     if(mktRegime==='bear')
       return {cls:'ls-hold', icon:'⏸️', lbl:'觀望', reason:'營收高成長，但大盤跌破季線；順勢因子空頭期會反轉，暫不布局'};
     return {cls:'ls-strong', icon:'🚀', lbl:'長多布局', reason: mktRegime==='bull'
-      ? '營收高成長＋大盤站上季線（回測有效區，20日超額 +1.3%）'
+      ? '營收高成長＋大盤站上季線（符合進場條件）'
       : '營收高成長（大盤趨勢未知，建議確認指數站上季線）'};
   }
-  return {cls:'ls-mid', icon:'•', lbl:'中性', reason:'月營收年增 0~20%，回測無明顯超額'};
+  return {cls:'ls-mid', icon:'•', lbl:'中性', reason:'月營收年增 0~20%，無明顯方向'};
 }
 
 // 載入大盤季線 regime（^TWII 近6月日K → MA60）
@@ -707,9 +706,9 @@ async function loadDailyNews(){
 
 // ══════════════════════════════════════════════════
 // 熱門推播：熱門股操作策略推播（規則型引擎）
-//   重用平台已回測驗證的訊號：短線狀態(stMap)、長線狀態(longState)、
+//   彙整既有訊號：短線狀態(stMap)、長線狀態(longState)、
 //   漲停/即將漲停(limitState/nearLimitState)、大盤季線情境(mktRegime)、流動性(vol)。
-//   不串接 LLM、不臆測；僅將既有可靠訊號彙整為操作策略摘要。
+//   不串接 LLM、不臆測；僅將既有訊號彙整為操作策略摘要。
 // ══════════════════════════════════════════════════
 let aiList=[], aiIdx=0, aiRotTimer=null, aiPanelOpen=false;
 function aiPickHot(n){
@@ -728,10 +727,10 @@ function aiStrategyBrief(s){
   const st=stMap[s.id];
   if(st&&st.st==='long'){
     tags.push([st.up?'📈 短多·季線上揚':'📈 短多','var(--green2)','rgba(126,231,135,.12)']);
-    lines.push(st.up?'短線均線多頭排列＋季線上揚（回測 edge 關鍵，趨勢中拉回為佳買點）':'短線多頭排列但季線走平/下彎，動能待確認');
+    lines.push(st.up?'短線均線多頭排列＋季線上揚（趨勢中拉回為較佳買點）':'短線多頭排列但季線走平/下彎，動能待確認');
   }else if(st&&st.st==='short'){
     tags.push(['📉 短空','var(--red2)','rgba(255,161,152,.12)']);
-    lines.push('短線空頭排列＋跌破季線（回測20日超額 −2.5%，避免做多接刀）');
+    lines.push('短線空頭排列＋跌破季線（弱勢，避免做多接刀）');
   }else if(st&&st.st==='range'){
     tags.push(['⚖️ 盤整','var(--amber2)','rgba(227,179,65,.12)']);
     lines.push('短線均線糾結、未站穩季線，方向不明，等突破再表態');
@@ -749,7 +748,7 @@ function aiStrategyBrief(s){
   const shortLong=st&&st.st==='long', shortShort=st&&st.st==='short';
   let action,aCol,aBg;
   if(shortShort||lim==='down'){ action='綜合偏空：弱勢避開，不宜追多'; aCol='var(--red2)'; aBg='rgba(255,161,152,.1)'; }
-  else if(shortLong&&mktRegime!=='bear'){ action='綜合偏多：順勢，回測季線/均線支撐可留意進場（停損停利見詳情）'; aCol='var(--green2)'; aBg='rgba(126,231,135,.1)'; }
+  else if(shortLong&&mktRegime!=='bear'){ action='綜合偏多：順勢，季線/均線支撐可留意進場（停損停利見詳情）'; aCol='var(--green2)'; aBg='rgba(126,231,135,.1)'; }
   else if(shortLong&&mktRegime==='bear'){ action='個股偏多但大盤逆勢：降低部位、嚴設停損'; aCol='var(--amber2)'; aBg='rgba(227,179,65,.1)'; }
   else { action='中性：方向未明，觀望等訊號明確'; aCol='var(--amber2)'; aBg='rgba(227,179,65,.1)'; }
   if(!lines.length) lines.push('暫無明確策略訊號（指標資料尚未到位）');
@@ -1320,7 +1319,7 @@ function renderTable(){
     const mktTag=s.market==='tpex'?'<span style="font-size:12px;color:var(--amber2);margin-left:3px">櫃</span>':s.market==='esb'?'<span style="font-size:12px;color:var(--purple);margin-left:3px" title="興櫃">興</span>':'';
     const disp=dispMap[s.id];
     const dispTag=disp?`<span style="font-size:12px;color:var(--red2);margin-left:3px;cursor:help" title="處置股（${disp.period||''}）｜原因：${disp.reason||'—'}｜措施：${disp.measure||'—'}">⚠️處</span>`:'';
-    // 月營收 YoY 標籤（回測驗證因子）
+    // 月營收 YoY 標籤
     let revTag='';
     if(s.revTier){
       const c=s.revTier==='高成長'?'var(--green2)':s.revTier==='衰退'?'var(--red2)':'var(--text2)';
@@ -1889,10 +1888,10 @@ function buildDetHTML(s,live){
     const tBg =tier==='高成長'?'rgba(126,231,135,.12)':tier==='衰退'?'rgba(255,161,152,.12)':'rgba(227,179,65,.12)';
     const yoyTxt=s.revYoY!=null?(s.revYoY>=0?'+':'')+s.revYoY.toFixed(1)+'%':'—';
     const momTxt=s.revMom!=null?(s.revMom>=0?'+':'')+s.revMom.toFixed(1)+'%':'—';
-    const note=tier==='高成長'?'回測：營收年增>20% → 20日對大盤超額 +1.3%、勝率 61%（中小型股更強 +1.7%）'
-              :tier==='衰退'?'回測：營收年增<0% → 20日跑輸大盤 -3.3%，留意基本面轉弱'
-              :'回測：營收年增 0~20% 區間對大盤無明顯超額';
-    const warn='⚠️ 順勢因子：2022 空頭期回測單調性反轉（高成長轉弱、衰退反彈），須配合大盤趨勢（指數站上月/季線）使用';
+    const note=tier==='高成長'?'營收年增>20%：基本面動能強，屬順勢加分因子'
+              :tier==='衰退'?'營收年增<0%：留意基本面轉弱'
+              :'營收年增 0~20% 區間，方向不明顯';
+    const warn='⚠️ 順勢因子：空頭期單調性會反轉（高成長轉弱、衰退反彈），須配合大盤趨勢（指數站上月/季線）使用';
     return `<div class="ds" data-dtab="fund"><div class="dst">月營收動能 ${revMonth?`<span style="font-size:10px;color:var(--text3);font-weight:400">(${revMonth} 公布)</span>`:''}</div>
       <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px">
         <span style="font-size:13px;font-weight:700;color:${tCol};background:${tBg};border-radius:6px;padding:4px 10px">${tier}</span>
@@ -2023,7 +2022,7 @@ function buildDetHTML(s,live){
       <div id="ai-tech-detail" style="font-size:13px;color:var(--text2);line-height:2">
         <span style="color:var(--text3)">計算中...</span>
       </div>
-      <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5">💡 這三個指標(RSI/MACD/量比)已以回測校準的「正確用法」納入上方「操作策略總覽」的方向判斷——例如強多中爆量為出貨警訊、RSI 過熱屬動能確認，而非 naive 金叉/爆量＝買。</div>
+      <div style="font-size:10px;color:var(--text3);margin-top:6px;line-height:1.5">💡 這三個指標(RSI/MACD/量比)已以「正確用法」納入上方「操作策略總覽」的方向判斷——例如強多中爆量為出貨警訊、RSI 過熱屬動能確認，而非 naive 金叉/爆量＝買。</div>
     </div>
     <div class="ai-disc" style="font-size:12px">⚠️ 以上分析基於技術面公式自動計算，僅供參考，不構成投資建議。買賣決策請自行判斷。</div>
   </div>`;
@@ -2212,11 +2211,6 @@ async function buildDetCharts(s){
   }
 
   // ── 操作策略總覽：當沖 / 短線 / 長線 三週期，各附狀態方向 + 進出場價位 ──
-  // 狀態方向＋價位皆來自回測(95檔2年, scripts/backtest-shortterm.js)。
-  // 強多(排列+站季線)：20日超額僅+0.3%(弱)；60日勝率56.3%/超額+1.6%(真正edge在3個月)。
-  // 價位校準(實測 MFE/MAE，倍數=相對進場日ATR)：
-  //   20日 中位MFE 2.4×ATR、中位MAE 2.0×ATR  → 短線 目標2.4× / 停損2.0× (RR≈1.2)
-  //   60日 中位MFE 4.9×ATR、中位MAE 3.2×ATR  → 長線 目標4.9× / 停損3.2× (RR≈1.5)
   function renderStrategyCard(s, kdata){
     const el=document.getElementById('strategy-card');
     if(!el) return;
@@ -2225,7 +2219,7 @@ async function buildDetCharts(s){
     if(closes.length<60){ el.innerHTML='<span style="font-size:11px;color:var(--text3)">日K資料不足（需 60 筆），無法完整判斷</span>'; return; }
     const mean=(a,n)=>a.slice(-n).reduce((x,y)=>x+y,0)/n;
     const ma5=mean(closes,5), ma10=mean(closes,10), ma20=mean(closes,20), ma60=mean(closes,60);
-    // 季線斜率：回測證實「強多」edge 幾乎全來自季線上揚（60日超額 +2.7% vs 走平/下彎 −2.3%）
+    // 季線斜率：上揚為趨勢健康的關鍵過濾條件
     const ma60prev=closes.length>=65?closes.slice(-65,-5).reduce((x,y)=>x+y,0)/60:null;
     const ma60Up=ma60prev!=null&&ma60>ma60prev;
     const cur=s.close>0?s.close:closes[closes.length-1];
@@ -2246,7 +2240,7 @@ async function buildDetCharts(s){
       return t;
     };
 
-    // ── 動能指標（RSI/MACD/量比），用回測校準的「正確用法」校準方向，非 naive 金叉/爆量=買 ──
+    // ── 動能指標（RSI/MACD/量比），用「正確用法」校準方向，非 naive 金叉/爆量=買 ──
     let rsi14=null, dif=null, hist=null, vr5=null;
     {
       // RSI(14)
@@ -2263,25 +2257,25 @@ async function buildDetCharts(s){
       // 量比＝5日均量/20日均量
       if(vols.length>=20){const v5=mean(vols,5), v20=mean(vols,20); vr5=v20>0?+(v5/v20).toFixed(2):null;}
     }
-    // 回測校準的動能確認文字（共用於短多/長多）
+    // 動能確認文字（共用於短多/長多）
     const momLines=()=>{
       const ln=[];
-      // MACD：柱翻紅(>0)非加碼理由；柱<0但DIF>0＝趨勢中拉回(回測60日超額+5.3%最佳)；DIF<0動能轉弱
+      // MACD：柱翻紅(>0)非加碼理由；柱<0但DIF>0＝趨勢中拉回；DIF<0動能轉弱
       if(dif!=null){
-        if(dif<0) ln.push('<b style="color:var(--red2)">MACD DIF&lt;0（'+dif+'）</b> 跌破零軸，動能轉弱（回測超額轉差）');
-        else if(hist<0) ln.push('<b style="color:var(--green2)">MACD 柱翻黑但 DIF&gt;0</b>＝趨勢中拉回，回測此型 60日超額 +5.3%（最佳買點）');
-        else ln.push('MACD 柱&gt;0、DIF&gt;0：多方續行（回測與強多基準相當，非額外加碼理由）');
+        if(dif<0) ln.push('<b style="color:var(--red2)">MACD DIF&lt;0（'+dif+'）</b> 跌破零軸，動能轉弱');
+        else if(hist<0) ln.push('<b style="color:var(--green2)">MACD 柱翻黑但 DIF&gt;0</b>＝趨勢中拉回（較佳買點）');
+        else ln.push('MACD 柱&gt;0、DIF&gt;0：多方續行（非額外加碼理由）');
       }
-      // 量比：強多中爆量反為負超額（出貨/追高）；正常量最佳
+      // 量比：強多中爆量易為出貨/追高；正常量最佳
       if(vr5!=null){
-        if(vr5>=1.5) ln.push('<b style="color:var(--amber2)">量比 '+vr5+'x 爆量</b>：強多中爆量回測為負超額（疑出貨/追高），<b>不宜追加碼</b>');
-        else if(vr5>=1.2) ln.push('量比 '+vr5+'x 偏高（回測超額中性偏正）');
-        else if(vr5>=0.8) ln.push('<b style="color:var(--green2)">量比 '+vr5+'x 正常</b>：回測此區間超額最佳（健康量能）');
+        if(vr5>=1.5) ln.push('<b style="color:var(--amber2)">量比 '+vr5+'x 爆量</b>：強多中爆量疑出貨/追高，<b>不宜追加碼</b>');
+        else if(vr5>=1.2) ln.push('量比 '+vr5+'x 偏高（中性偏正）');
+        else if(vr5>=0.8) ln.push('<b style="color:var(--green2)">量比 '+vr5+'x 正常</b>：健康量能');
         else ln.push('量比 '+vr5+'x 量縮：動能不足');
       }
-      // RSI：強多中過熱反而最強，非賣訊
+      // RSI：強多中過熱屬動能確認，非賣訊
       if(rsi14!=null){
-        if(rsi14>=70) ln.push('<b style="color:var(--green2)">RSI '+rsi14+' 過熱</b>：強多趨勢中屬動能確認（回測 60日超額 +5.6% 最強），<b>非賣訊</b>');
+        if(rsi14>=70) ln.push('<b style="color:var(--green2)">RSI '+rsi14+' 過熱</b>：強多趨勢中屬動能確認，<b>非賣訊</b>');
         else ln.push('RSI '+rsi14);
       }
       return ln;
@@ -2290,7 +2284,7 @@ async function buildDetCharts(s){
     const momWarn=()=>((dif!=null&&dif<0)?1:0)+((vr5!=null&&vr5>=1.5)?1:0);
 
     // 三格價位：進場改為「區間」＝理想拉回支撐(下緣) ↔ 現價(上緣)；
-    // 停損/目標仍以現價為錨（回測校準的 ATR 距離），% 相對現價（最差成交情境）。
+    // 停損/目標仍以現價為錨（ATR 距離），% 相對現價（最差成交情境）。
     const levels=(cur_,stop,target,ideal,lbl)=>{
       const lo=Math.min(ideal,cur_), hi=Math.max(ideal,cur_);
       const same=Math.abs(ideal-cur_)/(cur_||1)<0.004;
@@ -2333,42 +2327,42 @@ async function buildDetCharts(s){
           流動性：<b style="color:${liquid?'var(--green2)':'var(--text3)'}">${fmV(s.vol)}張${liquid?' ✓':' ✗(<3000，市場中位)'}</b>
           波動(ATR)：<b style="color:${volatile?'var(--green2)':'var(--text3)'}">${atrP.toFixed(1)}%${volatile?' ✓':' ✗(<2.6%，需高於市場中位)'}</b><br>
           今日盤面：<b style="color:var(--text)">${g.lbl}</b>　當日區間 <b>${f(dayLo)} ~ ${f(dayHi)}</b></div>`
-      + note('⚠️ 當沖無回測進場 edge（日線無盤中 P&L 資料）；切點以全市場分布校準（量≥中位、ATR%居上半部），僅判斷流動性與波動是否足夠。操作以當日高低與均價為界，當日沖銷不留倉。');
+      + note('⚠️ 當沖僅判斷流動性與波動是否足夠（量≥市場中位、ATR%居上半部），日線無盤中資料。操作以當日高低與均價為界，當日沖銷不留倉。');
 
     // ========== 短線（5–20 交易日）==========
     let stLbl,stCol,stBg,stBody;
     if(ma5>ma10&&ma10>ma20&&cur>ma60){
-      // 方向＝MA排列(回測驗證的骨幹)；動能指標(MACD/量比)做品質降級：兩項警訊→轉弱
+      // 方向＝MA排列；動能指標(MACD/量比)做品質降級：兩項警訊→轉弱
       const w=momWarn();
       if(w>=2){ stLbl='📈 短多（動能轉弱）'; stCol='var(--amber2)'; stBg='rgba(227,179,65,.12)'; }
       else { stLbl='📈 短多'; stCol='var(--green2)'; stBg='rgba(126,231,135,.12)'; }
-      // 價位＝實測校準：停損 2.0×ATR(中位MAE)、目標 2.4×ATR(中位MFE)，相對現價
+      // 價位＝ATR 距離：停損 2.0×ATR、目標 2.4×ATR，相對現價
       const entry=cur, stop=cur-2.0*atr, target=cur+2.4*atr;
       const slopeTxt=ma60Up
-        ?'季線<b style="color:var(--green2)">上揚 ✓</b>（回測證實 edge 幾乎全來自季線上揚，20日超額 +0.7%）'
-        :'季線<b style="color:var(--red2)">走平/下彎 ✗</b>（回測此情況 20日超額 −1.0%，排列雖多頭但動能不足，降低部位或等季線翻揚）';
+        ?'季線<b style="color:var(--green2)">上揚 ✓</b>（趨勢健康的關鍵條件）'
+        :'季線<b style="color:var(--red2)">走平/下彎 ✗</b>（排列雖多頭但動能不足，降低部位或等季線翻揚）';
       const mom=momLines().map(t=>'· '+t).join('<br>');
       const ideal=Math.min(ma10,cur);  // 短線理想拉回支撐＝MA10
-      stBody=note('均線多頭排列(MA5&gt;MA10&gt;MA20)＋站上季線。'+slopeTxt+'。短線edge偏弱，當趨勢確認用，真正報酬要持有約3個月見「長線」；停損/目標＝實測中位MAE/MFE，風報比約1.2。支撐 MA10 '+f(ma10)+'／MA20 '+f(ma20))
+      stBody=note('均線多頭排列(MA5&gt;MA10&gt;MA20)＋站上季線。'+slopeTxt+'。短線多為趨勢確認用，較完整報酬須持有數月見「長線」；停損/目標＝ATR 距離，風報比約 1.2。支撐 MA10 '+f(ma10)+'／MA20 '+f(ma20))
         +note('<b style="color:var(--accent2)">📍 進場時機：</b>'+entryTiming(ma10,'MA10'))
-        +note('<b style="color:var(--text2)">動能確認（RSI/MACD/量比，回測校準）：</b><br>'+mom)
+        +note('<b style="color:var(--text2)">動能確認（RSI/MACD/量比）：</b><br>'+mom)
         +levels(cur,stop,target,ideal,'MA10');
     }else if(ma5<ma10&&ma10<ma20&&cur<ma60){
       stLbl='📉 短空'; stCol='var(--red2)'; stBg='rgba(255,161,152,.12)';
-      stBody=note('均線空頭排列＋跌破季線；回測20日超額 −2.5%（可靠避開訊號，勿做多接刀）。反彈壓力參考 MA20 '+f(ma20));
+      stBody=note('均線空頭排列＋跌破季線（弱勢避開訊號，勿做多接刀）。反彈壓力參考 MA20 '+f(ma20));
     }else{
       stLbl='⚖️ 盤整'; stCol='var(--amber2)'; stBg='rgba(227,179,65,.12)';
-      stBody=note('均線糾結或未站穩季線，方向不明；回測無明顯超額，建議觀望等突破。MA20 '+f(ma20)+'／季線 '+f(ma60));
+      stBody=note('均線糾結或未站穩季線，方向不明，建議觀望等突破。MA20 '+f(ma20)+'／季線 '+f(ma60));
     }
     let brk='';
     if(closes.length>=21){
       const hi20=Math.max(...closes.slice(-21,-1));
       const av20=vols.slice(-20).reduce((a,b)=>a+b,0)/20, tv=vols[vols.length-1]||0, vr=av20>0?tv/av20:0;
-      // 回測：突破甜蜜點是溫和放量 1.0–2.0×（60日超額 +1.6~+2.8%）；爆量 ≥2.5× 反為追高陷阱（超額 −1.1%）
+      // 溫和放量(1.0–2.0×)為較佳突破；爆量 ≥2.5× 易為追高陷阱
       if(cur>hi20&&vr>=2.5){
-        brk=`　<span style="font-size:13px;color:var(--amber2);background:rgba(227,179,65,.14);border-radius:4px;padding:2px 7px" title="創20日新高但爆量(≥2.5倍均量)，回測60日超額 −1.1%，追高陷阱，宜等回測支撐">⚠️爆量追高</span>`;
+        brk=`　<span style="font-size:13px;color:var(--amber2);background:rgba(227,179,65,.14);border-radius:4px;padding:2px 7px" title="創20日新高但爆量(≥2.5倍均量)，易為追高陷阱，宜等回測支撐">⚠️爆量追高</span>`;
       }else if(cur>hi20&&vr>=1.0){
-        brk=`　<span style="font-size:13px;color:var(--accent2);background:rgba(56,139,253,.14);border-radius:4px;padding:2px 7px" title="創20日新高且溫和放量(1.0–2.0倍均量)，回測60日超額 +1.6~+2.8%（突破甜蜜點）">⚡帶量突破</span>`;
+        brk=`　<span style="font-size:13px;color:var(--accent2);background:rgba(56,139,253,.14);border-radius:4px;padding:2px 7px" title="創20日新高且溫和放量(1.0–2.0倍均量)，屬較佳突破型態">⚡帶量突破</span>`;
       }
     }
     const st = head('📊 短線'+brk,'5–20 交易日',stLbl,stCol,stBg)+stBody;
@@ -2383,17 +2377,17 @@ async function buildDetCharts(s){
       ltLbl=`${ls.icon} ${ls.lbl}`;
       ltBody=note('🎯 '+ls.reason+'　|　大盤季線：'+mkTxt);
       if(ls.cls==='ls-strong'){
-        // 價位＝持有≈3個月(60日)實測校準：停損 3.2×ATR(中位MAE)、目標 4.9×ATR(中位MFE)
+        // 價位＝持有≈3個月(60日) ATR 距離：停損 3.2×ATR、目標 4.9×ATR
         const entry=cur, stop=cur-3.2*atr, target=cur+4.9*atr;
-        // 回測：季線上揚是長線 edge 的關鍵過濾（60日超額 +2.7%，勝率 57.8%）；走平/下彎為負超額 −2.3%
+        // 季線上揚是長線的關鍵過濾條件；走平/下彎則動能不足
         const slopeNote=ma60Up
-          ?'季線<b style="color:var(--green2)">上揚 ✓</b>，符合最佳進場條件（強多×季線上揚回測 60日勝率 57.8%、超額 +2.7%）。'
-          :'⚠️ 季線<b style="color:var(--red2)">走平/下彎</b>，回測此情況 60日為負超額（−2.3%）——營收面雖強，技術動能未啟動，建議等季線翻揚再布局。';
+          ?'季線<b style="color:var(--green2)">上揚 ✓</b>，符合較佳進場條件（營收強×季線上揚）。'
+          :'⚠️ 季線<b style="color:var(--red2)">走平/下彎</b>——營收面雖強，技術動能未啟動，建議等季線翻揚再布局。';
         const mom=momLines().map(t=>'· '+t).join('<br>');
         const ideal=Math.min(ma60,cur);  // 長線理想拉回支撐＝季線 MA60
-        ltBody+=note('價位以持有約3個月(60日)實測校準。'+slopeNote)
+        ltBody+=note('價位以持有約3個月(60日)的 ATR 距離為準。'+slopeNote)
           +note('<b style="color:var(--accent2)">📍 進場時機：</b>'+entryTiming(ma60,'季線'))
-          +note('<b style="color:var(--text2)">動能確認（RSI/MACD/量比，回測校準）：</b><br>'+mom)
+          +note('<b style="color:var(--text2)">動能確認（RSI/MACD/量比）：</b><br>'+mom)
           +levels(cur,stop,target,ideal,'季線');
       }
     }else{
@@ -2461,7 +2455,7 @@ async function buildDetCharts(s){
       + note('<b style="color:var(--text2)">'+ctxAct+'</b><br>※ 情境僅影響「該不該進、部位大小」，<b>不改變</b>下方 ATR 校準的進場/停損/目標價位。');
 
     el.innerHTML = ctx + divider + dt + divider + st + divider + lt
-      + `<div style="font-size:14px;color:var(--text3);line-height:1.6;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆來自回測(95檔2年)：停損/目標＝實測 MFE/MAE 校準的 ATR 倍數；季線斜率、突破量比門檻經全市場掃描驗證。底部「今日盤面評分」的 RSI/MACD/量比 已以回測校準的「正確用法」納入上方方向判斷（非 naive 金叉/爆量＝買：強多中爆量為負超額、RSI 過熱反屬動能確認、趨勢中拉回為最佳買點）。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
+      + `<div style="font-size:14px;color:var(--text3);line-height:1.6;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆為規則化計算：停損/目標＝ATR 倍數距離；季線斜率、突破量比為過濾條件。底部「今日盤面評分」的 RSI/MACD/量比 已以「正確用法」納入上方方向判斷（非 naive 金叉/爆量＝買：強多中爆量視為警訊、RSI 過熱屬動能確認、趨勢中拉回為較佳買點）。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
   }
 
   // ── MA 均線乖離率（季線公式：BIAS = (現價 - MA60) / MA60 × 100%）──

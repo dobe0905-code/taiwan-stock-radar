@@ -1024,41 +1024,30 @@ async function loadData(){
     const pInd = fetch(`${API}?type=industry_map`).then(r=>r.json()).catch(()=>({map:{}}));
     const pDisp= fetch(`${API}?type=disposition`).then(r=>r.json()).catch(()=>({map:{}}));
 
-    // 上市 + 上櫃清單「並行」抓取後「立即渲染」首屏；
-    // 興櫃(emerging)清單價值最低、卻會拖慢首屏 → 移出關鍵路徑，跟指標一樣背景補上（見下方 pEsb）。
-    // （上櫃已於後端剔除權證，payload 大幅縮小，兩清單幾乎同時返回）
+    // 上市 + 上櫃 + 興櫃清單「並行」抓取，一起合併後「一次渲染」全部台股
+    // （上櫃已於後端剔除權證，payload 大幅縮小，三清單幾乎同時返回）
     const fetchJson = (t) => fetch(`${API}?type=${t}`).then(r=>r.json()).catch(()=>({data:[]}));
-    const pEsb = fetchJson('emerging_list'); // 興櫃：背景抓，不擋首屏
-    const [twseRes, tpexRes] = await Promise.all([
+    const [twseRes, tpexRes, esbRes] = await Promise.all([
       fetch(`${API}?type=twse_list`).then(r=>r.json()),
-      fetchJson('tpex_list')
+      fetchJson('tpex_list'),
+      fetchJson('emerging_list')
     ]);
     const twseStocks = processTWSE(twseRes.data||[]);
     let tpexStocks = processTPEx(tpexRes.data||[]);
+    const esbStocks  = processEmerging(esbRes.data||[]);
     // 上櫃偶爾因冷啟動逾時回空 → 重試一次，避免上櫃股數掉成 0
     if(tpexStocks.length===0){
       const retry = await fetchJson('tpex_list');
       tpexStocks = processTPEx(retry.data||[]);
     }
-    stocks = [...twseStocks, ...tpexStocks];
+    stocks = [...twseStocks, ...tpexStocks, ...esbStocks];
     if(stocks.length===0){ setLd('無資料，請稍後再試'); return; }
     document.getElementById('twseBadge').className='api-badge api-on';
     document.getElementById('tpexBadge').className='api-badge api-on';
     updSum(); updSB(); renderTable(); buildDailyBrief(); aiRefresh();
     startMisPolling();   // batches 已含 TPEx，立即開始即時輪詢
     setLU(); schedRef();
-    showToast(`✓ 已載入 ${stocks.length} 檔（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length}），興櫃與指標背景補上…`);
-
-    // 興櫃清單：背景到位後併入並重渲染（不阻塞首屏）。興櫃多無 PER/月營收，
-    // 即使晚於指標 .then 到達也幾乎不需要被補欄位；併入後重啟一次 MIS 輪詢納入興櫃即時報價。
-    pEsb.then(esbRes=>{
-      const esbStocks = processEmerging(esbRes.data||[]);
-      if(esbStocks.length){
-        stocks = [...stocks, ...esbStocks];
-        startMisPolling(); // 重建輪詢批次以納入興櫃
-        updSum(); updSB(); renderTable();
-      }
-    });
+    showToast(`✓ 全部 ${stocks.length} 檔已載入（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length} + 興櫃 ${esbStocks.length}），指標背景補上…`);
 
     // 第三階段：PER / 月營收 / 短線狀態 各自到位後就地補上欄位（不阻塞表格）
     pPer.then(perRes=>{
@@ -4440,16 +4429,11 @@ window.fetch = async function(input, init){
   return _origFetch(input, init);
 };
 
-// 暖機：頁面一載入就「並行」敲三個 serverless 函式檔（刻意用 _origFetch 不帶 token →
-// 後端 requireAuth 立即回 401，不會真的去抓資料，成本極低），目的只是同時喚醒三個冷啟動的函式容器。
-// 注意：/api/quote 的各種 type 都同一支函式（quote_new.js），暖一個即暖全部；
-// 但 /api/fundamental（月營收）與 /api/global（隔夜美股/大盤濾網）是另外兩支獨立函式，各有自己的冷啟動，
-// 所以要分別敲到。這三趟在 Google OAuth 換 session 的等待期間就完成，等正式（帶 token）請求到時三支都已是熱的。
-try {
-  _origFetch('/api/quote?type=warmup').catch(()=>{});
-  _origFetch('/api/fundamental?type=warmup').catch(()=>{});
-  _origFetch('/api/global?type=warmup').catch(()=>{});
-} catch(e){}
+// 暖機：頁面一載入就敲一次 API（刻意用 _origFetch 不帶 token → 後端 requireAuth 立即回 401，
+// 不會真的去抓 TWSE 資料，成本極低），目的只是喚醒 Vercel 冷啟動的函式。
+// 這趟在 Google OAuth 換 session 的等待期間就完成，等正式（帶 token）的請求到時函式已是熱的，
+// 縮短「剛登入那一次」的整體等待。
+try { _origFetch('/api/quote?type=warmup').catch(()=>{}); } catch(e){}
 
 const gate   = document.getElementById('authGate');
 const subEl  = document.getElementById('authSub');

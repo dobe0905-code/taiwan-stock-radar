@@ -3,6 +3,17 @@
 import { requireAuth } from './_auth.js';
 import { rateLimit } from './_ratelimit.js';
 
+// 每日焦點新聞記憶體快取（變動慢；加上 token 讓 CDN BYPASS，s-maxage 失效，故靠此快取）
+let _newsCache = { exp: 0, payload: null };
+
+// 帶逾時的 fetch：避免單一上游卡住把整支函式拖到數十秒
+async function fetchTimeout(url, opts = {}, ms = 5000) {
+  const ac = new AbortController();
+  const t = setTimeout(() => ac.abort(), ms);
+  try { return await fetch(url, { ...opts, signal: ac.signal }); }
+  finally { clearTimeout(t); }
+}
+
 export default async function handler(req, res) {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, OPTIONS');
@@ -285,6 +296,11 @@ export default async function handler(req, res) {
     //   不轉載全文（RSS 本身也不提供全文），屬新聞聚合的正當用法。
     // ══════════════════════════════════════════════════
     if (type === 'news') {
+      // 記憶體快取命中（10 分鐘內）→ 立即回，免重抓 4 個 RSS
+      if (_newsCache.payload && Date.now() < _newsCache.exp) {
+        res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=1800');
+        return res.status(200).json(_newsCache.payload);
+      }
       const TOPICS = [
         { key: 'market', label: '台股大盤', q: '台股 OR 加權指數 OR 台股盤勢' },
         { key: 'chip',   label: '半導體 / AI', q: '台積電 OR 半導體 OR AI晶片 OR CoWoS OR 輝達' },
@@ -317,15 +333,20 @@ export default async function handler(req, res) {
       const fetchTopic = async (t) => {
         const url = `https://news.google.com/rss/search?q=${encodeURIComponent(t.q + ' when:2d')}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
         try {
-          const r = await fetch(url, { headers: { 'User-Agent': 'Mozilla/5.0' } });
+          const r = await fetchTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 5000);
           if (!r.ok) return { key: t.key, label: t.label, items: [] };
           const xml = await r.text();
           return { key: t.key, label: t.label, items: parseRss(xml, 6) };
         } catch (e) { return { key: t.key, label: t.label, items: [] }; }
       };
       const groups = await Promise.all(TOPICS.map(fetchTopic));
+      const payload = { groups, updated: new Date().toISOString(), source: 'GoogleNews_RSS' };
+      // 至少有一組有新聞才快取，避免把空結果鎖 10 分鐘
+      if (groups.some(g => g.items && g.items.length)) {
+        _newsCache = { exp: Date.now() + 10 * 60 * 1000, payload };
+      }
       res.setHeader('Cache-Control', 's-maxage=900, stale-while-revalidate=1800');
-      return res.status(200).json({ groups, updated: new Date().toISOString(), source: 'GoogleNews_RSS' });
+      return res.status(200).json(payload);
     }
 
     return res.status(400).json({ error: '不支援的 type 參數' });

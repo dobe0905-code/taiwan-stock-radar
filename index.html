@@ -2445,6 +2445,30 @@ async function buildDetCharts(s){
           <div style="font-size:14px;color:var(--text3)">${sgn(pcd(cur_,target))}</div></div>
       </div>`;
     };
+    // 雙風格停損/目標：保守(賠少、易被洗) vs 積極(博大波段、單筆風險大)，同時並列
+    const dualLevels=(cur_,ideal,lbl,cons,aggr)=>{
+      const lo=Math.min(ideal,cur_), hi=Math.max(ideal,cur_);
+      const same=Math.abs(ideal-cur_)/(cur_||1)<0.004;
+      const entryTxt=same?f(cur_):f(lo)+'~'+f(hi);
+      const entrySub=same?'貼近'+lbl:'理想'+lbl+'↔現價';
+      const row=(name,o,desc,nameCol)=>{
+        const rr=(cur_-o.stop)>0?((o.target-cur_)/(cur_-o.stop)):0;
+        return `<div style="background:var(--bg3);border-radius:6px;padding:8px;margin-top:6px">
+          <div style="display:grid;grid-template-columns:1fr 1fr 1fr .7fr;gap:4px;align-items:center">
+            <div style="font-size:15px;font-weight:700;color:${nameCol}">${name}</div>
+            <div style="text-align:center"><div style="font-size:12px;color:var(--text3)">停損</div><div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--red2)">${f(o.stop)}</div><div style="font-size:11px;color:var(--text3)">${sgn(pcd(cur_,o.stop))}</div></div>
+            <div style="text-align:center"><div style="font-size:12px;color:var(--text3)">目標</div><div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--green2)">${f(o.target)}</div><div style="font-size:11px;color:var(--text3)">${sgn(pcd(cur_,o.target))}</div></div>
+            <div style="text-align:center"><div style="font-size:12px;color:var(--text3)">風報比</div><div style="font-family:var(--mono);font-size:18px;font-weight:700;color:var(--accent2)">${rr.toFixed(1)}</div></div>
+          </div>
+          <div style="font-size:12px;color:var(--text3);margin-top:4px">${desc}</div></div>`;
+      };
+      return `
+        <div style="background:var(--bg3);border-radius:6px;padding:8px;text-align:center;margin-top:8px">
+          <div style="font-size:14px;color:var(--text3)">進場區間（${entrySub}）</div>
+          <div style="font-family:var(--mono);font-size:19px;font-weight:700;color:var(--accent2)">${entryTxt}</div></div>
+        ${row('🛡️ 保守',cons,'停損緊、目標近：單筆賠少、賠率穩，但較易被正常震盪洗出場','var(--accent2)')}
+        ${row('🔥 積極',aggr,'停損寬、目標遠：博較大波段、賺賠比略高，但單筆賠較多、需抱得住','var(--amber2)')}`;
+    };
     const head=(title,horizon,lbl,col,bg)=>`
       <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:5px">
         <span style="font-size:20px;font-weight:700;color:var(--text)">${title}</span>
@@ -2475,17 +2499,18 @@ async function buildDetCharts(s){
       const w=momWarn();
       if(w>=2){ stLbl='📈 短多（動能轉弱）'; stCol='var(--amber2)'; stBg='rgba(227,179,65,.12)'; }
       else { stLbl='📈 短多'; stCol='var(--green2)'; stBg='rgba(255,161,152,.12)'; }
-      // 價位＝ATR 距離：停損 2.0×ATR、目標 2.4×ATR，相對現價
-      const entry=cur, stop=cur-2.0*atr, target=cur+2.4*atr;
+      // 價位＝ATR 距離，提供保守/積極兩種風報比
+      const stCons={stop:cur-1.5*atr, target:cur+2.0*atr};   // 保守：1.5↓/2.0↑ → R/R≈1.3
+      const stAggr={stop:cur-2.5*atr, target:cur+4.0*atr};   // 積極：2.5↓/4.0↑ → R/R≈1.6
       const slopeTxt=ma60Up
         ?'季線<b style="color:var(--green2)">上揚 ✓</b>（趨勢健康的關鍵條件）'
         :'季線<b style="color:var(--red2)">走平/下彎 ✗</b>（排列雖多頭但動能不足，降低部位或等季線翻揚）';
       const mom=momLines().map(t=>'· '+t).join('<br>');
       const ideal=Math.min(ma10,cur);  // 短線理想拉回支撐＝MA10
-      stBody=note('均線多頭排列(MA5&gt;MA10&gt;MA20)＋站上季線。'+slopeTxt+'。短線多為趨勢確認用，較完整報酬須持有數月見「長線」；停損/目標＝ATR 距離，風報比約 1.2。支撐 MA10 '+f(ma10)+'／MA20 '+f(ma20))
+      stBody=note('均線多頭排列(MA5&gt;MA10&gt;MA20)＋站上季線。'+slopeTxt+'。短線多為趨勢確認用，較完整報酬須持有數月見「長線」；停損/目標＝ATR 距離，下方並列保守/積極兩種風格。支撐 MA10 '+f(ma10)+'／MA20 '+f(ma20))
         +note('<b style="color:var(--accent2)">📍 進場時機：</b>'+entryTiming(ma10,'MA10'))
         +note('<b style="color:var(--text2)">動能確認（RSI/MACD/量比）：</b><br>'+mom)
-        +levels(cur,stop,target,ideal,'MA10');
+        +dualLevels(cur,ideal,'MA10',stCons,stAggr);
     }else if(ma5<ma10&&ma10<ma20&&cur<ma60){
       stLbl='📉 短空'; stCol='var(--red2)'; stBg='rgba(126,231,135,.12)';
       stBody=note('均線空頭排列＋跌破季線（弱勢避開訊號，勿做多接刀）。反彈壓力參考 MA20 '+f(ma20));
@@ -2516,18 +2541,19 @@ async function buildDetCharts(s){
       ltLbl=`${ls.icon} ${ls.lbl}`;
       ltBody=note('🎯 '+ls.reason+'　|　大盤季線：'+mkTxt);
       if(ls.cls==='ls-strong'){
-        // 價位＝持有≈3個月(60日) ATR 距離：停損 3.2×ATR、目標 4.9×ATR
-        const entry=cur, stop=cur-3.2*atr, target=cur+4.9*atr;
+        // 價位＝持有≈3個月(60日) ATR 距離，提供保守/積極兩種風報比
+        const ltCons={stop:cur-2.5*atr, target:cur+4.0*atr};   // 保守：2.5↓/4.0↑ → R/R≈1.6
+        const ltAggr={stop:cur-4.0*atr, target:cur+7.0*atr};   // 積極：4.0↓/7.0↑ → R/R≈1.75
         // 季線上揚是長線的關鍵過濾條件；走平/下彎則動能不足
         const slopeNote=ma60Up
           ?'季線<b style="color:var(--green2)">上揚 ✓</b>，符合較佳進場條件（營收強×季線上揚）。'
           :'⚠️ 季線<b style="color:var(--red2)">走平/下彎</b>——營收面雖強，技術動能未啟動，建議等季線翻揚再布局。';
         const mom=momLines().map(t=>'· '+t).join('<br>');
         const ideal=Math.min(ma60,cur);  // 長線理想拉回支撐＝季線 MA60
-        ltBody+=note('價位以持有約3個月(60日)的 ATR 距離為準。'+slopeNote)
+        ltBody+=note('價位以持有約3個月(60日)的 ATR 距離為準，下方並列保守/積極兩種風格。'+slopeNote)
           +note('<b style="color:var(--accent2)">📍 進場時機：</b>'+entryTiming(ma60,'季線'))
           +note('<b style="color:var(--text2)">動能確認（RSI/MACD/量比）：</b><br>'+mom)
-          +levels(cur,stop,target,ideal,'季線');
+          +dualLevels(cur,ideal,'季線',ltCons,ltAggr);
       }
     }else{
       ltCol='var(--text2)'; ltBg='rgba(139,148,158,.1)'; ltLbl='無資料';
@@ -2598,8 +2624,10 @@ async function buildDetCharts(s){
     (function buildGuide(){
       const gBull = ma5>ma10&&ma10>ma20&&cur>ma60;
       const gBear = ma5<ma10&&ma10<ma20&&cur<ma60;
-      const stStop=cur-2.0*atr, stTarget=cur+2.4*atr, stIdeal=Math.min(ma10,cur);
-      const ltStop=cur-3.2*atr, ltTarget=cur+4.9*atr, ltIdeal=Math.min(ma60,cur);
+      const stCons={stop:cur-1.5*atr,target:cur+2.0*atr}, stAggr={stop:cur-2.5*atr,target:cur+4.0*atr}, stIdeal=Math.min(ma10,cur);
+      const ltCons={stop:cur-2.5*atr,target:cur+4.0*atr}, ltAggr={stop:cur-4.0*atr,target:cur+7.0*atr}, ltIdeal=Math.min(ma60,cur);
+      const rrG=(c,o)=>(c-o.stop)>0?((o.target-c)/(c-o.stop)).toFixed(1):'—';
+      const styLine=(o,c)=>`停損 <b style="color:var(--red2)">${f(o.stop)}</b>（${sgn(pcd(c,o.stop))}）　目標 <b style="color:var(--green2)">${f(o.target)}</b>（${sgn(pcd(c,o.target))}）　風報比 ≈ ${rrG(c,o)}`;
       const extDesc=(support,lbl)=>{
         if(!(atr>0&&support>0)) return '位置資料不足';
         const ext=(cur-support)/atr;
@@ -2620,11 +2648,11 @@ async function buildDetCharts(s){
       // ③④ 短線進出場（僅多頭排列才給做多價位）
       let q34;
       if(gBull) q34=Q('③','進場區間在哪？（不追高）',`短線（5–20日）→ <b style="color:var(--accent2)">${f(stIdeal)} ~ ${f(cur)}</b>（理想拉回 MA10 ↔ 現價）<br>${extDesc(ma10,'MA10')}`)
-        +Q('④','停損 &amp; 目標先定好（短線）',`停損 <b style="color:var(--red2)">${f(stStop)}</b>（${sgn(pcd(cur,stStop))}，現價 −2.0×ATR）　目標 <b style="color:var(--green2)">${f(stTarget)}</b>（${sgn(pcd(cur,stTarget))}，+2.4×ATR）<br>風報比 ≈ 1.2（賺的空間 &gt; 賠的空間）`);
+        +Q('④','停損 &amp; 目標先定好（短線，兩種風格）',`🛡️ <b>保守</b>：${styLine(stCons,cur)}<br>🔥 <b>積極</b>：${styLine(stAggr,cur)}<br><span style="color:var(--text3)">保守＝賠少、易被洗；積極＝博大波段、單筆風險大。選一種、進場前定好就別中途更動。</span>`);
       else q34=Q('③④','進場/停損/目標',`目前非多頭排列，<b>不提供做多進場價位</b>；先等趨勢轉強或突破再評估。`);
       // 長線
       let qLong;
-      if(ls&&ls.cls==='ls-strong') qLong=`營收體質強 × ${mktRegime==='bull'?'<b style="color:var(--green2)">季線站上</b>':mktRegime==='bear'?'<b style="color:var(--red2)">季線跌破</b>':'季線中性'} → 偏多<br>進場區間 <b style="color:var(--accent2)">${f(ltIdeal)} ~ ${f(cur)}</b>（拉回季線↔現價）<br>${extDesc(ma60,'季線')}<br>停損 <b style="color:var(--red2)">${f(ltStop)}</b>（${sgn(pcd(cur,ltStop))}）　目標 <b style="color:var(--green2)">${f(ltTarget)}</b>（${sgn(pcd(cur,ltTarget))}）　風報比 ≈ 1.5`;
+      if(ls&&ls.cls==='ls-strong') qLong=`營收體質強 × ${mktRegime==='bull'?'<b style="color:var(--green2)">季線站上</b>':mktRegime==='bear'?'<b style="color:var(--red2)">季線跌破</b>':'季線中性'} → 偏多<br>進場區間 <b style="color:var(--accent2)">${f(ltIdeal)} ~ ${f(cur)}</b>（拉回季線↔現價）<br>${extDesc(ma60,'季線')}<br>🛡️ <b>保守</b>：${styLine(ltCons,cur)}<br>🔥 <b>積極</b>：${styLine(ltAggr,cur)}`;
       else qLong=ls?(ls.lbl+'：'+(ls.reason||'依月營收分級判斷')):'無月營收資料，長線狀態無法判斷';
       // 當沖
       const dtTxt=`流動性 ${fmV(s.vol)}張 ${liquid?'✓':'✗(&lt;3000，市場中位)'} ／ 波動 ATR ${atrP.toFixed(1)}% ${volatile?'✓':'✗(&lt;2.6%，低於市場中位)'} → <b style="color:${(liquid&&volatile)?'var(--green2)':'var(--text3)'}">${(liquid&&volatile)?'具備當沖條件':'條件不足'}</b>`;

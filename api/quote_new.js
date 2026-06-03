@@ -192,8 +192,12 @@ export default async function handler(req, res) {
       }
       let data = null;
 
-      // 主要：TPEx 官網當日行情
-      try {
+      // 兩個上櫃來源「並行賽跑」：官網當日行情（欄位較全）與 openapi（備援），
+      // 誰先回傳有效資料（>50 檔）就用誰，避免被慢的那一個拖滿逾時（官網偶爾要 7 秒）。
+      // 各自包成會在「無效資料」時 reject 的 promise，再用 Promise.any 取最先成功者。
+
+      // 來源 A：TPEx 官網當日行情
+      const fetchTpexDaily = async () => {
         const today = new Date();
         const yy = today.getFullYear() - 1911;
         const mm = String(today.getMonth()+1).padStart(2,'0');
@@ -202,36 +206,43 @@ export default async function handler(req, res) {
           `https://www.tpex.org.tw/web/stock/aftertrading/daily_close_quotes/stk_close_download.php?d=${yy}%2F${mm}%2F${dd}&s=0,asc,0&o=json`,
           { headers: { 'Accept': 'application/json', 'Referer': 'https://www.tpex.org.tw/' } }
         );
-        if (r.ok) {
-          const j = await r.json();
-          const rows = j.aaData || j.data || [];
-          if (rows.length > 50) {
-            data = rows.map(row => ({
-              SecuritiesCompanyCode: row[0]?.trim(),
-              CompanyName:  row[1]?.trim(),
-              Close:        row[2]?.replace(/,/g,''),
-              Change:       row[3]?.replace(/,/g,'') || '0',
-              Open:         row[5]?.replace(/,/g,''),
-              High:         row[6]?.replace(/,/g,''),
-              Low:          row[7]?.replace(/,/g,''),
-              TradingShares: row[8]?.replace(/,/g,''),
-              TradeValue:   row[9]?.replace(/,/g,''),  // 成交金額（元）
-              Industry:     '',
-              _today: true
-            })).filter(d => d.SecuritiesCompanyCode && d.Close && d.Close !== '--');
-          }
-        }
-      } catch(e) { console.log('TPEx daily failed:', e.message); }
+        if (!r.ok) throw new Error('tpex daily not ok');
+        const j = await r.json();
+        const rows = j.aaData || j.data || [];
+        if (rows.length <= 50) throw new Error('tpex daily too few');
+        const mapped = rows.map(row => ({
+          SecuritiesCompanyCode: row[0]?.trim(),
+          CompanyName:  row[1]?.trim(),
+          Close:        row[2]?.replace(/,/g,''),
+          Change:       row[3]?.replace(/,/g,'') || '0',
+          Open:         row[5]?.replace(/,/g,''),
+          High:         row[6]?.replace(/,/g,''),
+          Low:          row[7]?.replace(/,/g,''),
+          TradingShares: row[8]?.replace(/,/g,''),
+          TradeValue:   row[9]?.replace(/,/g,''),  // 成交金額（元）
+          Industry:     '',
+          _today: true
+        })).filter(d => d.SecuritiesCompanyCode && d.Close && d.Close !== '--');
+        if (mapped.length <= 50) throw new Error('tpex daily mapped too few');
+        return mapped;
+      };
 
-      // 備援：openapi（包 try/catch + 逾時重試，避免 terminated 冒泡到最外層 catch 變成 500）
-      if (!data || data.length < 50) {
-        try {
-          const r = await fetchRetry(
-            'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes',
-            { headers: { 'Accept': 'application/json' } }
-          );
-          if (r.ok) data = await r.json();
-        } catch (e) { console.log('TPEx openapi failed:', e.message); }
+      // 來源 B：openapi（欄位即為 SecuritiesCompanyCode/Close...，前端可直接吃）
+      const fetchTpexOpenapi = async () => {
+        const r = await fetchRetry(
+          'https://www.tpex.org.tw/openapi/v1/tpex_mainboard_daily_close_quotes',
+          { headers: { 'Accept': 'application/json' } }
+        );
+        if (!r.ok) throw new Error('tpex openapi not ok');
+        const j = await r.json();
+        if (!Array.isArray(j) || j.length <= 50) throw new Error('tpex openapi too few');
+        return j;
+      };
+
+      try {
+        data = await Promise.any([fetchTpexDaily(), fetchTpexOpenapi()]);
+      } catch (e) {
+        console.log('TPEx both sources failed:', e?.errors?.map(x=>x.message).join('; ') || e.message);
       }
 
       // 過濾權證/牛熊證/ETN，只保留普通股與 ETF
@@ -257,7 +268,7 @@ export default async function handler(req, res) {
       }
 
       const _payload = { data, source: 'TPEx', ts: new Date().toISOString() };
-      if (data && data.length > 50) memSet('tpex_list', _payload, 180 * 1000);
+      if (data && data.length > 50) memSet('tpex_list', _payload, 600 * 1000); // 暖容器命中率↑（即時價仍由 MIS 覆蓋，清單拉長無妨）
       res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1200');
       return res.status(200).json(_payload);
     }

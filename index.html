@@ -4369,9 +4369,9 @@ function schedRef(){
     if(r===0)loadData();
   },1000);
 }
-// Phase 2/3：資料載入改由登入確認後觸發（showLoggedIn），避免剛登入時 session 尚未就緒導致 /api 無 token 被 401。
-// 此處保留一個延遲保險：若 1.2 秒後仍未載入（例如 Supabase CDN 異常），仍嘗試載入一次。
-window.addEventListener('load',()=>{setTimeout(()=>{if(!window._dataLoaded)loadData();},1200);});
+// Phase 2/3：資料載入完全改由登入確認後觸發（showLoggedIn，token 已就緒）。
+// 不再於 window.load 自動載入——避免 session 尚未換好時搶先發出無 token 的 401 請求，
+// 反而拖慢正式（帶 token）那批的回應。本平台為登入閘門制，未登入本就不該載入資料。
 </script>
 <script type="module">
 // ===== Phase 1: Supabase 登入閘門（邀請制 Google 登入）=====
@@ -4401,6 +4401,12 @@ window.fetch = async function(input, init){
   }
   return _origFetch(input, init);
 };
+
+// 暖機：頁面一載入就敲一次 API（刻意用 _origFetch 不帶 token → 後端 requireAuth 立即回 401，
+// 不會真的去抓 TWSE 資料，成本極低），目的只是喚醒 Vercel 冷啟動的函式。
+// 這趟在 Google OAuth 換 session 的等待期間就完成，等正式（帶 token）的請求到時函式已是熱的，
+// 縮短「剛登入那一次」的整體等待。
+try { _origFetch('/api/quote?type=warmup').catch(()=>{}); } catch(e){}
 
 const gate   = document.getElementById('authGate');
 const subEl  = document.getElementById('authSub');
@@ -4500,6 +4506,15 @@ SB.auth.onAuthStateChange((_event, session) => {
 
 (async () => {
   const authErr = checkAuthError();
+  // 偵測到 OAuth 回跳（網址帶 code / access_token）時，先顯示「登入中」轉圈，
+  // 避免換 session 的那一兩秒畫面停在登入按鈕、讓使用者誤以為沒反應。
+  if(!authErr && (/[?&]code=/.test(location.search) || /access_token=/.test(location.hash))){
+    gate.classList.remove('hidden');
+    btn.style.display = 'none';
+    spin.style.display = 'block';
+    subEl.textContent = '登入成功，正在驗證身分並載入資料…';
+    msg.textContent = '';
+  }
   const { data: { session } } = await SB.auth.getSession();
   if(session && !authErr){ showLoggedIn(session); }
   else { showLogin(authErr); }

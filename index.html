@@ -278,6 +278,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 .nav-toggle{display:none;flex-shrink:0;width:38px;height:34px;flex-direction:column;justify-content:center;align-items:center;gap:5px;background:var(--bg3);border:1px solid var(--border);border-radius:8px;cursor:pointer;padding:0;margin-right:2px;}
 .nav-toggle span{display:block;width:18px;height:2px;background:var(--text);border-radius:2px;transition:.2s;}
 #sbOverlay{display:none;position:fixed;inset:0;top:var(--header);background:rgba(0,0,0,.5);z-index:39;}
+/* 側欄內的帳號/登出區（桌面隱藏，行動裝置抽屜顯示）*/
+.sb-user{display:none;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);margin-bottom:4px;}
+.sb-user-email{flex:1;font-size:13px;color:var(--text2);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.sb-logout{flex-shrink:0;background:var(--bg3);color:var(--text2);border:1px solid var(--border2);border-radius:7px;padding:6px 12px;font-size:13px;cursor:pointer;font-family:inherit;}
+.sb-logout:hover{color:var(--red2);border-color:var(--red);}
 
 /* ── 平板（≤1200px）：側欄改為抽屜，詳情面板滿版 ── */
 @media(max-width:1200px){
@@ -294,7 +299,9 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
   body{font-size:15px;}
   #header{padding:0 10px;gap:8px;}
   .header-right{gap:6px;}
-  .upd-info,.delay-badge .dbtxt{font-size:11px;}
+  .upd-info{display:none;}            /* 更新時間移除，騰出空間 */
+  #userBox{display:none !important;}  /* 帳號/登出改放漢堡選單抽屜 */
+  .sb-user{display:flex;}             /* 抽屜內顯示帳號＋登出 */
   .api-badge span{display:none;}
   .col-vol,.col-chg{display:none;}
   .mkt-tabs{overflow-x:auto;-webkit-overflow-scrolling:touch;}
@@ -466,6 +473,10 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 <div id="app">
   <div id="sbOverlay" onclick="toggleSidebar()"></div>
   <aside id="sidebar">
+    <div class="sb-user" id="sbUser">
+      <div class="sb-user-email" id="sbUserEmail"></div>
+      <button class="sb-logout" onclick="doLogout()">登出</button>
+    </div>
     <div class="sb-label" onclick="toggleSbGroup(this)">總覽</div>
     <div class="sb-item active" onclick="setSF('all',this)"><span>全部股票</span><span class="sb-cnt" id="c-all">—</span></div>
     <div class="sb-item" onclick="setSF('wl',this)"><span>⭐ 我的自選股</span><span class="sb-cnt" id="c-wl">0</span></div>
@@ -4536,6 +4547,7 @@ function showLoggedIn(session){
   const email = session?.user?.email || '';
   userEm.textContent = email;
   userBox.style.display = 'flex';
+  const sbEm = document.getElementById('sbUserEmail'); if(sbEm) sbEm.textContent = email;
   if(!_wlLoaded){ _wlLoaded = true; loadCloudWL(); }
   // Phase 2/3：登入確認後（token 已就緒）才載入台股資料，修正「剛登入那一次」載不出的時間差。
   if(!window._dataLoaded && typeof window.loadData === 'function'){ window.loadData(); }
@@ -4597,11 +4609,13 @@ btn.addEventListener('click', async () => {
   if(error){ btn.disabled = false; msg.textContent = '登入失敗：' + error.message; }
 });
 
-logout.addEventListener('click', async () => {
+async function doLogout(){
   await SB.auth.signOut();
   localStorage.removeItem('wl'); // 清本機快取，避免換帳號時資料混到
   location.reload();
-});
+}
+window.doLogout = doLogout;
+logout.addEventListener('click', doLogout);
 
 SB.auth.onAuthStateChange((_event, session) => {
   if(session) showLoggedIn(session);

@@ -308,6 +308,11 @@ export default async function handler(req, res) {
     //     MI_INDEX 不帶產業別，故另抓公司基本資料補上（每日更新即可）
     // ══════════════════════════════════════════════════
     if (type === 'industry_map') {
+      const _hit = memGet('industry_map');
+      if (_hit) {
+        res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate');
+        return res.status(200).json(_hit);
+      }
       // MOPS 統一產業代碼 → 中文（上市/上櫃共用）
       const IND = {
         '01':'水泥','02':'食品','03':'塑膠','04':'紡織纖維','05':'電機機械','06':'電器電纜',
@@ -319,9 +324,10 @@ export default async function handler(req, res) {
         '35':'綠能環保','36':'數位雲端','37':'運動休閒','38':'居家生活','80':'管理股票','91':'存託憑證'
       };
       const map = {};
+      // 用 fetchRetry（逾時 8 秒 + 重試 1 次）避免上游慢拖到 13 秒甚至撞 Vercel timeout
       const settled = await Promise.allSettled([
-        fetch('https://openapi.twse.com.tw/v1/opendata/t187ap03_L', { headers: { 'Accept': 'application/json' } }).then(r => r.json()),
-        fetch('https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O', { headers: { 'Accept': 'application/json' } }).then(r => r.json()),
+        fetchRetry('https://openapi.twse.com.tw/v1/opendata/t187ap03_L', { headers: { 'Accept': 'application/json' } }).then(r => r.json()),
+        fetchRetry('https://www.tpex.org.tw/openapi/v1/mopsfin_t187ap03_O', { headers: { 'Accept': 'application/json' } }).then(r => r.json()),
       ]);
       if (settled[0].status === 'fulfilled' && Array.isArray(settled[0].value)) {
         for (const r of settled[0].value) {
@@ -337,8 +343,19 @@ export default async function handler(req, res) {
           if (code && name) map[code] = name;
         }
       }
+      const _payload = { map, source: 'MOPS_t187ap03', ts: new Date().toISOString() };
+      if (Object.keys(map).length > 100) {
+        memSet('industry_map', _payload, 6 * 3600 * 1000); // 產業別極少變動，快取 6 小時
+      } else {
+        // 兩來源都失敗/逾時 → 回退記憶體舊快取，避免回傳空 map（前端產業分類會整片消失）
+        const stale = memGetStale('industry_map');
+        if (stale) {
+          res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate=3600');
+          return res.status(200).json({ ...stale, stale: true });
+        }
+      }
       res.setHeader('Cache-Control', 's-maxage=86400, stale-while-revalidate');
-      return res.status(200).json({ map, source: 'MOPS_t187ap03', ts: new Date().toISOString() });
+      return res.status(200).json(_payload);
     }
 
     // ══════════════════════════════════════════════════

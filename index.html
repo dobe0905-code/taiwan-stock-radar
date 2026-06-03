@@ -1111,30 +1111,43 @@ async function loadData(){
     const pInd = fetch(`${API}?type=industry_map`).then(r=>r.json()).catch(()=>({map:{}}));
     const pDisp= fetch(`${API}?type=disposition`).then(r=>r.json()).catch(()=>({map:{}}));
 
-    // 上市 + 上櫃 + 興櫃清單「並行」抓取，一起合併後「一次渲染」全部台股
-    // （上櫃已於後端剔除權證，payload 大幅縮小，三清單幾乎同時返回）
+    // 三清單「並行」抓取，但上市先到先渲染、上櫃+興櫃背景補（手機更快看到畫面）
     const fetchJson = (t) => fetch(`${API}?type=${t}`).then(r=>r.json()).catch(()=>({data:[]}));
-    const [twseRes, tpexRes, esbRes] = await Promise.all([
-      fetch(`${API}?type=twse_list`).then(r=>r.json()),
-      fetchJson('tpex_list'),
-      fetchJson('emerging_list')
-    ]);
+    const pTwse = fetch(`${API}?type=twse_list`).then(r=>r.json());
+    const pTpex = fetchJson('tpex_list');
+    const pEsb  = fetchJson('emerging_list');
+
+    // ── 第一階段：上市清單先到 → 立即顯示表格（首屏最快）──
+    const twseRes = await pTwse;
     const twseStocks = processTWSE(twseRes.data||[]);
-    let tpexStocks = processTPEx(tpexRes.data||[]);
-    const esbStocks  = processEmerging(esbRes.data||[]);
-    // 上櫃偶爾因冷啟動逾時回空 → 重試一次，避免上櫃股數掉成 0
-    if(tpexStocks.length===0){
-      const retry = await fetchJson('tpex_list');
-      tpexStocks = processTPEx(retry.data||[]);
+    stocks = twseStocks;
+    if(stocks.length){
+      document.getElementById('twseBadge').className='api-badge api-on';
+      updSum(); updSB(); renderTable();
+      setLU();
     }
-    stocks = [...twseStocks, ...tpexStocks, ...esbStocks];
-    if(stocks.length===0){ setLd('無資料，請稍後再試'); return; }
-    document.getElementById('twseBadge').className='api-badge api-on';
-    document.getElementById('tpexBadge').className='api-badge api-on';
-    updSum(); updSB(); renderTable(); buildDailyBrief(); aiRefresh();
-    startMisPolling();   // batches 已含 TPEx，立即開始即時輪詢
-    setLU(); schedRef();
-    showToast(`✓ 全部 ${stocks.length} 檔已載入（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length} + 興櫃 ${esbStocks.length}），指標背景補上…`);
+
+    // ── 第二階段：上櫃 + 興櫃背景返回 → 合併、補回各指標、再渲染、啟動即時輪詢 ──
+    Promise.all([pTpex, pEsb]).then(async ([tpexRes, esbRes])=>{
+      let tpexStocks = processTPEx(tpexRes.data||[]);
+      const esbStocks = processEmerging(esbRes.data||[]);
+      // 上櫃偶爾因冷啟動逾時回空 → 重試一次，避免上櫃股數掉成 0
+      if(tpexStocks.length===0){
+        const retry = await fetchJson('tpex_list');
+        tpexStocks = processTPEx(retry.data||[]);
+      }
+      stocks = [...twseStocks, ...tpexStocks, ...esbStocks];
+      if(stocks.length===0){ setLd('無資料，請稍後再試'); return; }
+      // 若先到的背景指標（PER/營收/產業）已載入，補回新併入的上櫃/興櫃股
+      if(Object.keys(perMap).length) for(const s of stocks){ const pe=perMap[s.id]; if(pe){ s.peV=pe.per; s.yld=pe.yld; s.pbV=pe.pbr; } }
+      if(revMap&&Object.keys(revMap).length) for(const s of stocks){ const rv=revMap[s.id]; if(rv){ s.revYoY=rv.yoy; s.revMom=rv.mom; s.revTier=rv.tier; } }
+      if(secMap&&Object.keys(secMap).length) for(const s of stocks){ if(s.isETF||s.market==='esb') continue; const sec=secMap[s.id]; if(sec) s.sector=sec; }
+      document.getElementById('tpexBadge').className='api-badge api-on';
+      updSum(); updSB(); renderTable(); buildDailyBrief(); aiRefresh();
+      startMisPolling();   // batches 已含 TPEx，此處單次啟動即時輪詢
+      showToast(`✓ 全部 ${stocks.length} 檔已載入（上市 ${twseStocks.length} + 上櫃 ${tpexStocks.length} + 興櫃 ${esbStocks.length}）`);
+    });
+    schedRef();
 
     // 第三階段：PER / 月營收 / 短線狀態 各自到位後就地補上欄位（不阻塞表格）
     pPer.then(perRes=>{

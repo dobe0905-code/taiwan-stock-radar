@@ -62,7 +62,11 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 @keyframes pulse{from{opacity:.4}to{opacity:1}}
 #app{display:flex;height:100vh;padding-top:var(--header);}
 #sidebar{width:var(--sidebar);flex-shrink:0;background:var(--bg2);border-right:1px solid var(--border);overflow-y:auto;padding:8px 0;}
-.sb-label{font-size:13px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;padding:10px 14px 4px;}
+.sb-label{font-size:13px;font-weight:700;letter-spacing:.1em;color:var(--text3);text-transform:uppercase;padding:10px 14px 4px;display:flex;align-items:center;justify-content:space-between;cursor:pointer;user-select:none;transition:color .15s;}
+.sb-label:hover{color:var(--text2);}
+.sb-label::after{content:'▾';font-size:10px;opacity:.65;transition:transform .15s;}
+.sb-label.collapsed::after{transform:rotate(-90deg);}
+.sb-collapsed-hidden{display:none !important;}
 .sb-item{display:flex;align-items:center;justify-content:space-between;padding:11px 14px;font-size:17px;color:var(--text2);cursor:pointer;transition:all .15s;border-left:2px solid transparent;}
 .sb-item:hover{background:var(--bg3);color:var(--text);}
 .sb-item.active{background:rgba(56,139,253,.08);border-left-color:var(--accent);color:var(--accent2);}
@@ -330,36 +334,36 @@ body{background:var(--bg);color:var(--text);font-family:var(--sans);font-size:18
 
 <div id="app">
   <aside id="sidebar">
-    <div class="sb-label">總覽</div>
+    <div class="sb-label" onclick="toggleSbGroup(this)">總覽</div>
     <div class="sb-item active" onclick="setSF('all',this)"><span>全部股票</span><span class="sb-cnt" id="c-all">—</span></div>
     <div class="sb-item" onclick="setSF('wl',this)"><span>⭐ 我的自選股</span><span class="sb-cnt" id="c-wl">0</span></div>
-    <div class="sb-label">市場</div>
+    <div class="sb-label" onclick="toggleSbGroup(this)">市場</div>
     <div class="sb-mkt mkt-tab active" onclick="setMkt('all',this)"><span>🇹🇼 全部台股</span></div>
     <div class="sb-mkt mkt-tab" onclick="setMkt('twse',this)"><span>🏛 上市</span></div>
     <div class="sb-mkt mkt-tab" onclick="setMkt('tpex',this)"><span>🏪 上櫃</span></div>
     <div class="sb-mkt mkt-tab" onclick="setMkt('esb',this)"><span>🌱 興櫃</span></div>
     <div class="sb-mkt mkt-tab" onclick="setMkt('etf',this)"><span>📦 ETF</span></div>
     <div class="sb-mkt mkt-tab" onclick="setMkt('global',this)"><span>🌐 全球指數</span></div>
-    <div class="sb-label">選股因子（回測驗證）</div>
+    <div class="sb-label" onclick="toggleSbGroup(this)">選股因子（回測驗證）</div>
     <div class="sb-item" onclick="setSF('long_buy',this)" title="長線策略狀態：月營收高成長 ＋ 大盤站上季線（回測有效區）。大盤跌破季線時會自動排除（順勢因子空頭期反轉）"><span>🚀 長線布局</span><span class="sb-cnt" id="c-long_buy">—</span></div>
     <div id="regimeBar" style="font-size:10px;color:var(--text3);padding:2px 14px 6px 28px;line-height:1.4">大盤趨勢：載入中…</div>
     <div class="sb-item" onclick="setSF('rev_hi',this)" title="月營收年增>20%：多頭/正常盤回測20日對大盤超額+1.3%、勝率61%（中小型股更強+1.7%）。⚠️順勢因子，2022空頭期回測會反轉失效，需配合大盤趨勢（指數站上月/季線才啟用）"><span>📈 營收高成長</span><span class="sb-cnt" id="c-rev_hi">—</span></div>
     <div class="sb-item" onclick="setSF('rev_dn',this)" title="月營收年增<0%：多頭/正常盤回測20日跑輸大盤-3.3%，避雷用。⚠️空頭期此族群反而易均值回歸反彈，避雷效果僅限正常盤"><span>📉 營收衰退（避雷）</span><span class="sb-cnt" id="c-rev_dn">—</span></div>
-    <div class="sb-label">短線狀態（全市場每日快照）</div>
+    <div class="sb-label" onclick="toggleSbGroup(this)">短線狀態（全市場每日快照）</div>
     <div class="sb-item" onclick="setSF('st_long',this)" title="均線多頭排列（MA5>MA10>MA20）且站上季線（MA60）。回測：趨勢中拉回為最佳買點，季線上揚時勝率更高"><span>📈 短多</span><span class="sb-cnt" id="c-st_long">—</span></div>
     <div class="sb-item" onclick="setSF('st_long_up',this)" title="短多 ＋ 季線（MA60）上揚：回測勝率與超額報酬最強的子集"><span>📈 短多（季線上揚）</span><span class="sb-cnt" id="c-st_long_up">—</span></div>
     <div class="sb-item" onclick="setSF('st_short',this)" title="均線空頭排列（MA5<MA10<MA20）且跌破季線（MA60）：弱勢，避開或反向"><span>📉 短空</span><span class="sb-cnt" id="c-st_short">—</span></div>
     <div id="stDateBar" style="font-size:10px;color:var(--text3);padding:2px 14px 6px 28px;line-height:1.4">快照日期：載入中…</div>
-    <div class="sb-label">盤中即時訊號</div>
+    <div class="sb-label" onclick="toggleSbGroup(this)">盤中即時訊號</div>
     <div class="sb-item" onclick="setSF('lim_up',this)" title="現價觸及漲停價（MIS 即時 u 欄），或漲幅≥9.5%且收於當日最高。盤中即時更新"><span>▲ 漲停</span><span class="sb-cnt" id="c-lim_up">—</span></div>
     <div class="sb-item" onclick="setSF('lim_dn',this)" title="現價觸及跌停價（MIS 即時 w 欄），或跌幅≤-9.5%且收於當日最低。盤中即時更新"><span>▼ 跌停</span><span class="sb-cnt" id="c-lim_dn">—</span></div>
     <div class="sb-item" onclick="setSF('near_up',this)" title="即將漲停：漲幅 +7%~+9.5%（未鎖死）且收盤靠近當日最高、量能放大，盤中向漲停價靠攏中。為動能/距離啟發式，非預測保證"><span>🔺 即將漲停</span><span class="sb-cnt" id="c-near_up">—</span></div>
     <div class="sb-item" onclick="setSF('near_dn',this)" title="即將跌停：跌幅 -9.5%~-7%（未鎖死）且收盤靠近當日最低，盤中向跌停價靠攏中。為動能/距離啟發式，非預測保證"><span>🔻 即將跌停</span><span class="sb-cnt" id="c-near_dn">—</span></div>
     <div class="sb-item" onclick="setSF('disp',this)" title="處置股：證交所/櫃買公告之處置有價證券（分盤交易、預收款券等），波動與流動性風險高，請謹慎"><span>⚠️ 處置股</span><span class="sb-cnt" id="c-disp">—</span></div>
-    <div class="sb-label">產業分類</div>
+    <div class="sb-label" onclick="toggleSbGroup(this)">產業分類</div>
     <div class="sb-item" onclick="toggleSub(this)"><span>個股產業</span><div style="display:flex;align-items:center;gap:5px;"><span class="sb-cnt" id="c-stk">—</span><span id="sub-arr" style="font-size:10px;color:var(--text3)">▶</span></div></div>
     <div id="sub-sectors" class="sb-sub"></div>
-    <div class="sb-label">熱門族群</div>
+    <div class="sb-label" onclick="toggleSbGroup(this)">熱門族群</div>
     <div class="sb-item" onclick="setSF('g:tw50',this)"><span>🏆 台灣50</span><span class="sb-cnt" id="c-g-tw50">—</span></div>
     <div class="sb-item" onclick="setSF('g:highdiv',this)"><span>💰 高股息指數</span><span class="sb-cnt" id="c-g-highdiv">—</span></div>
     <div class="sb-item" onclick="setSF('g:gtpu',this)"><span>🔍 Google TPU</span><span class="sb-cnt" id="c-g-gtpu">—</span></div>
@@ -4245,6 +4249,16 @@ async function openGlobalDetail(symbol, name){
 }
 
 function toggleSub(el){const s=document.getElementById('sub-sectors'),a=document.getElementById('sub-arr');s.classList.toggle('open');a.textContent=s.classList.contains('open')?'▼':'▶';}
+
+// ── 側欄分組縮小/展開：點標題切換到下一個 .sb-label 之前的所有兄弟節點 ──
+function toggleSbGroup(label){
+  const collapsed = label.classList.toggle('collapsed');
+  let el = label.nextElementSibling;
+  while(el && !el.classList.contains('sb-label')){
+    el.classList.toggle('sb-collapsed-hidden', collapsed);
+    el = el.nextElementSibling;
+  }
+}
 
 // ── 統計卡點擊：快速進入對應篩選 ──
 function sumCardClick(action){

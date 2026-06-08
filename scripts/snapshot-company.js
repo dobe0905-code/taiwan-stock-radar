@@ -64,6 +64,30 @@ function normDate(s) {
 }
 function todayISO() { return new Date().toISOString().slice(0, 10); }
 
+// 逾時 + 重試的 fetch：交易所官網偶會擋海外 CI 機房 IP / 暫時性逾時
+async function fetchRetry(url, { retries = 3, timeoutMs = 15000 } = {}) {
+  let lastErr;
+  for (let i = 0; i < retries; i++) {
+    const ctrl = new AbortController();
+    const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+    try {
+      const r = await fetch(url, {
+        headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64)' },
+        signal: ctrl.signal
+      });
+      if (!r.ok) throw new Error(`HTTP ${r.status}`);
+      return await r.json();
+    } catch (e) {
+      lastErr = e;
+      console.error(`  嘗試 ${i + 1}/${retries} 失敗：${e.message}`);
+      if (i < retries - 1) await new Promise(s => setTimeout(s, 2000 * (i + 1)));
+    } finally {
+      clearTimeout(timer);
+    }
+  }
+  throw lastErr;
+}
+
 (async () => {
   await fs.mkdir(DATA_DIR, { recursive: true });
 
@@ -75,11 +99,9 @@ function todayISO() { return new Date().toISOString().slice(0, 10); }
     const t0 = Date.now();
     let arr;
     try {
-      const r = await fetch(src.url, { headers: { Accept: 'application/json', 'User-Agent': 'Mozilla/5.0' } });
-      if (!r.ok) throw new Error(`HTTP ${r.status}`);
-      arr = await r.json();
+      arr = await fetchRetry(src.url, { retries: 3, timeoutMs: 15000 });
     } catch (e) {
-      console.error(`  ${src.market} 失敗：${e.message}`);
+      console.error(`  ${src.market} 全部重試失敗：${e.message}`);
       continue;
     }
     if (!Array.isArray(arr)) { console.error(`  ${src.market} 非陣列`); continue; }
@@ -112,7 +134,18 @@ function todayISO() { return new Date().toISOString().slice(0, 10); }
   }
 
   const count = Object.keys(stocks).length;
-  if (count === 0) throw new Error('No company data collected');
+  // 兩來源都抓不到（常見於海外 CI IP 被擋）：保留既有舊快照、正常結束，
+  // 避免整個 job 失敗寄信、也避免清空公司資料。資料幾乎不變，慢更新無妨。
+  if (count === 0) {
+    const file = path.join(DATA_DIR, 'latest.json');
+    try {
+      const old = JSON.parse(await fs.readFile(file, 'utf8'));
+      console.warn(`⚠ 兩來源皆失敗，保留既有快照（updated ${old.updated}，${old.count} 檔），本次不更新。`);
+      return;
+    } catch {
+      throw new Error('No company data collected and no existing snapshot to keep');
+    }
+  }
 
   const snapshot = { updated: todayISO(), count, twse, tpex, stocks };
   await fs.writeFile(path.join(DATA_DIR, 'latest.json'), JSON.stringify(snapshot));

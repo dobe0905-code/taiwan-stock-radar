@@ -2696,6 +2696,17 @@ async function buildDetCharts(s){
       if(gBull) q34=Q('③','進場區間在哪？（不追高）',`短線（5–20日）→ <b style="color:var(--accent2)">${f(stIdeal)} ~ ${f(cur)}</b>（理想拉回 MA10 ↔ 現價）<br>${extDesc(ma10,'MA10')}`)
         +Q('④','停損 &amp; 目標先定好（短線，兩種風格）',`🛡️ <b>保守</b>：${styLine(stCons,cur)}<br>🔥 <b>積極</b>：${styLine(stAggr,cur)}<br><span style="color:var(--text3)">保守＝賠少、易被洗；積極＝博大波段、單筆風險大。選一種、進場前定好就別中途更動。</span>`);
       else q34=Q('③④','進場/停損/目標',`目前非多頭排列，<b>不提供做多進場價位</b>；先等趨勢轉強或突破再評估。`);
+      // 突破點（20日高，依日K）
+      let brkG='';
+      if(closes.length>=21){
+        const hi20=Math.max(...closes.slice(-21,-1));
+        const av20=vols.slice(-20).reduce((a,b)=>a+b,0)/20, tv=vols[vols.length-1]||0, vr=av20>0?tv/av20:0;
+        const distP=hi20>0?((cur-hi20)/hi20*100):0;
+        const bs=cur>hi20
+          ? `已站上 20 日高 <b style="color:var(--green2)">${f(hi20)}</b>（量比 ${vr.toFixed(1)}×，${vr>=2.5?'爆量易追高、宜等回測':vr>=1?'帶量＝較佳突破':'量縮＝假突破存疑'}）`
+          : `尚未突破，20 日高 <b>${f(hi20)}</b>，需再漲 <b style="color:var(--green2)">${(-distP).toFixed(1)}%</b> 站上`;
+        brkG=Q('🚀','突破點（20日高）',bs+'。站穩 20 日高才是短線進場／加碼較佳時機。');
+      }
       // 長線
       let qLong;
       if(ls&&ls.cls==='ls-strong') qLong=`營收體質強 × ${mktRegime==='bull'?'<b style="color:var(--green2)">季線站上</b>':mktRegime==='bear'?'<b style="color:var(--red2)">季線跌破</b>':'季線中性'} → 偏多<br>進場區間 <b style="color:var(--accent2)">${f(ltIdeal)} ~ ${f(cur)}</b>（拉回季線↔現價）<br>${extDesc(ma60,'季線')}<br>🛡️ <b>保守</b>：${styLine(ltCons,cur)}<br>🔥 <b>積極</b>：${styLine(ltAggr,cur)}`;
@@ -2707,6 +2718,7 @@ async function buildDetCharts(s){
         ${Q('①','大盤順風嗎？',regTxt)}
         ${Q('②','這支現在強勢嗎？（中期趨勢）',q2)}
         ${q34}
+        ${brkG}
         ${Q('⑤','部位控制',`${ctxLbl}（${ctxAct}）<br>單筆風險不超過總資金的固定比例。`)}
         <div style="border-top:1px solid var(--border);margin:14px 0 0;padding-top:10px"><div style="font-size:15px;font-weight:700;color:var(--text)">🚀 若做長線（數月）</div><div style="font-size:14px;color:var(--text2);line-height:1.75;margin-top:4px">${qLong}</div></div>
         <div style="border-top:1px solid var(--border);margin:12px 0 0;padding-top:10px"><div style="font-size:15px;font-weight:700;color:var(--text)">⚡ 當沖</div><div style="font-size:14px;color:var(--text2);line-height:1.75;margin-top:4px">${dtTxt}</div></div>

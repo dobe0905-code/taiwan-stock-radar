@@ -2619,6 +2619,42 @@ async function buildDetCharts(s){
       + note(ctxLines.map(t=>'· '+t).join('<br>'))
       + note('<b style="color:var(--text2)">'+ctxAct+'</b><br>※ 情境僅影響「該不該進、部位大小」，<b>不改變</b>下方 ATR 校準的進場/停損/目標價位。');
 
+    // ── 🌙 隔夜美股 → 開盤傾向（大盤 / 產業 / 個股 三層）──
+    // 用既有 overnightData（Yahoo 隔夜美股，含 ADR/金融 ETF）。誠實定位：開盤跳空機率傾向，非走勢預測。
+    let night='';
+    if(overnightData){
+      const G=sym=>overnightData.find(x=>x.symbol===sym&&x.ok);
+      const obias=cp=>cp>=1?{lbl:'偏多 ↑',col:'var(--green2)'}:cp<=-1?{lbl:'偏空 ↓',col:'var(--red2)'}:{lbl:'中性 →',col:'var(--amber2)'};
+      const pc=v=>(v>=0?'+':'')+v.toFixed(2)+'%';
+      const cspan=v=>`<b style="font-family:var(--mono);color:${obias(v).col}">${pc(v)}</b>`;
+      const rowN=(layer,detail,cp,naTxt)=>{
+        const b=cp==null?null:obias(cp);
+        return `<div style="display:grid;grid-template-columns:.55fr 1.7fr .85fr;gap:6px;align-items:center;background:var(--bg3);border-radius:6px;padding:7px 8px;margin-top:6px">
+          <div style="font-size:13px;color:var(--text3)">${layer}</div>
+          <div style="font-size:13px;color:var(--text2);line-height:1.5">${detail}</div>
+          <div style="text-align:right">${b?`<b style="font-size:14px;color:${b.col}">${b.lbl}</b>`:`<span style="font-size:12px;color:var(--text3)">${naTxt||'無資料'}</span>`}</div></div>`;
+      };
+      const sox=G('^SOX'), nas=G('^IXIC'), vix=G('^VIX');
+      const mAvg=[]; if(sox)mAvg.push(sox.changeP); if(nas)mAvg.push(nas.changeP);
+      const mCp=mAvg.length?mAvg.reduce((a,b)=>a+b,0)/mAvg.length:null;
+      const prox=(()=>{ const sec=s.sector||'';
+        if(/半導體|IC|晶圓|封測|記憶體|矽智財|矽晶/.test(sec)) return {sym:'^SOX',label:'費半 SOX'};
+        if(/電子|電腦|週邊|光電|通信|通訊|網路|零組件|被動|連接|PCB|面板|印刷電路|資訊服務/.test(sec)) return {sym:'^IXIC',label:'NASDAQ'};
+        if(/金融|銀行|保險|證券/.test(sec)) return {sym:'XLF',label:'美金融ETF'};
+        return {sym:'^GSPC',label:'S&P500'}; })();
+      const pg=G(prox.sym), pCp=pg?pg.changeP:null;
+      const ADR={'2330':'TSM','2303':'UMC','3711':'ASX','2412':'CHT','3406':'HIMX','2409':'AUOTY'};
+      const adrSym=ADR[s.id], ag=adrSym?G(adrSym):null, aCp=ag?ag.changeP:null;
+      const mDetail=`${sox?'費半 '+cspan(sox.changeP):''}${nas?' ｜ NASDAQ '+cspan(nas.changeP):''}${vix?' ｜ VIX '+vix.price.toFixed(1):''}`||'美股資料不足';
+      const pDetail=`${s.sector||'（無產業別）'} → 對照 ${prox.label} ${pg?cspan(pg.changeP):'—'}`;
+      const aDetail=adrSym?`${s.name} ADR（${adrSym}）${ag?cspan(ag.changeP):'—'}`:`本股無美股 ADR`;
+      night = head('🌙 隔夜美股 → 開盤傾向','大盤 / 產業 / 個股','機率參考','var(--text2)','rgba(139,148,158,.12)')
+        + rowN('大盤',mDetail,mCp,'美股無資料')
+        + rowN('產業',pDetail,pCp,'無對應 proxy')
+        + rowN('個股',aDetail,aCp,adrSym?'ADR 無資料':'無 ADR→看產業/大盤')
+        + note('⚠️ 此為「<b>開盤跳空</b>的機率傾向」，依隔夜美股相關性推估，<b>僅供開盤參考</b>；盤中常背離、<b>無法預測全日走勢</b>，非預測、非保證。台股實際開盤仍受國內資金、法人、個股消息影響。');
+    }
+
     // ── 📋 操作決策檢查清單（動態版）：把上方已算好的數值整理成 5 題判讀流程，點按鈕彈窗顯示 ──
     // 全部複用本函式已計算的 MA/ATR/RSI/MACD/量比/大盤濾網/長線狀態，零新增運算與 API。
     (function buildGuide(){
@@ -2668,7 +2704,7 @@ async function buildDetCharts(s){
       window._stratGuideTitle = `${s.name||''} ${s.id||''}`;
     })();
     const guideBtn = `<div style="text-align:right;margin-bottom:8px"><button onclick="openStratGuide()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--accent2);border-radius:7px;padding:6px 13px;font-size:14px;cursor:pointer;font-family:inherit">📋 怎麼判讀</button></div>`;
-    el.innerHTML = guideBtn + ctx + divider + dt + divider + st + divider + lt
+    el.innerHTML = guideBtn + ctx + (night?divider+night:'') + divider + dt + divider + st + divider + lt
       + `<div style="font-size:14px;color:var(--text3);line-height:1.6;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆為規則化計算：停損/目標＝ATR 倍數距離；季線斜率、突破量比為過濾條件。底部「今日盤面評分」的 RSI/MACD/量比 已以「正確用法」納入上方方向判斷（非 naive 金叉/爆量＝買：強多中爆量視為警訊、RSI 過熱屬動能確認、趨勢中拉回為較佳買點）。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
   }
 

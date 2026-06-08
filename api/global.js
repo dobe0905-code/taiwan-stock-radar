@@ -248,6 +248,14 @@ export default async function handler(req, res) {
         { sym: '^IXIC', name: 'NASDAQ' },
         { sym: '^GSPC', name: 'S&P 500' },
         { sym: '^VIX',  name: 'VIX 恐慌指數' },
+        { sym: 'XLF',   name: '美國金融ETF' },
+        // 台股 ADR（供個股層「隔夜→開盤傾向」對照；皆為美國掛牌、流動性足）
+        { sym: 'TSM',   name: '台積電 ADR' },
+        { sym: 'UMC',   name: '聯電 ADR' },
+        { sym: 'ASX',   name: '日月光 ADR' },
+        { sym: 'CHT',   name: '中華電 ADR' },
+        { sym: 'HIMX',  name: '奇景 ADR' },
+        { sym: 'AUOTY', name: '友達 ADR' },
       ];
       const settled = await Promise.allSettled(WATCH.map(w =>
         fetch(`https://query1.finance.yahoo.com/v8/finance/chart/${encodeURIComponent(w.sym)}?range=5d&interval=1d`, { headers: YF_HEADERS })

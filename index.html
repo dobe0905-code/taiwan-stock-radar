@@ -2810,6 +2810,49 @@ function tvSafeSymbol(sym){
 }
 
 // ── Chart.js 外掛：在當日走勢圖標出最高/最低價 ──
+// 依個股日K計算要畫在圖上的決策水平線：止損/止盈(ATR)、突破(20日高)、我的均價
+// 與「操作策略總覽」同一套規則（短線保守停損 −1.5×ATR、積極目標 +4.0×ATR）。
+function computeChartLevels(s){
+  const kd=s&&s._kdata; if(!kd||kd.length<20) return [];
+  const closes=kd.map(d=>d.close);
+  const cur=closes[closes.length-1];
+  let trs=[];
+  for(let i=1;i<kd.length;i++){ const h=kd[i].high,l=kd[i].low,pc=kd[i-1].close; trs.push(Math.max(h-l,Math.abs(h-pc),Math.abs(l-pc))); }
+  const atr=trs.length>=14?trs.slice(-14).reduce((a,b)=>a+b,0)/14:(trs.length?trs.reduce((a,b)=>a+b,0)/trs.length:0);
+  const hi20=Math.max(...closes.slice(-21,-1));
+  const lines=[
+    {y:cur-1.5*atr, color:'#3fb950', label:'止損(保守)', dash:[5,4]},   // 跌→綠
+    {y:cur+4.0*atr, color:'#f85149', label:'止盈(積極)', dash:[5,4]},   // 漲→紅
+    {y:hi20,        color:'#e3b341', label:'突破20日高', dash:[2,3]},
+  ];
+  const c=costMap[s.id];
+  if(c&&c.avg>0) lines.push({y:c.avg, color:'#79b8ff', label:'我的均價', dash:[6,3]});
+  return lines;
+}
+// Chart.js 自訂 plugin：在價格 y 軸畫水平決策線（超出可視範圍者略過）
+const levelLines={
+  id:'levelLines',
+  afterDatasetsDraw(chart,args,opts){
+    const lines=opts&&opts.lines; if(!lines||!lines.length) return;
+    const y=chart.scales.y; if(!y) return;
+    const {ctx,chartArea:area}=chart;
+    ctx.save();
+    ctx.font='10px '+((getComputedStyle(document.body).getPropertyValue('--mono'))||'monospace');
+    for(const ln of lines){
+      if(ln.y==null||!isFinite(ln.y)) continue;
+      const yp=y.getPixelForValue(ln.y);
+      if(yp<area.top||yp>area.bottom) continue;        // 超出圖表範圍不畫
+      ctx.beginPath(); ctx.setLineDash(ln.dash||[5,4]); ctx.strokeStyle=ln.color; ctx.lineWidth=1.1;
+      ctx.moveTo(area.left,yp); ctx.lineTo(area.right,yp); ctx.stroke();
+      ctx.setLineDash([]);
+      const txt=ln.label+' '+ln.y.toFixed(2);
+      const tw=ctx.measureText(txt).width;
+      ctx.fillStyle='rgba(12,18,32,.75)'; ctx.fillRect(area.left+2,yp-12,tw+6,12);
+      ctx.fillStyle=ln.color; ctx.textBaseline='bottom'; ctx.fillText(txt,area.left+5,yp-1);
+    }
+    ctx.restore();
+  }
+};
 const hiLoMarker={
   id:'hiLoMarker',
   afterDatasetsDraw(chart){
@@ -3065,6 +3108,7 @@ function drawCandleChart(stockId, kdata){
       interaction:{mode:'index',intersect:false},
       plugins:{
         legend:{display:false},
+        levelLines:{lines:computeChartLevels(stocks.find(x=>x.id===stockId))},
         tooltip:{
           callbacks:{
             label:ctx=>{
@@ -3082,7 +3126,8 @@ function drawCandleChart(stockId, kdata){
         y:{grid:{color:'rgba(255,255,255,.04)'},position:'right',ticks:{font:{size:9}}},
         y2:{display:false,grid:{display:false}}
       }
-    }
+    },
+    plugins:[levelLines]
   });
 }
 
@@ -3158,7 +3203,8 @@ function drawLineChart(stockId,kdata,chgP){
   dCharts.p=new Chart(canvas,{
     type:'line',
     data:{labels,datasets:[{data:closes,borderColor:cc,backgroundColor:cc==='#f85149'?'rgba(248,81,73,.08)':'rgba(63,185,80,.08)',borderWidth:1.5,fill:true,tension:.3,pointRadius:0,pointHoverRadius:3}]},
-    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},tooltip:{mode:'index',intersect:false,callbacks:{label:ctx=>'收'+ctx.raw}}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:8,font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}}
+    options:{responsive:true,maintainAspectRatio:false,plugins:{legend:{display:false},levelLines:{lines:computeChartLevels(stocks.find(x=>x.id===stockId))},tooltip:{mode:'index',intersect:false,callbacks:{label:ctx=>'收'+ctx.raw}}},scales:{x:{grid:{color:'rgba(255,255,255,.04)'},ticks:{maxTicksLimit:8,font:{size:9}}},y:{grid:{color:'rgba(255,255,255,.04)'},position:'right'}}},
+    plugins:[levelLines]
   });
 }
 
@@ -4566,6 +4612,14 @@ function saveCost(id, val){
   else delete costMap[id];
   try{ localStorage.setItem('costMap', JSON.stringify(costMap)); }catch{}
   const el=document.getElementById('cost-analysis'); if(el) el.innerHTML=costAnalysisHTML(id);
+  // 同步更新 K 線圖上的「我的均價」線
+  try{
+    const s=stocks.find(x=>x.id===id);
+    if(s&&dCharts.p&&dCharts.p.options?.plugins?.levelLines){
+      dCharts.p.options.plugins.levelLines.lines=computeChartLevels(s);
+      dCharts.p.update();
+    }
+  }catch{}
 }
 // 依「持有均價 × 當前技術快照（window._stratSnap）」產出損益與當天/短線/長線操作建議
 function costAnalysisHTML(id){

@@ -2518,18 +2518,28 @@ async function buildDetCharts(s){
       stLbl='⚖️ 盤整'; stCol='var(--amber2)'; stBg='rgba(227,179,65,.12)';
       stBody=note('均線糾結或未站穩季線，方向不明，建議觀望等突破。MA20 '+f(ma20)+'／季線 '+f(ma60));
     }
-    let brk='';
+    let brk='', brkNote='';
     if(closes.length>=21){
       const hi20=Math.max(...closes.slice(-21,-1));
       const av20=vols.slice(-20).reduce((a,b)=>a+b,0)/20, tv=vols[vols.length-1]||0, vr=av20>0?tv/av20:0;
-      // 溫和放量(1.0–2.0×)為較佳突破；爆量 ≥2.5× 易為追高陷阱
+      const distP=hi20>0?((cur-hi20)/hi20*100):0;
+      // 溫和放量(1.0–2.0×)為較佳突破；爆量 ≥2.5× 易為追高陷阱（header 小標）
       if(cur>hi20&&vr>=2.5){
         brk=`　<span style="font-size:13px;color:var(--amber2);background:rgba(227,179,65,.14);border-radius:4px;padding:2px 7px" title="創20日新高但爆量(≥2.5倍均量)，易為追高陷阱，宜等回測支撐">⚠️爆量追高</span>`;
       }else if(cur>hi20&&vr>=1.0){
         brk=`　<span style="font-size:13px;color:var(--accent2);background:rgba(56,139,253,.14);border-radius:4px;padding:2px 7px" title="創20日新高且溫和放量(1.0–2.0倍均量)，屬較佳突破型態">⚡帶量突破</span>`;
       }
+      // 突破明細（與止損/止盈整合呈現）
+      let bs;
+      if(cur>hi20){
+        const q=vr>=2.5?'爆量 ≥2.5×，易為<b>追高陷阱</b>，宜等回測支撐再進':vr>=1.0?'帶量 1–2×，屬<b>較佳突破</b>型態':'量縮突破，<b>假突破風險</b>較高';
+        bs=`<b style="color:var(--green2)">已站上 20 日高 ${f(hi20)}</b>（量比 ${vr.toFixed(1)}×，${q}）`;
+      }else{
+        bs=`尚未突破，20 日高 <b>${f(hi20)}</b>（需再漲 <b style="color:var(--green2)">${(-distP).toFixed(1)}%</b> 站上；量比 ${vr.toFixed(1)}×）。站穩才是短線進場/加碼較佳時機`;
+      }
+      brkNote=note('<b style="color:var(--accent2)">🚀 突破參考：</b>'+bs);
     }
-    const st = head('📊 短線'+brk,'5–20 交易日',stLbl,stCol,stBg)+stBody;
+    const st = head('📊 短線'+brk,'5–20 交易日',stLbl,stCol,stBg)+stBody+brkNote;
 
     // ========== 長線（數月，營收因子 × 大盤季線）==========
     const ls=longState(s);

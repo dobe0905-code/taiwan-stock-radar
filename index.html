@@ -4578,7 +4578,11 @@ function costAnalysisHTML(id){
   const col=win?'var(--green2)':'var(--red2)';            // 台股：紅獲利 / 綠虧損
   // 短線（依成本）
   let shortTip;
-  if(win) shortTip=`已獲利，短線可分批朝 ${f(stTgtA)} 邁進；建議把停損上移至成本價 ${f(avg)} 或 MA10 ${f(ma10)}（移動停損鎖利）。`;
+  if(win){
+    // 停損須在現價之下才有效：MA10 只有低於現價時才適合當移動停損
+    const trail = (ma10!=null&&ma10<cur) ? `成本價 ${f(avg)} 或 MA10 ${f(ma10)}` : `成本價 ${f(avg)}`;
+    shortTip=`已獲利，短線可分批朝 ${f(stTgtA)} 邁進；建議把停損上移至${trail}（移動停損鎖利）。`;
+  }
   else if(trend==='bull') shortTip=`帳面虧損但短線仍多頭，紀律停損參考 <b style="color:var(--red2)">${f(stStopC)}</b>；跌破請止損，勿凹單。`;
   else if(trend==='bear') shortTip=`趨勢偏空且帳面虧損，反彈為<b>減碼</b>機會，<b style="color:var(--red2)">勿向下攤平接刀</b>。`;
   else shortTip=`盤整且帳面虧損，方向不明，控制部位、嚴設停損 ${f(stStopC)}。`;

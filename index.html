@@ -2704,7 +2704,22 @@ async function buildDetCharts(s){
       window._stratGuideTitle = `${s.name||''} ${s.id||''}`;
     })();
     const guideBtn = `<div style="text-align:right;margin-bottom:8px"><button onclick="openStratGuide()" style="background:var(--bg3);border:1px solid var(--border2);color:var(--accent2);border-radius:7px;padding:6px 13px;font-size:14px;cursor:pointer;font-family:inherit">📋 怎麼判讀</button></div>`;
-    el.innerHTML = guideBtn + ctx + (night?divider+night:'') + divider + dt + divider + st + divider + lt
+    // 技術快照（供「我的持有成本」依成本給建議；單一面板，全域一份即可）
+    window._stratSnap = {
+      id:s.id, cur, ma10, ma60,
+      trend:(ma5>ma10&&ma10>ma20&&cur>ma60)?'bull':(ma5<ma10&&ma10<ma20&&cur<ma60)?'bear':'range',
+      lsCls: ls?ls.cls:null, ctxScore,
+      stStopC:cur-1.5*atr, stTgtA:cur+4.0*atr, ltStopC:cur-2.5*atr
+    };
+    const costCard = `<div style="background:var(--bg2);border:1px solid var(--border);border-radius:8px;padding:10px 12px;margin-bottom:10px">
+      <div style="display:flex;align-items:center;gap:8px;flex-wrap:wrap">
+        <span style="font-size:15px;font-weight:700;color:var(--text)">💼 我的持有成本</span>
+        <input id="costInput" type="number" inputmode="decimal" step="0.01" placeholder="輸入均價" value="${costMap[s.id]?.avg ?? ''}" onchange="saveCost('${s.id}',this.value)" style="width:110px;background:var(--bg3);border:1px solid var(--border2);color:var(--text);border-radius:6px;padding:5px 8px;font-family:var(--mono);font-size:14px">
+        <button onclick="document.getElementById('costInput').value='';saveCost('${s.id}','')" style="background:var(--bg3);border:1px solid var(--border2);color:var(--text3);border-radius:6px;padding:5px 9px;font-size:12px;cursor:pointer">清除</button>
+        <span style="font-size:11px;color:var(--text3)">僅存於本機瀏覽器</span>
+      </div>
+      <div id="cost-analysis">${costAnalysisHTML(s.id)}</div></div>`;
+    el.innerHTML = guideBtn + costCard + ctx + (night?divider+night:'') + divider + dt + divider + st + divider + lt
       + `<div style="font-size:14px;color:var(--text3);line-height:1.6;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆為規則化計算：停損/目標＝ATR 倍數距離；季線斜率、突破量比為過濾條件。底部「今日盤面評分」的 RSI/MACD/量比 已以「正確用法」納入上方方向判斷（非 naive 金叉/爆量＝買：強多中爆量視為警訊、RSI 過熱屬動能確認、趨勢中拉回為較佳買點）。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
   }
 
@@ -4542,6 +4557,54 @@ function openStratGuide(){
   m.style.display='flex';
 }
 function closeStratGuide(){const m=document.getElementById('strategyGuideModal');if(m)m.style.display='none';}
+
+// ── 我的持有成本（純前端 localStorage，不上傳）──
+let costMap = (()=>{ try{ return JSON.parse(localStorage.getItem('costMap')||'{}'); }catch{ return {}; } })();
+function saveCost(id, val){
+  const v=parseFloat(val);
+  if(Number.isFinite(v)&&v>0) costMap[id]={avg:v};
+  else delete costMap[id];
+  try{ localStorage.setItem('costMap', JSON.stringify(costMap)); }catch{}
+  const el=document.getElementById('cost-analysis'); if(el) el.innerHTML=costAnalysisHTML(id);
+}
+// 依「持有均價 × 當前技術快照（window._stratSnap）」產出損益與當天/短線/長線操作建議
+function costAnalysisHTML(id){
+  const c=costMap[id], snap=window._stratSnap;
+  if(!c||!c.avg) return '<div style="font-size:13px;color:var(--text3);margin-top:8px">輸入持有均價後，這裡顯示損益與「依你的成本」的短線/長線操作建議。</div>';
+  if(!snap||snap.id!==id) return '<div style="font-size:13px;color:var(--text3);margin-top:8px">技術資料載入中…</div>';
+  const {cur,ma10,ma60,trend,lsCls,ctxScore,stStopC,stTgtA,ltStopC}=snap;
+  const f=v=>(v==null?'—':v.toFixed(2));
+  const avg=c.avg, ret=(cur-avg)/avg*100, win=ret>=0;
+  const col=win?'var(--green2)':'var(--red2)';            // 台股：紅獲利 / 綠虧損
+  // 短線（依成本）
+  let shortTip;
+  if(win) shortTip=`已獲利，短線可分批朝 ${f(stTgtA)} 邁進；建議把停損上移至成本價 ${f(avg)} 或 MA10 ${f(ma10)}（移動停損鎖利）。`;
+  else if(trend==='bull') shortTip=`帳面虧損但短線仍多頭，紀律停損參考 <b style="color:var(--red2)">${f(stStopC)}</b>；跌破請止損，勿凹單。`;
+  else if(trend==='bear') shortTip=`趨勢偏空且帳面虧損，反彈為<b>減碼</b>機會，<b style="color:var(--red2)">勿向下攤平接刀</b>。`;
+  else shortTip=`盤整且帳面虧損，方向不明，控制部位、嚴設停損 ${f(stStopC)}。`;
+  // 長線（依成本×營收體質）
+  let longTip;
+  if(lsCls==='ls-strong') longTip=win?`長線體質強且獲利，可續抱，停損參考季線 ${f(ma60)}。`:`長線體質強但帳面虧損，仍站穩季線 ${f(ma60)} 可續抱；跌破季線轉弱再減。`;
+  else if(lsCls==='ls-weak') longTip=`長線體質轉弱（營收年增<0），${win?'獲利者可分批了結':'虧損者反彈減碼，勿期待長抱解套'}。`;
+  else longTip=`長線狀態中性，依季線 ${f(ma60)} 與營收變化動態調整。`;
+  // 加碼判斷
+  let addTip;
+  if(!win&&trend==='bear') addTip=`<b style="color:var(--red2)">不建議加碼</b>（逆勢攤平風險高）。`;
+  else if(ctxScore>=1&&trend==='bull'&&cur<=ma10*1.02) addTip=`順勢且接近 MA10 拉回區，若加碼會拉高均價，務必控制總部位、重設停損。`;
+  else addTip=`非理想加碼點（追高或環境不順），如要加碼請降低加碼量。`;
+  const row=(lb,tx)=>`<div style="margin-top:6px"><span style="font-size:12px;color:var(--text3)">${lb}</span><div style="font-size:13px;color:var(--text2);line-height:1.6">${tx}</div></div>`;
+  return `
+    <div style="display:flex;align-items:baseline;gap:10px;margin-top:8px;flex-wrap:wrap">
+      <span style="font-size:13px;color:var(--text3)">均價 <b style="font-family:var(--mono);color:var(--text)">${f(avg)}</b></span>
+      <span style="font-size:13px;color:var(--text3)">現價 <b style="font-family:var(--mono);color:var(--text)">${f(cur)}</b></span>
+      <span style="font-size:16px;font-weight:700;color:${col}">${win?'獲利':'虧損'} ${(ret>=0?'+':'')+ret.toFixed(2)}%</span>
+    </div>
+    ${row('🟡 當沖','當沖當日沖銷不留倉，與持有成本無關；此區僅供波段/長線參考。')}
+    ${row('📊 短線（5–20日）',shortTip)}
+    ${row('🚀 長線（數月）',longTip)}
+    ${row('➕ 加碼判斷',addTip)}
+    <div style="font-size:11px;color:var(--text3);margin-top:7px;line-height:1.6">⚠ 建議依「成本×技術面」規則化推導，<b>非投資建議、不保證獲利</b>；停損請務必自行執行。</div>`;
+}
 
 // ── 行動裝置：漢堡選單開關側欄抽屜 ──
 function toggleSidebar(){document.body.classList.toggle('sb-open');}

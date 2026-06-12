@@ -2848,7 +2848,10 @@ async function buildDetCharts(s){
     try{
       const j=await (await fetch('/api/global?type=stock_news&q='+encodeURIComponent(name))).json();
       if(document.getElementById('stock-news')!==el) return; // 面板已切換
-      const items=j.items||[];
+      const items=(j.items||[]).slice().sort((a,b)=>{
+        const ta=a.pubDate?Date.parse(a.pubDate):0, tb=b.pubDate?Date.parse(b.pubDate):0;
+        return tb-ta;   // 最新在前
+      });
       if(!items.length){ el.innerHTML='<span style="color:var(--text3)">近兩週查無相關新聞</span>'; return; }
       const POS=/創高|新高|大增|年增|成長|看好|看旺|上修|調升|目標價調升|回補|買超|轉強|獲利|飆|漲停|攻|優於|受惠|報喜|轉盈|大單|急單|滿載/;
       const NEG=/下修|調降|降評|衰退|虧損|重挫|跌停|警示|處置|砍單|看淡|看壞|創低|走弱|賣超|轉弱|利空|裁員|停工|違約|掏空|轉虧/;

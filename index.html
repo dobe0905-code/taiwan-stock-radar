@@ -2753,38 +2753,7 @@ async function buildDetCharts(s){
         <span style="font-size:11px;color:var(--text3)">僅存於本機瀏覽器</span>
       </div>
       <div id="cost-analysis">${costAnalysisHTML(s.id)}</div></div>`;
-    // ── 🗒️ 進場計畫表（彙整既有數值成一張表，非新預測）──
-    let planCard='';
-    {
-      const isBull=ma5>ma10&&ma10>ma20&&cur>ma60;
-      const rows=[];
-      const mkRow=(name,cond,entry,stop,target,rr)=>`<tr>
-        <td style="padding:5px 6px;font-weight:700;color:var(--text)">${name}</td>
-        <td style="padding:5px 6px;color:var(--text2)">${cond}</td>
-        <td style="padding:5px 6px;font-family:var(--mono);color:var(--accent2)">${entry}</td>
-        <td style="padding:5px 6px;font-family:var(--mono);color:var(--red2)">${stop}</td>
-        <td style="padding:5px 6px;font-family:var(--mono);color:var(--green2)">${target}</td>
-        <td style="padding:5px 6px;font-family:var(--mono)">${rr}</td></tr>`;
-      if(isBull){
-        const ideal=Math.min(ma10,cur);
-        rows.push(mkRow('短線·保守','多頭排列＋站上季線',f(ideal)+'~'+f(cur),f(cur-1.5*atr),f(cur+2.0*atr),'≈1.3'));
-        rows.push(mkRow('短線·積極','同上（容忍較深回檔）',f(ideal)+'~'+f(cur),f(cur-2.5*atr),f(cur+4.0*atr),'≈1.6'));
-      }
-      if(ls&&ls.cls==='ls-strong'){
-        const idealL=Math.min(ma60,cur);
-        rows.push(mkRow('長線·保守','營收強×季線'+(ma60Up?'上揚':'待翻揚'),f(idealL)+'~'+f(cur),f(cur-2.5*atr),f(cur+4.0*atr),'≈1.6'));
-        rows.push(mkRow('長線·積極','同上（博大波段）',f(idealL)+'~'+f(cur),f(cur-4.0*atr),f(cur+7.0*atr),'≈1.75'));
-      }
-      planCard=head('🗒️ 進場計畫表','彙整上方數值','一表總覽','var(--text2)','rgba(139,148,158,.12)')
-        +(rows.length
-          ?`<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:13px">
-              <thead><tr style="color:var(--text3);text-align:left;border-bottom:1px solid var(--border)">
-                <th style="padding:4px 6px">情境</th><th style="padding:4px 6px">條件</th><th style="padding:4px 6px">進場</th><th style="padding:4px 6px">停損</th><th style="padding:4px 6px">目標</th><th style="padding:4px 6px">風報比</th></tr></thead>
-              <tbody>${rows.join('')}</tbody></table></div>`
-            +note('※ 價位為收盤後規則化推算之參考，依盤中走勢彈性調整；停損嚴格執行、不擴單不凹單。')
-          :note('目前非多頭排列且長線未達布局條件，<b>不提供做多進場計畫</b>；等趨勢轉強（站回季線、均線翻多）再評估。'));
-    }
-    el.innerHTML = guideBtn + costCard + ctx + (night?divider+night:'') + divider + dt + divider + st + divider + lt + divider + planCard
+    el.innerHTML = guideBtn + costCard + ctx + (night?divider+night:'') + divider + dt + divider + st + divider + lt
       + `<div style="font-size:14px;color:var(--text3);line-height:1.6;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆為規則化計算：停損/目標＝ATR 倍數距離；季線斜率、突破量比為過濾條件。底部「今日盤面評分」的 RSI/MACD/量比 已以「正確用法」納入上方方向判斷（非 naive 金叉/爆量＝買：強多中爆量視為警訊、RSI 過熱屬動能確認、趨勢中拉回為較佳買點）。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
   }
 

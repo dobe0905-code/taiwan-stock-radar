@@ -1862,6 +1862,9 @@ function startDetPoll(s){
       // 漲停/跌停徽章（面板標題）
       const limEl=document.getElementById('d-lim');
       if(limEl) limEl.innerHTML=limitTagHTML(st||s,true);
+      // 我的持有成本：現價/損益隨即時價刷新（與報頭一致）
+      const caEl=document.getElementById('cost-analysis');
+      if(caEl&&costMap[s.id]) caEl.innerHTML=costAnalysisHTML(s.id);
     }catch(e){console.warn('detPoll err:',e);}
   }
   pollOnce(); // 開盤/收盤都執行一次以填充均價/內外盤
@@ -2750,55 +2753,6 @@ async function buildDetCharts(s){
         <span style="font-size:11px;color:var(--text3)">僅存於本機瀏覽器</span>
       </div>
       <div id="cost-analysis">${costAnalysisHTML(s.id)}</div></div>`;
-    // ── 📐 關鍵價位（市場結構：波段高低點 swing high/low，非 ATR 推算）──
-    const sr=(()=>{
-      const n=kdata.length, w=2, levels=[];
-      const lo0=Math.max(0,n-80);
-      for(let i=lo0+w;i<n-w;i++){
-        const hi=+kdata[i].high, lo=+kdata[i].low;
-        let isH=hi>0, isL=lo>0;
-        for(let j=i-w;j<=i+w;j++){
-          if(j===i) continue;
-          if(+kdata[j].high>=hi) isH=false;
-          if(+kdata[j].low<=lo) isL=false;
-        }
-        if(isH) levels.push(hi);
-        if(isL) levels.push(lo);
-      }
-      // 相近價位（1%內）合併，保留較極端值出現次數多者→取群中位
-      levels.sort((a,b)=>a-b);
-      const merged=[];
-      for(const v of levels){
-        const g=merged[merged.length-1];
-        if(g&&Math.abs(v-g[g.length-1])/v<0.01) g.push(v);
-        else merged.push([v]);
-      }
-      const pts=merged.map(g=>({v:g[Math.floor(g.length/2)], cnt:g.length}));
-      const res=pts.filter(p=>p.v>cur).sort((a,b)=>a.v-b.v).slice(0,2);
-      const sup=pts.filter(p=>p.v<cur).sort((a,b)=>b.v-a.v).slice(0,2);
-      const lows=kdata.slice(-120).map(d=>+d.low).filter(v=>v>0);
-      const strong=lows.length?Math.min(...lows):null;
-      return {res,sup,strong};
-    })();
-    let srCard='';
-    {
-      const pcdTxt=v=>v?sgn(pcd(cur,v)):'';
-      const r=(lb,v,col,sub)=>v?`<div style="display:flex;align-items:center;gap:8px;margin-top:5px">
-        <span style="font-size:13px;color:var(--text3);width:86px">${lb}</span>
-        <span style="flex:1;border-bottom:1px dashed var(--border2)"></span>
-        <b style="font-family:var(--mono);font-size:15px;color:${col}">${f(v)}</b>
-        <span style="font-size:11px;color:var(--text3);width:62px;text-align:right">${sub||''}</span></div>`:'';
-      const hi20v=closes.length>=21?Math.max(...closes.slice(-21,-1)):null;
-      srCard=head('📐 關鍵價位','市場結構（波段高低點）','參考','var(--text2)','rgba(139,148,158,.12)')
-        + r('突破上關價',hi20v,'var(--accent2)','20日高')
-        + r('壓力 2',sr.res[1]?.v,'var(--green2)',pcdTxt(sr.res[1]?.v))
-        + r('壓力 1',sr.res[0]?.v,'var(--green2)',pcdTxt(sr.res[0]?.v))
-        + r('現價',cur,'var(--text)','—')
-        + r('支撐 1',sr.sup[0]?.v,'var(--red2)',pcdTxt(sr.sup[0]?.v))
-        + r('支撐 2',sr.sup[1]?.v,'var(--red2)',pcdTxt(sr.sup[1]?.v))
-        + r('強力支撐',sr.strong,'var(--red2)','120日低')
-        + note('壓力/支撐＝近 80 日波段轉折高低點（市場真實成交結構），與上方 ATR 風控價位互相印證：跌近支撐看「撐不撐得住」、漲近壓力看「過不過得了」。');
-    }
     // ── 🗒️ 進場計畫表（彙整既有數值成一張表，非新預測）──
     let planCard='';
     {
@@ -2830,7 +2784,7 @@ async function buildDetCharts(s){
             +note('※ 價位為收盤後規則化推算之參考，依盤中走勢彈性調整；停損嚴格執行、不擴單不凹單。')
           :note('目前非多頭排列且長線未達布局條件，<b>不提供做多進場計畫</b>；等趨勢轉強（站回季線、均線翻多）再評估。'));
     }
-    el.innerHTML = guideBtn + costCard + ctx + (night?divider+night:'') + divider + dt + divider + st + divider + lt + divider + srCard + divider + planCard
+    el.innerHTML = guideBtn + costCard + ctx + (night?divider+night:'') + divider + dt + divider + st + divider + lt + divider + planCard
       + `<div style="font-size:14px;color:var(--text3);line-height:1.6;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆為規則化計算：停損/目標＝ATR 倍數距離；季線斜率、突破量比為過濾條件。底部「今日盤面評分」的 RSI/MACD/量比 已以「正確用法」納入上方方向判斷（非 naive 金叉/爆量＝買：強多中爆量視為警訊、RSI 過熱屬動能確認、趨勢中拉回為較佳買點）。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
   }
 
@@ -4769,7 +4723,10 @@ function costAnalysisHTML(id){
   const c=costMap[id], snap=window._stratSnap;
   if(!c||!c.avg) return '<div style="font-size:13px;color:var(--text3);margin-top:8px">輸入持有均價後，這裡顯示損益與「依你的成本」的短線/長線操作建議。</div>';
   if(!snap||snap.id!==id) return '<div style="font-size:13px;color:var(--text3);margin-top:8px">技術資料載入中…</div>';
-  const {cur,ma10,ma60,trend,lsCls,ctxScore,stStopC,stTgtA,ltStopC}=snap;
+  const {ma10,ma60,trend,lsCls,ctxScore,stStopC,stTgtA,ltStopC}=snap;
+  // 現價用 stocks 內的即時價（盤中輪詢會更新），與報頭一致；快照價僅作備援
+  const _live=stocks.find(x=>x.id===id);
+  const cur=(_live&&_live.close>0)?_live.close:snap.cur;
   const f=v=>(v==null?'—':v.toFixed(2));
   const avg=c.avg, ret=(cur-avg)/avg*100, win=ret>=0;
   const col=win?'var(--green2)':'var(--red2)';            // 台股：紅獲利 / 綠虧損

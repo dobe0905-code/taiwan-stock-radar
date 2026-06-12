@@ -2046,6 +2046,12 @@ function buildDetHTML(s,live){
   <div class="ds" data-dtab="tech"><div class="dst">操作策略總覽 <span style="font-size:10px;color:var(--text3);font-weight:400">(當沖 · 短線 · 長線，各週期狀態與進出場)</span></div>
     <div id="strategy-card" style="font-size:11px;color:var(--text3)">展開K線後計算…</div>
   </div>
+  <div class="ds" data-dtab="tech"><div class="dst">每日數據表 <span style="font-size:10px;color:var(--text3);font-weight:400">(近30日 收盤/均線/KD/RSI)</span></div>
+    <div id="daily-table" style="font-size:11px;color:var(--text3)">展開K線後計算…</div>
+  </div>
+  <div class="ds" data-dtab="tech"><div class="dst">個股新聞 <span style="font-size:10px;color:var(--text3);font-weight:400">(Google News 聚合，情緒依標題關鍵字粗略判斷僅供參考)</span></div>
+    <div id="stock-news" style="font-size:11px;color:var(--text3)">載入中…</div>
+  </div>
   <div class="ds" data-dtab="chips" id="holders-section">
     <div class="dst">籌碼分析（集保持股分散）</div>
     <div id="holders-loading" style="display:flex;align-items:center;gap:8px;padding:12px 0;color:var(--text3);font-size:11px;">
@@ -2192,6 +2198,8 @@ async function buildDetCharts(s){
       updateAITechDetail(kdata, s);
       // 操作策略總覽（當沖／短線／長線 三週期）
       renderStrategyCard(s, kdata);
+      // 每日數據表（近30日）
+      renderDailyTable(kdata);
     }
   }catch(e){console.warn('kline err:',e);}
 
@@ -2199,6 +2207,7 @@ async function buildDetCharts(s){
   loadHoldersData(s.id);
   loadMarginData(s.id);
   loadInstitutionData(s.id);
+  loadStockNews(s);
   // ── 公司基本資料 + 近五年年營收 + 季財報分析 ──
   loadCompanyData(s);
   loadAnnualRevenue(s.id);
@@ -2741,8 +2750,174 @@ async function buildDetCharts(s){
         <span style="font-size:11px;color:var(--text3)">僅存於本機瀏覽器</span>
       </div>
       <div id="cost-analysis">${costAnalysisHTML(s.id)}</div></div>`;
-    el.innerHTML = guideBtn + costCard + ctx + (night?divider+night:'') + divider + dt + divider + st + divider + lt
+    // ── 📐 關鍵價位（市場結構：波段高低點 swing high/low，非 ATR 推算）──
+    const sr=(()=>{
+      const n=kdata.length, w=2, levels=[];
+      const lo0=Math.max(0,n-80);
+      for(let i=lo0+w;i<n-w;i++){
+        const hi=+kdata[i].high, lo=+kdata[i].low;
+        let isH=hi>0, isL=lo>0;
+        for(let j=i-w;j<=i+w;j++){
+          if(j===i) continue;
+          if(+kdata[j].high>=hi) isH=false;
+          if(+kdata[j].low<=lo) isL=false;
+        }
+        if(isH) levels.push(hi);
+        if(isL) levels.push(lo);
+      }
+      // 相近價位（1%內）合併，保留較極端值出現次數多者→取群中位
+      levels.sort((a,b)=>a-b);
+      const merged=[];
+      for(const v of levels){
+        const g=merged[merged.length-1];
+        if(g&&Math.abs(v-g[g.length-1])/v<0.01) g.push(v);
+        else merged.push([v]);
+      }
+      const pts=merged.map(g=>({v:g[Math.floor(g.length/2)], cnt:g.length}));
+      const res=pts.filter(p=>p.v>cur).sort((a,b)=>a.v-b.v).slice(0,2);
+      const sup=pts.filter(p=>p.v<cur).sort((a,b)=>b.v-a.v).slice(0,2);
+      const lows=kdata.slice(-120).map(d=>+d.low).filter(v=>v>0);
+      const strong=lows.length?Math.min(...lows):null;
+      return {res,sup,strong};
+    })();
+    let srCard='';
+    {
+      const pcdTxt=v=>v?sgn(pcd(cur,v)):'';
+      const r=(lb,v,col,sub)=>v?`<div style="display:flex;align-items:center;gap:8px;margin-top:5px">
+        <span style="font-size:13px;color:var(--text3);width:86px">${lb}</span>
+        <span style="flex:1;border-bottom:1px dashed var(--border2)"></span>
+        <b style="font-family:var(--mono);font-size:15px;color:${col}">${f(v)}</b>
+        <span style="font-size:11px;color:var(--text3);width:62px;text-align:right">${sub||''}</span></div>`:'';
+      const hi20v=closes.length>=21?Math.max(...closes.slice(-21,-1)):null;
+      srCard=head('📐 關鍵價位','市場結構（波段高低點）','參考','var(--text2)','rgba(139,148,158,.12)')
+        + r('突破上關價',hi20v,'var(--accent2)','20日高')
+        + r('壓力 2',sr.res[1]?.v,'var(--green2)',pcdTxt(sr.res[1]?.v))
+        + r('壓力 1',sr.res[0]?.v,'var(--green2)',pcdTxt(sr.res[0]?.v))
+        + r('現價',cur,'var(--text)','—')
+        + r('支撐 1',sr.sup[0]?.v,'var(--red2)',pcdTxt(sr.sup[0]?.v))
+        + r('支撐 2',sr.sup[1]?.v,'var(--red2)',pcdTxt(sr.sup[1]?.v))
+        + r('強力支撐',sr.strong,'var(--red2)','120日低')
+        + note('壓力/支撐＝近 80 日波段轉折高低點（市場真實成交結構），與上方 ATR 風控價位互相印證：跌近支撐看「撐不撐得住」、漲近壓力看「過不過得了」。');
+    }
+    // ── 🗒️ 進場計畫表（彙整既有數值成一張表，非新預測）──
+    let planCard='';
+    {
+      const isBull=ma5>ma10&&ma10>ma20&&cur>ma60;
+      const rows=[];
+      const mkRow=(name,cond,entry,stop,target,rr)=>`<tr>
+        <td style="padding:5px 6px;font-weight:700;color:var(--text)">${name}</td>
+        <td style="padding:5px 6px;color:var(--text2)">${cond}</td>
+        <td style="padding:5px 6px;font-family:var(--mono);color:var(--accent2)">${entry}</td>
+        <td style="padding:5px 6px;font-family:var(--mono);color:var(--red2)">${stop}</td>
+        <td style="padding:5px 6px;font-family:var(--mono);color:var(--green2)">${target}</td>
+        <td style="padding:5px 6px;font-family:var(--mono)">${rr}</td></tr>`;
+      if(isBull){
+        const ideal=Math.min(ma10,cur);
+        rows.push(mkRow('短線·保守','多頭排列＋站上季線',f(ideal)+'~'+f(cur),f(cur-1.5*atr),f(cur+2.0*atr),'≈1.3'));
+        rows.push(mkRow('短線·積極','同上（容忍較深回檔）',f(ideal)+'~'+f(cur),f(cur-2.5*atr),f(cur+4.0*atr),'≈1.6'));
+      }
+      if(ls&&ls.cls==='ls-strong'){
+        const idealL=Math.min(ma60,cur);
+        rows.push(mkRow('長線·保守','營收強×季線'+(ma60Up?'上揚':'待翻揚'),f(idealL)+'~'+f(cur),f(cur-2.5*atr),f(cur+4.0*atr),'≈1.6'));
+        rows.push(mkRow('長線·積極','同上（博大波段）',f(idealL)+'~'+f(cur),f(cur-4.0*atr),f(cur+7.0*atr),'≈1.75'));
+      }
+      planCard=head('🗒️ 進場計畫表','彙整上方數值','一表總覽','var(--text2)','rgba(139,148,158,.12)')
+        +(rows.length
+          ?`<div style="overflow-x:auto;margin-top:6px"><table style="width:100%;border-collapse:collapse;font-size:13px">
+              <thead><tr style="color:var(--text3);text-align:left;border-bottom:1px solid var(--border)">
+                <th style="padding:4px 6px">情境</th><th style="padding:4px 6px">條件</th><th style="padding:4px 6px">進場</th><th style="padding:4px 6px">停損</th><th style="padding:4px 6px">目標</th><th style="padding:4px 6px">風報比</th></tr></thead>
+              <tbody>${rows.join('')}</tbody></table></div>`
+            +note('※ 價位為收盤後規則化推算之參考，依盤中走勢彈性調整；停損嚴格執行、不擴單不凹單。')
+          :note('目前非多頭排列且長線未達布局條件，<b>不提供做多進場計畫</b>；等趨勢轉強（站回季線、均線翻多）再評估。'));
+    }
+    el.innerHTML = guideBtn + costCard + ctx + (night?divider+night:'') + divider + dt + divider + st + divider + lt + divider + srCard + divider + planCard
       + `<div style="font-size:14px;color:var(--text3);line-height:1.6;margin-top:10px;border-top:1px solid var(--border);padding-top:8px">※ 狀態方向、進出場價位與過濾門檻皆為規則化計算：停損/目標＝ATR 倍數距離；季線斜率、突破量比為過濾條件。底部「今日盤面評分」的 RSI/MACD/量比 已以「正確用法」納入上方方向判斷（非 naive 金叉/爆量＝買：強多中爆量視為警訊、RSI 過熱屬動能確認、趨勢中拉回為較佳買點）。會隨個股波動自動調整，目前 ATR ${f(atr)}。為統計參考非保證，請自行判斷。</div>`;
+  }
+
+  // ── 每日數據表：近30日 收盤/漲跌/MA5/MA20/MA60/KD(9)/RSI(14)，純前端由日K計算 ──
+  function renderDailyTable(kdata){
+    const el=document.getElementById('daily-table');
+    if(!el) return;
+    const n=kdata.length;
+    if(n<30){ el.innerHTML='<span style="font-size:11px;color:var(--text3)">日K資料不足</span>'; return; }
+    const C=kdata.map(d=>+d.close), H=kdata.map(d=>+d.high), L=kdata.map(d=>+d.low);
+    const maAt=(i,p)=>i+1>=p?C.slice(i+1-p,i+1).reduce((a,b)=>a+b,0)/p:null;
+    // KD(9,3,3)
+    const K=[],D=[];
+    for(let i=0;i<n;i++){
+      if(i<8){K.push(null);D.push(null);continue;}
+      const h9=Math.max(...H.slice(i-8,i+1)), l9=Math.min(...L.slice(i-8,i+1));
+      const rsv=h9>l9?(C[i]-l9)/(h9-l9)*100:50;
+      const pk=K[i-1]??50, pd=D[i-1]??50;
+      K.push(pk*2/3+rsv/3); D.push(pd*2/3+K[i]/3);
+    }
+    // RSI(14)（簡式：近14日漲跌幅合計）
+    const rsiAt=i=>{
+      if(i<14) return null;
+      let g=0,l=0;
+      for(let j=i-13;j<=i;j++){const d=C[j]-C[j-1];if(d>0)g+=d;else l+=-d;}
+      return l===0?100:100-100/(1+g/l);
+    };
+    const rows=[];
+    for(let i=n-1;i>=Math.max(14,n-30);i--){
+      const chg=C[i]-C[i-1], chgP=C[i-1]>0?chg/C[i-1]*100:0;
+      const cc=chg>0?'var(--green2)':chg<0?'var(--red2)':'var(--text2)';
+      const m5=maAt(i,5),m20=maAt(i,20),m60=maAt(i,60);
+      const sigT=(m5!=null&&m20!=null&&m60!=null)?(C[i]>m5&&m5>m20&&C[i]>m60?'多':C[i]<m5&&m5<m20&&C[i]<m60?'空':'整'):'—';
+      const sigC=sigT==='多'?'var(--green2)':sigT==='空'?'var(--red2)':'var(--text3)';
+      rows.push(`<tr style="border-bottom:1px solid rgba(48,54,61,.4)">
+        <td style="padding:4px 6px;font-family:var(--mono);color:var(--text2)">${kdata[i].date.slice(5)}</td>
+        <td style="padding:4px 6px;font-family:var(--mono);text-align:right;font-weight:700;color:var(--text)">${C[i].toFixed(2)}</td>
+        <td style="padding:4px 6px;font-family:var(--mono);text-align:right;color:${cc}">${(chgP>=0?'+':'')+chgP.toFixed(2)}%</td>
+        <td style="padding:4px 6px;font-family:var(--mono);text-align:right;color:var(--text2)">${m5!=null?m5.toFixed(1):'—'}</td>
+        <td style="padding:4px 6px;font-family:var(--mono);text-align:right;color:var(--text2)">${m20!=null?m20.toFixed(1):'—'}</td>
+        <td style="padding:4px 6px;font-family:var(--mono);text-align:right;color:var(--text2)">${m60!=null?m60.toFixed(1):'—'}</td>
+        <td style="padding:4px 6px;font-family:var(--mono);text-align:right;color:var(--text2)">${K[i]!=null?Math.round(K[i])+'/'+Math.round(D[i]):'—'}</td>
+        <td style="padding:4px 6px;font-family:var(--mono);text-align:right;color:var(--text2)">${rsiAt(i)!=null?Math.round(rsiAt(i)):'—'}</td>
+        <td style="padding:4px 6px;text-align:center;font-weight:700;color:${sigC}">${sigT}</td></tr>`);
+    }
+    el.innerHTML=`<div style="max-height:280px;overflow-y:auto;overflow-x:auto">
+      <table style="width:100%;border-collapse:collapse;font-size:12px">
+        <thead><tr style="color:var(--text3);text-align:right;position:sticky;top:0;background:var(--bg2)">
+          <th style="padding:4px 6px;text-align:left">日期</th><th style="padding:4px 6px">收盤</th><th style="padding:4px 6px">漲跌%</th>
+          <th style="padding:4px 6px">MA5</th><th style="padding:4px 6px">MA20</th><th style="padding:4px 6px">MA60</th>
+          <th style="padding:4px 6px">K/D</th><th style="padding:4px 6px">RSI</th><th style="padding:4px 6px;text-align:center">訊號</th></tr></thead>
+        <tbody>${rows.join('')}</tbody></table></div>
+      <div style="font-size:11px;color:var(--text3);margin-top:6px">訊號＝收盤 vs MA5/MA20/季線排列（多/空/整），純規則標示供比對，非買賣建議。</div>`;
+  }
+
+  // ── 個股新聞＋情緒粗判（標題關鍵字，僅供參考非精準語意分析）──
+  async function loadStockNews(s){
+    const el=document.getElementById('stock-news');
+    if(!el) return;
+    const name=(s.name||'').replace(/[*＊]/g,'');
+    try{
+      const j=await (await fetch('/api/global?type=stock_news&q='+encodeURIComponent(name))).json();
+      if(document.getElementById('stock-news')!==el) return; // 面板已切換
+      const items=j.items||[];
+      if(!items.length){ el.innerHTML='<span style="color:var(--text3)">近兩週查無相關新聞</span>'; return; }
+      const POS=/創高|新高|大增|年增|成長|看好|看旺|上修|調升|目標價調升|回補|買超|轉強|獲利|飆|漲停|攻|優於|受惠|報喜|轉盈|大單|急單|滿載/;
+      const NEG=/下修|調降|降評|衰退|虧損|重挫|跌停|警示|處置|砍單|看淡|看壞|創低|走弱|賣超|轉弱|利空|裁員|停工|違約|掏空|轉虧/;
+      let score=0;
+      const rows=items.map(it=>{
+        const p=POS.test(it.title), nn=NEG.test(it.title);
+        let tag,tc,tb;
+        if(p&&!nn){tag='利多';tc='var(--green2)';tb='rgba(255,161,152,.12)';score++;}
+        else if(nn&&!p){tag='利空';tc='var(--red2)';tb='rgba(126,231,135,.12)';score--;}
+        else {tag='中性';tc='var(--text3)';tb='rgba(139,148,158,.12)';}
+        const dt=it.pubDate?new Date(it.pubDate):null;
+        const ago=dt?Math.max(0,Math.round((Date.now()-dt.getTime())/3600000)):null;
+        const agoTxt=ago==null?'':ago<24?ago+' 小時前':Math.round(ago/24)+' 天前';
+        return `<div style="display:flex;gap:8px;align-items:flex-start;padding:7px 0;border-bottom:1px solid rgba(48,54,61,.4)">
+          <span style="flex-shrink:0;font-size:11px;font-weight:700;color:${tc};background:${tb};border-radius:4px;padding:2px 6px;margin-top:1px">${tag}</span>
+          <div style="min-width:0">
+            <a href="${it.link}" target="_blank" rel="noopener" style="font-size:13px;color:var(--text);text-decoration:none;line-height:1.5">${it.title}</a>
+            <div style="font-size:11px;color:var(--text3);margin-top:2px">${it.source||''}${agoTxt?' · '+agoTxt:''}</div>
+          </div></div>`;
+      });
+      const mood=score>=2?{t:'偏多',c:'var(--green2)'}:score<=-2?{t:'偏空',c:'var(--red2)'}:{t:'中性',c:'var(--amber2)'};
+      el.innerHTML=`<div style="font-size:13px;margin-bottom:4px">近期消息面：<b style="color:${mood.c}">${mood.t}</b> <span style="color:var(--text3)">（總分 ${score>=0?'+':''}${score}，依標題關鍵字粗略判斷，可能誤判，請點原文自行確認）</span></div>${rows.join('')}`;
+    }catch(e){ if(document.getElementById('stock-news')===el) el.innerHTML='<span style="color:var(--text3)">新聞載入失敗</span>'; }
   }
 
   // ── MA 均線乖離率（季線公式：BIAS = (現價 - MA60) / MA60 × 100%）──

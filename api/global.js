@@ -5,6 +5,7 @@ import { rateLimit } from './_ratelimit.js';
 
 // 每日焦點新聞記憶體快取（變動慢；加上 token 讓 CDN BYPASS，s-maxage 失效，故靠此快取）
 let _newsCache = { exp: 0, payload: null };
+const _stockNewsCache = new Map(); // q → {exp, payload}（個股新聞 10 分鐘快取，上限 200 檔）
 
 // 帶逾時的 fetch：避免單一上游卡住把整支函式拖到數十秒
 async function fetchTimeout(url, opts = {}, ms = 5000) {
@@ -296,6 +297,49 @@ export default async function handler(req, res) {
       const quotes = (j?.quotes || []).filter(q => q.quoteType === 'EQUITY' || q.quoteType === 'ETF' || q.quoteType === 'INDEX');
       res.setHeader('Cache-Control', 's-maxage=300, stale-while-revalidate');
       return res.status(200).json({ data: quotes, source: 'YAHOO_SEARCH' });
+    }
+
+    // ══════════════════════════════════════════════════
+    // 個股新聞（Google News RSS；q=股票名稱）
+    //   僅取標題/來源/時間/連結；情緒判斷由前端依標題關鍵字粗略標示
+    // ══════════════════════════════════════════════════
+    if (type === 'stock_news') {
+      const q = (req.query.q || '').toString().trim().slice(0, 20);
+      if (!q) return res.status(400).json({ error: '缺少 q' });
+      const hit = _stockNewsCache.get(q);
+      if (hit && Date.now() < hit.exp) {
+        res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1200');
+        return res.status(200).json(hit.payload);
+      }
+      const dec = (s) => (s || '')
+        .replace(/<!\[CDATA\[|\]\]>/g, '').replace(/<[^>]+>/g, ' ')
+        .replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&quot;/g, '"')
+        .replace(/&#39;/g, "'").replace(/&apos;/g, "'").replace(/&amp;/g, '&')
+        .replace(/\s+/g, ' ').trim();
+      const items = [];
+      try {
+        const url = `https://news.google.com/rss/search?q=${encodeURIComponent(q + ' 股 when:14d')}&hl=zh-TW&gl=TW&ceid=TW:zh-Hant`;
+        const r = await fetchTimeout(url, { headers: { 'User-Agent': 'Mozilla/5.0' } }, 5000);
+        if (r.ok) {
+          const xml = await r.text();
+          for (const b of xml.split('<item>').slice(1, 11)) {
+            const grab = (re) => { const m = b.match(re); return m ? dec(m[1]) : ''; };
+            let title = grab(/<title>([\s\S]*?)<\/title>/);
+            const source = grab(/<source[^>]*>([\s\S]*?)<\/source>/);
+            const link = grab(/<link>([\s\S]*?)<\/link>/);
+            const pubDate = grab(/<pubDate>([\s\S]*?)<\/pubDate>/);
+            if (source && title.endsWith(' - ' + source)) title = title.slice(0, -(source.length + 3)).trim();
+            if (title) items.push({ title, source, link, pubDate });
+          }
+        }
+      } catch (e) { /* 失敗回空陣列，前端顯示無新聞 */ }
+      const payload = { q, items, updated: new Date().toISOString(), source: 'GoogleNews_RSS' };
+      if (items.length) {
+        if (_stockNewsCache.size >= 200) _stockNewsCache.delete(_stockNewsCache.keys().next().value);
+        _stockNewsCache.set(q, { exp: Date.now() + 10 * 60 * 1000, payload });
+      }
+      res.setHeader('Cache-Control', 's-maxage=600, stale-while-revalidate=1200');
+      return res.status(200).json(payload);
     }
 
     // ══════════════════════════════════════════════════
